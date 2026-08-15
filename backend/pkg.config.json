@@ -1,0 +1,5 @@
+{
+  "bin": "index.cjs",
+  "targets": ["node20-win-x64"],
+  "outputPath": "../dist"
+}

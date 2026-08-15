@@ -1,0 +1,70 @@
+/**
+ * Prime ERP Print Styles
+ * Standardized A4 layout with high-fidelity color rendering.
+ */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12.7mm;
+  }
+
+  /* Global Print Reset */
+  body {
+    background-color: white !important;
+    color: black !important;
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Layout Adjustments */
+  .no-print {
+    display: none !important;
+  }
+
+  /* High Fidelity Color Rendering */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Table Optimizations */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Prevent elements from being split across pages */
+  .card, .section, .invoice-header, .invoice-footer {
+    break-inside: avoid;
+  }
+
+  /* Typography */
+  h1, h2, h3, h4, h5, h6 {
+    break-after: avoid;
+  }
+
+  img {
+    max-width: 100% !important;
+    break-inside: avoid;
+  }
+}

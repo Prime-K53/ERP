@@ -1,0 +1,10 @@
+{
+  "name": "PrimeBOOKS",
+  "description": "A modern web-based ERP/POS system prototype featuring an AI-powered System Architect. This tool demonstrates the functionality of Inventory, POS, and Dashboarding while utilizing Gemini to generate technical documentation (ERDs, Workflows) for the system design.",
+  "requestFramePermissions": [
+    "usb",
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

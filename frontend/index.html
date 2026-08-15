@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Prime ERP - Professional Business Dashboard" />
+    <title>Prime ERP System</title>
+    <script>
+      /* Portal-aware tab title: the customer portal (/portal or
+         portal.primeerp.com) is PrimePORTAL — never "Prime ERP System".
+         This runs before React mounts so the loading phase is labelled
+         correctly from the very first paint. */
+      (function () {
+        try {
+          var hash = (window.location.hash || '').toLowerCase();
+          var path = (window.location.pathname || '/').toLowerCase();
+          var host = (window.location.hostname || '').toLowerCase();
+          var isPortal = hash.indexOf('#/portal') === 0
+            || path.indexOf('/portal') === 0
+            || host === 'portal.primeerp.com'
+            || host.indexOf('.portal.primeerp.com') === host.length - '.portal.primeerp.com'.length;
+          if (isPortal) document.title = 'PrimePORTAL';
+        } catch (e) { /* never block boot on title cosmetics */ }
+      })();
+    </script>
+    <link rel="icon" href="./favicon.ico" />
+    <script>
+      /* Clean-URL → hash-router compatibility shim.
+         The app uses HashRouter (e.g. #/login, #/portal/login) so it works
+         from file:// and static hosts. On Vercel/Netlify the SPA rewrites make
+         /login and /portal/login serve index.html — this script translates the
+         clean path into a hash so direct links, bookmarks and refreshes route
+         correctly. It also hides the hash in the address bar for a clean URL. */
+      (function () {
+        var hasHash = window.location.hash && window.location.hash.length > 1;
+        if (!hasHash) {
+          var path = window.location.pathname || '/';
+          var target = path.replace(/\/+$/, '') || '/';
+          if (target !== '/') {
+            window.location.replace(window.location.origin + window.location.search + '#' + target + window.location.hash);
+          }
+        } else {
+          var clean = window.location.pathname + window.location.search;
+          if (clean !== '/') {
+            // Keep the hash route but keep the address bar clean
+            window.history.replaceState(null, '', clean);
+          }
+        }
+      })();
+    </script>
+    <script>window.global = window;</script>
+    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" href="/pwa-icon-192x192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Prime ERP" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Document Layout Definition",
+  "description": "A renderer-agnostic blueprint for document structure and styling.",
+  "type": "object",
+  "required": ["metadata", "fixedSections", "flowSections"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["pageSize", "orientation", "margins", "unit"],
+      "properties": {
+        "title": { "type": "string" },
+        "pageSize": {
+          "oneOf": [
+            { "enum": ["A4", "Letter"] },
+            {
+              "type": "object",
+              "required": ["width", "height"],
+              "properties": {
+                "width": { "type": "number" },
+                "height": { "type": "number" }
+              }
+            }
+          ]
+        },
+        "orientation": { "enum": ["portrait", "landscape"] },
+        "unit": { "enum": ["mm", "pt", "px"] },
+        "margins": {
+          "type": "object",
+          "required": ["top", "right", "bottom", "left"],
+          "properties": {
+            "top": { "type": "number" },
+            "right": { "type": "number" },
+            "bottom": { "type": "number" },
+            "left": { "type": "number" }
+          }
+        }
+      }
+    },
+    "fixedSections": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/section" }
+    },
+    "flowSections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "elements"],
+        "properties": {
+          "id": { "type": "string" },
+          "allowPageBreakInside": { "type": "boolean" },
+          "elements": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/node" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "section": {
+      "type": "object",
+      "required": ["id", "role", "repeat", "content"],
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "enum": ["header", "footer", "content", "watermark"] },
+        "repeat": { "enum": ["every-page", "first-page", "last-page", "none"] },
+        "content": { "$ref": "#/definitions/node" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["container", "text", "image", "line", "table", "spacer"] },
+        "style": { "$ref": "#/definitions/style" },
+        "width": { "oneOf": [{ "type": "number" }, { "enum": ["auto", "100%"] }] },
+        "height": { "oneOf": [{ "type": "number" }, { "enum": ["auto"] }] },
+        "layout": { "enum": ["vertical", "horizontal", "stack"] },
+        "children": { "type": "array", "items": { "$ref": "#/definitions/node" } },
+        "content": { "type": "string" },
+        "columns": { "type": "array" },
+        "rows": { "type": "array" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "fontSize": { "type": "number" },
+        "fontWeight": { "enum": ["normal", "bold", "500", "600"] },
+        "color": { "type": "string" },
+        "textAlign": { "enum": ["left", "center", "right", "justify"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,305 @@
+/* Account Settings – refined typography & spacing */
+
+/* ── Shell ─────────────────────────────────────────── */
+.pf-shell {
+  background: #F3F0EC;
+}
+
+/* ── Cards ─────────────────────────────────────────── */
+.pf-card {
+  background: #FCFCFD;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+
+.pf-card-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid #E2E8F0;
+  background: #F8FAFC;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pf-card-body {
+  padding: 16px;
+}
+
+/* ── Typography ────────────────────────────────────── */
+.pf-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #0F172A;
+  letter-spacing: -0.01em;
+}
+
+.pf-subtitle {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.pf-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #1E293B;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pf-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-body {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #1E293B;
+}
+
+.pf-meta {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #64748B;
+}
+
+.pf-name {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #0F172A;
+}
+
+.pf-username {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #64748B;
+}
+
+/* ── Badge ─────────────────────────────────────────── */
+.pf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background: #EEF2FF;
+  color: #4F46E5;
+  border: 1px solid #E0E7FF;
+}
+
+/* ── Form controls ─────────────────────────────────── */
+.pf-input,
+.pf-select {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #1E293B;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+
+.pf-input:focus,
+.pf-select:focus {
+  border-color: #6366F1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+.pf-select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+
+.pf-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+.pf-btn-primary {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  border-radius: 10px;
+  background: #4F46E5;
+  color: #FCFCFD;
+  border: none;
+  cursor: pointer;
+  transition: background .15s, box-shadow .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pf-btn-primary:hover { background: #4338CA; }
+.pf-btn-primary:active { transform: scale(.97); }
+.pf-btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.pf-btn-secondary {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 10px;
+  background: transparent;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pf-btn-secondary:hover { background: #F8FAFC; color: #1E293B; }
+.pf-btn-secondary:active { transform: scale(.97); }
+
+.pf-btn-ghost {
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  border: none;
+  background: transparent;
+  color: #64748B;
+  cursor: pointer;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, color .15s;
+}
+.pf-btn-ghost:hover { background: #F1F5F9; color: #1E293B; }
+
+/* ── Stats card ────────────────────────────────────── */
+.pf-stats-card {
+  background: #0F172A;
+  border-radius: 16px;
+  padding: 20px;
+  color: #FCFCFD;
+  box-shadow: 0 4px 12px rgba(99,102,241,0.1);
+}
+
+.pf-stats-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #818CF8;
+}
+
+.pf-stats-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #FCFCFD;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Activity log ──────────────────────────────────── */
+.pf-log-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  transition: background .1s;
+}
+.pf-log-item:hover { background: #F8FAFC; }
+
+.pf-log-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #F8FAFC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4F46E5;
+  border: 1px solid #E2E8F0;
+  flex-shrink: 0;
+}
+
+.pf-log-action {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #1E293B;
+}
+
+.pf-log-date {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #64748B;
+}
+
+/* ── Header row ────────────────────────────────────── */
+.pf-header-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .pf-header-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* ── Helpers ────────────────────────────────────────── */
+.pf-back-btn {
+  padding: 8px;
+  border-radius: 12px;
+  background: #FCFCFD;
+  border: 1px solid #E2E8F0;
+  color: #64748B;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, box-shadow .15s;
+}
+.pf-back-btn:hover {
+  background: #F8FAFC;
+  box-shadow: 0 2px 4px rgba(0,0,0,.06);
+}
+.pf-back-btn:active { transform: scale(.95); }
+
+/* ── Change summary modal list item ────────────────── */
+.pf-change-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1E293B;
+}

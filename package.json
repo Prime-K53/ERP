@@ -1,0 +1,53 @@
+{
+  "name": "prime-erp-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "description": "Prime ERP System - Enterprise Resource Management (Local Web App)",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "install-all": "npm install",
+    "install:frontend": "npm install --workspace=frontend",
+    "install:backend": "npm install --workspace=backend",
+    "dev": "concurrently -n \"backend,frontend\" -c \"magenta,cyan\" \"npm run backend\" \"npm run frontend\"",
+    "backend": "cross-env JWT_SECRET=prime-erp-dev-secret-key-2026 SESSION_SECRET=prime-erp-dev-session-secret-2026 ENCRYPTION_KEY=prime-erp-dev-encryption-key-2026 npm run dev --workspace=backend",
+    "frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend",
+    "start": "node scripts/start-server.cjs",
+    "stop": "node scripts/stop-server.cjs",
+    "build:backend-exe": "npx pkg backend/index.cjs --targets node18-win-x64 --output dist/PrimeERP.exe",
+    "assemble-release": "node scripts/assemble-release.cjs",
+    "build:portable": "npm run build --workspace=frontend && npm run build:backend-exe && npm run assemble-release",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@google/genai",
+      "esbuild",
+      "prime-erp-workspace",
+      "protobufjs",
+      "sharp",
+      "sqlite3"
+    ]
+  },
+  "dependencies": {
+    "@supabase/server": "^1.3.0",
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
+    "lru-cache": "^5.1.1",
+    "multer": "^2.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  },
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

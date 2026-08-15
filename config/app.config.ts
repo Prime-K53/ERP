@@ -1,0 +1,16 @@
+export const config = {
+  dbName: import.meta.env.VITE_DB_NAME || 'PrimeERP',
+  dbVersion: parseInt(import.meta.env.VITE_DB_VERSION || '27'),
+  offlineMode: import.meta.env.VITE_OFFLINE_MODE !== 'false',
+  tonerMgPerSheet: parseInt(import.meta.env.VITE_TONER_MG || '20'),
+  apiBaseUrl: import.meta.env.VITE_API_URL || 'https://primebooks-erp.onrender.com',
+  enableMultiCurrency: import.meta.env.VITE_ENABLE_MULTI_CURRENCY === 'true',
+  enableWorkflowAutomation: import.meta.env.VITE_ENABLE_WORKFLOW === 'true',
+  defaultPageSize: 25,
+  maxPageSize: 100,
+  defaultCurrency: import.meta.env.VITE_DEFAULT_CURRENCY || 'USD',
+  currencyDecimalPlaces: 2,
+  sessionTimeoutMinutes: parseInt(import.meta.env.VITE_SESSION_TIMEOUT || '480'),
+  maxFileSizeMB: parseInt(import.meta.env.VITE_MAX_FILE_SIZE || '10'),
+  notificationDurationMs: 5000,
+};

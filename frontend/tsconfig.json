@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "types": ["vite/client"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "components/**/*",
+    "context/**/*",
+    "hooks/**/*",
+    "services/**/*",
+    "stores/**/*",
+    "utils/**/*",
+    "views/**/*",
+    "App.tsx",
+    "index.tsx",
+    "types.ts",
+    "constants.ts",
+    "sw.js",
+    "vite-env.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "build", "**/*.bak", "**/*.old", "services/examinationService.ts"]
+}

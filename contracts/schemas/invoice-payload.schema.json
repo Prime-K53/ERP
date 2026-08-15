@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ERP Invoice Payload",
+  "description": "A normalized, presentation-independent invoice payload for ERP systems.",
+  "type": "object",
+  "required": ["issuer", "customer", "dates", "items", "totals", "payment"],
+  "properties": {
+    "issuer": { "$ref": "#/definitions/party" },
+    "customer": { "$ref": "#/definitions/party" },
+    "shippingAddress": { "$ref": "#/definitions/address" },
+    "dates": {
+      "type": "object",
+      "required": ["issuedAt", "dueDate"],
+      "properties": {
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "dueDate": { "type": "string", "format": "date" },
+        "servicePeriodStart": { "type": "string", "format": "date" },
+        "servicePeriodEnd": { "type": "string", "format": "date" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sequence", "id", "description", "quantity", "uom", "pricing"],
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 1 },
+          "id": { "type": "string" },
+          "sku": { "type": "string" },
+          "description": { "type": "string" },
+          "quantity": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?$" },
+          "uom": { "type": "string" },
+          "pricing": {
+            "type": "object",
+            "required": ["unitPrice", "subtotalNet", "subtotalGross"],
+            "properties": {
+              "unitPrice": { "$ref": "#/definitions/money" },
+              "subtotalNet": { "$ref": "#/definitions/money" },
+              "subtotalGross": { "$ref": "#/definitions/money" },
+              "discounts": { "type": "array", "items": { "$ref": "#/definitions/discount" } }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["subtotalNet", "grandTotal"],
+      "properties": {
+        "subtotalNet": { "$ref": "#/definitions/money" },
+        "totalDiscount": { "$ref": "#/definitions/money" },
+        "grandTotal": { "$ref": "#/definitions/money" }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "required": ["totalPaid", "totalRemaining", "status"],
+      "properties": {
+        "totalPaid": { "$ref": "#/definitions/money" },
+        "totalRemaining": { "$ref": "#/definitions/money" },
+        "status": { "enum": ["UNPAID", "PARTIAL", "PAID", "OVERPAID"] }
+      }
+    },
+    "references": {
+      "type": "object",
+      "properties": {
+        "purchaseOrderNumber": { "type": "string" },
+        "quotationUid": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "money": {
+      "type": "object",
+      "required": ["amount", "currency", "precision"],
+      "properties": {
+        "amount": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?$" },
+        "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "precision": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "address": {
+      "type": "object",
+      "required": ["line1", "city", "countryCode"],
+      "properties": {
+        "line1": { "type": "string" },
+        "city": { "type": "string" },
+        "countryCode": { "type": "string", "pattern": "^[A-Z]{2}$" }
+      }
+    },
+    "party": {
+      "type": "object",
+      "required": ["name", "address", "contact"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "$ref": "#/definitions/address" },
+        "contact": {
+          "type": "object",
+          "required": ["email"],
+          "properties": {
+            "email": { "type": "string", "format": "email" },
+            "phone": { "type": "string" }
+          }
+        }
+      }
+    },
+    "discount": {
+      "type": "object",
+      "required": ["description", "type", "value", "amount"],
+      "properties": {
+        "description": { "type": "string" },
+        "type": { "enum": ["PERCENTAGE", "FLAT"] },
+        "value": { "type": "string" },
+        "amount": { "$ref": "#/definitions/money" }
+      }
+    }
+  }
+}

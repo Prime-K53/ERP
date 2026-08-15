@@ -1,0 +1,69 @@
+{
+  "name": "prime-erp-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "^4.1.6",
+    "@reduxjs/toolkit": "^2.12.0",
+    "@stripe/react-stripe-js": "^6.8.0",
+    "@stripe/stripe-js": "^9.12.1",
+    "@supabase/supabase-js": "^2.49.0",
+    "axios": "^1.13.2",
+    "buffer": "^6.0.3",
+    "d3-shape": "^3.2.0",
+    "date-fns": "^4.1.0",
+    "dexie": "^4.0.10",
+    "fontkit": "^2.0.4",
+    "framer-motion": "^12.42.2",
+    "html2canvas": "^1.4.1",
+    "idb": "^8.0.0",
+    "jsbarcode": "^3.12.3",
+    "lucide-react": "^0.554.0",
+    "pdfjs-dist": "^5.6.205",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-is": "^18.3.1",
+    "react-markdown": "^9.0.0",
+    "react-router": "6.22.3",
+    "react-router-dom": "6.22.3",
+    "recharts": "^3.4.1",
+    "sharp": "^0.34.5",
+    "zod": "^4.1.11",
+    "zustand": "^4.5.7"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2",
+    "@rollup/rollup-win32-x64-msvc": "^4.62.2"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "18.3",
+    "@types/react-dom": "18.3",
+    "@vitejs/plugin-basic-ssl": "^2.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.17",
+    "autoprefixer": "^10.4.23",
+    "axe-core": "^4.11.3",
+    "jsdom": "^27.4.0",
+    "postcss": "^8.5.6",
+    "puppeteer-core": "^24.42.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^6.0.3",
+    "vite": "^6.2.0",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^4.0.17"
+  }
+}

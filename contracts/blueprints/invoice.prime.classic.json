@@ -1,0 +1,183 @@
+{
+  "metadata": {
+    "id": "invoice.prime.classic",
+    "title": "Prime Classic Invoice",
+    "documentType": "INVOICE",
+    "pageSize": "A4",
+    "orientation": "portrait",
+    "unit": "mm",
+    "margins": { "top": 20, "right": 20, "bottom": 20, "left": 20 }
+  },
+  "fixedSections": [
+    {
+      "id": "header",
+      "role": "header",
+      "repeat": "every-page",
+      "content": {
+        "type": "container",
+        "layout": "horizontal",
+        "children": [
+          {
+            "type": "container",
+            "layout": "vertical",
+            "flex": 1,
+            "children": [
+              { "type": "text", "content": "INVOICE", "style": { "fontSize": 28, "fontWeight": "bold", "color": "#0f172a" } },
+              { "type": "spacer", "height": 8 },
+              {
+                "type": "container",
+                "layout": "horizontal",
+                "children": [
+                  { "type": "text", "content": "Invoice No:", "width": 35, "style": { "fontSize": 10, "color": "#64748b", "fontWeight": "600" } },
+                  { "type": "text", "content": "{{id}}", "style": { "fontSize": 13, "fontWeight": "600", "color": "#1e293b" } }
+                ]
+              },
+              {
+                "type": "container",
+                "layout": "horizontal",
+                "children": [
+                  { "type": "text", "content": "Date:", "width": 35, "style": { "fontSize": 10, "color": "#64748b", "fontWeight": "600" } },
+                  { "type": "text", "content": "{{dates.issuedAt}}", "style": { "fontSize": 13, "color": "#1e293b" } }
+                ]
+              },
+              {
+                "type": "container",
+                "layout": "horizontal",
+                "children": [
+                  { "type": "text", "content": "Payment Method:", "width": 35, "style": { "fontSize": 10, "color": "#64748b", "fontWeight": "600" } },
+                  { "type": "text", "content": "{{payment.method}}", "style": { "fontSize": 13, "color": "#1e293b" } }
+                ]
+              },
+              {
+                "type": "container",
+                "layout": "horizontal",
+                "children": [
+                  { "type": "text", "content": "Order Number:", "width": 35, "style": { "fontSize": 10, "color": "#64748b", "fontWeight": "600" } },
+                  { "type": "text", "content": "{{references.purchaseOrderNumber}}", "style": { "fontSize": 13, "color": "#1e293b" } }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "container",
+            "layout": "vertical",
+            "width": 45,
+            "children": [
+              {
+                "type": "image",
+                "url": "{{issuer.logoUrl}}",
+                "width": 40,
+                "height": 40,
+                "style": { "textAlign": "right" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "footer",
+      "role": "footer",
+      "repeat": "every-page",
+      "content": {
+        "type": "container",
+        "layout": "vertical",
+        "style": { 
+          "padding": { "top": 12, "right": 0, "bottom": 0, "left": 0 }, 
+          "border": { "width": 0.5, "style": "solid", "color": "#e2e8f0", "edges": ["top"] } 
+        },
+        "children": [
+          { "type": "text", "content": "{{issuer.name}}", "style": { "fontSize": 15, "fontWeight": "bold", "textAlign": "center", "color": "#0f172a" } },
+          { "type": "text", "content": "{{issuer.address.line1}}, {{issuer.address.city}}, {{issuer.address.postalCode}}", "style": { "fontSize": 10, "textAlign": "center", "color": "#64748b" } },
+          { "type": "text", "content": "Phone: {{issuer.contact.phone}} | Email: {{issuer.contact.email}}", "style": { "fontSize": 10, "textAlign": "center", "color": "#64748b" } }
+        ]
+      }
+    }
+  ],
+  "flowSections": [
+    {
+      "id": "customer-section",
+      "elements": [
+        { "type": "spacer", "height": 20 },
+        { "type": "text", "content": "BILL TO", "style": { "fontSize": 10, "fontWeight": "bold", "color": "#64748b", "padding": { "bottom": 4, "top": 0, "right": 0, "left": 0 } } },
+        { "type": "text", "content": "{{customer.name}}", "style": { "fontSize": 18, "fontWeight": "bold", "color": "#0f172a" } },
+        { "type": "text", "content": "{{customer.address.line1}}", "style": { "fontSize": 13, "color": "#334155" } },
+        { "type": "text", "content": "{{customer.address.city}}, {{customer.address.postalCode}}", "style": { "fontSize": 13, "color": "#334155" } },
+        { "type": "text", "content": "{{customer.address.countryCode}}", "style": { "fontSize": 13, "color": "#334155" } },
+        { "type": "spacer", "height": 25 }
+      ]
+    },
+    {
+      "id": "items-section",
+      "elements": [
+        {
+          "type": "table",
+          "dataSource": "items",
+          "showHeaders": true,
+          "columns": [
+            { "id": "item", "header": "Item", "width": "auto", "align": "left" },
+            { "id": "qty", "header": "Qty", "width": 25, "align": "right" },
+            { "id": "price", "header": "Price", "width": 35, "align": "right" },
+            { "id": "total", "header": "Total", "width": 35, "align": "right" }
+          ],
+          "rows": [
+            {
+              "cells": {
+                "item": { "type": "text", "content": "{{item.description}}", "style": { "fontSize": 13, "color": "#1e293b" } },
+                "qty": { "type": "text", "content": "{{item.quantity}}", "style": { "fontSize": 13, "textAlign": "right", "color": "#1e293b" } },
+                "price": { "type": "text", "content": "{{currency}}{{item.pricing.unitPrice.amount}}", "style": { "fontSize": 13, "textAlign": "right", "color": "#1e293b" } },
+                "total": { "type": "text", "content": "{{currency}}{{item.pricing.subtotalNet.amount}}", "style": { "fontSize": 13, "textAlign": "right", "color": "#1e293b" } }
+              }
+            }
+          ],
+          "style": { "border": { "width": 0.5, "style": "solid", "color": "#f1f5f9", "edges": ["bottom"] } }
+        }
+      ]
+    },
+    {
+      "id": "totals-section",
+      "elements": [
+        { "type": "spacer", "height": 15 },
+        {
+          "type": "container",
+          "layout": "horizontal",
+          "children": [
+            { "type": "spacer", "flex": 1 },
+            {
+              "type": "container",
+              "layout": "vertical",
+              "width": 90,
+              "children": [
+                {
+                  "type": "container",
+                  "layout": "horizontal",
+                  "children": [
+                    { "type": "text", "content": "Subtotal", "flex": 1, "style": { "fontSize": 13, "color": "#64748b" } },
+                    { "type": "text", "content": "{{currency}}{{totals.subtotalNet.amount}}", "style": { "fontSize": 13, "textAlign": "right", "color": "#1e293b" } }
+                  ]
+                },
+                {
+                  "type": "container",
+                  "layout": "horizontal",
+                  "children": [
+                    { "type": "text", "content": "Amount Paid", "flex": 1, "style": { "fontSize": 13, "color": "#64748b" } },
+                    { "type": "text", "content": "{{currency}}{{payment.totalPaid.amount}}", "style": { "fontSize": 13, "textAlign": "right", "color": "#1e293b" } }
+                  ]
+                },
+                { "type": "line", "orientation": "horizontal", "thickness": 1, "color": "#f1f5f9", "style": { "padding": { "top": 8, "right": 0, "bottom": 8, "left": 0 } } },
+                {
+                  "type": "container",
+                  "layout": "horizontal",
+                  "children": [
+                    { "type": "text", "content": "TOTAL DUE", "flex": 1, "style": { "fontSize": 14, "fontWeight": "bold", "color": "#0f172a" } },
+                    { "type": "text", "content": "{{currency}}{{totals.grandTotal.amount}}", "style": { "fontSize": 16, "fontWeight": "bold", "textAlign": "right", "color": "#0f172a" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
