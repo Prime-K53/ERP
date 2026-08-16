@@ -86,11 +86,18 @@ async function getById(table, id) {
 
 async function upsert(table, domainObject) {
   if (!isConfigured()) return null;
-  const row = toSupabaseRow(domainObject);
-  if (!row) return null;
+  if (!domainObject || !domainObject.id) return null;
 
   try {
-    const result = await cloudSyncStore.upsertRow(table, row.id, row);
+    // Pass the RAW domain object to cloudSyncStore.upsertRow, exactly like the
+    // sync gateway's applyOp() does. upsertRow treats the payload as the domain
+    // and stores it in the `data` JSONB column (single-wrapped), using
+    // payload.version as the optimistic-concurrency base it matches against.
+    // Passing toSupabaseRow()'s envelope instead double-wrapped the data
+    // ({ id, data: { id, data: {...} } }) and double-bumped the version, which
+    // made every new row unreadable and every update a permanent version
+    // conflict.
+    const result = await cloudSyncStore.upsertRow(table, domainObject.id, domainObject);
     if (result && result.id) {
       return getById(table, result.id);
     }

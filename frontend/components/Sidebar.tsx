@@ -14,7 +14,7 @@ import {
   CheckCircle, MonitorPlay, Maximize, Share2, Sparkles,
   Smartphone, FileSpreadsheet, BookOpen, FileCheck, History,
   Calculator, Search, GitFork,
-  Gift, Calendar, FileSearch, Receipt, Inbox, BadgePercent, Megaphone, HandCoins
+  Gift, Calendar, FileSearch, Receipt, Inbox, BadgePercent, Megaphone
 } from 'lucide-react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -239,7 +239,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isCollapsed, toggle, toggleCo
           subItems: [
             { label: 'Point of Sale', path: '/sales-flow/pos', icon: <Coins size={14} /> },
             { label: 'Payment Management', path: '/sales-flow/payments', icon: <Banknote size={14} /> },
-            { label: 'Payment Requests', path: '/sales-flow/payment-requests', icon: <HandCoins size={14} /> },
             { label: 'Customer Requests', path: '/sales-flow/requests', icon: <Inbox size={14} /> },
             { label: 'Quotations', path: '/sales-flow/quotations', icon: <FileText size={14} /> },
             { label: 'Orders', path: '/sales-flow/orders', icon: <CheckSquare size={14} /> },

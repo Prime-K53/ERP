@@ -72,7 +72,14 @@ const fmtDate = (iso?: string): string => {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const PaymentRequests: React.FC = () => {
+interface PaymentRequestsProps {
+  /** Render as a tab inside another page (hide the standalone page chrome). */
+  embedded?: boolean;
+  /** Reports the total request count whenever it changes (e.g. for a parent tab badge). */
+  onCountChange?: (count: number) => void;
+}
+
+const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onCountChange }) => {
   const { companyConfig, notify } = useAuth();
   const currency = companyConfig?.currencySymbol || 'K';
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
@@ -125,6 +132,10 @@ const PaymentRequests: React.FC = () => {
     for (const s of ALL_STATUSES) c[s] = requests.filter((r) => r.status === s).length;
     return c;
   }, [requests]);
+
+  useEffect(() => {
+    onCountChange?.(counts.all);
+  }, [counts.all, onCountChange]);
 
   const review = async (id: string, status: Status, notes?: string) => {
     setActing(true);
@@ -180,19 +191,36 @@ const PaymentRequests: React.FC = () => {
   };
 
   return (
-    <div className="p-3 md:p-6 max-w-[1500px] mx-auto h-[calc(100vh-4rem)] flex flex-col" style={{ fontFamily: 'inherit' }}>
-      {/* Header */}
-      <div className="mb-4 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
-        <div>
-          <h1 className="text-[22px] font-semibold text-[#23282A] flex items-center gap-2 tracking-tight">
-            <HandCoins className="text-[#1f8577]" size={20} />
-            Payment Requests
-          </h1>
-          <p className="text-xs font-normal text-[#5c6567] mt-0.5">
-            Customer bank-transfer payment intentions. Confirming a request does NOT record a payment — use Customer Payments to record the actual bank payment after verifying the receipt.
-          </p>
+    <div className={embedded ? '' : 'p-3 md:p-6 max-w-[1500px] mx-auto h-[calc(100vh-4rem)] flex flex-col'} style={{ fontFamily: 'inherit' }}>
+      {/* Header (standalone page only) */}
+      {!embedded && (
+        <div className="mb-4 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
+          <div>
+            <h1 className="text-[22px] font-semibold text-[#23282A] flex items-center gap-2 tracking-tight">
+              <HandCoins className="text-[#1f8577]" size={20} />
+              Payment Requests
+            </h1>
+            <p className="text-xs font-normal text-[#5c6567] mt-0.5">
+              Customer bank-transfer payment intentions. Confirming a request does NOT record a payment — use Customer Payments to record the actual bank payment after verifying the receipt.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => load()}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl border border-[#e4ddd1] bg-[#FEFDFB] px-3 py-1.5 text-xs font-bold text-[#5c6567] shadow-sm transition-all hover:bg-[#eef7f6] disabled:cursor-not-allowed disabled:opacity-60"
+              title="Refresh payment requests"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+      )}
+
+      {/* Compact refresh toolbar (embedded as a tab) */}
+      {embedded && (
+        <div className="mb-3 flex justify-end shrink-0">
           <button
             onClick={() => load()}
             disabled={loading}
@@ -203,7 +231,7 @@ const PaymentRequests: React.FC = () => {
             Refresh
           </button>
         </div>
-      </div>
+      )}
 
       {/* Summary chips */}
       <div className="flex flex-wrap gap-2 mb-3 shrink-0">

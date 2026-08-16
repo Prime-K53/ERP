@@ -257,6 +257,32 @@ async function upsertRow(table, id, payload, serverNow = new Date().toISOString(
         // snapshot so the client can field-merge without an extra round-trip.
         const existing = await getRow(table, id);
         const serverVersion = existing?.version != null ? Number(existing.version) : 0;
+
+        // The row does not exist at all — this is a CREATE, not an update.
+        // An atomic PATCH cannot match a non-existent row (WHERE version = N
+        // matches nothing), so without this a brand-new row stamped with an
+        // initial version would be misreported as a version conflict and never
+        // inserted. Insert it with the initial version, mirroring the
+        // tombstone-resurrection / unversioned-create POST below.
+        if (!existing) {
+          const createdRow = { id, data: domain, updated_at: serverNow, version: 1 };
+          console.log(`[SYNC-FORENSIC] STAGE-13 atomic PATCH 0 rows + row absent → INSERT (create)`, {
+            table, id,
+          });
+          const created = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, createdRow, {
+            headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
+            params: { on_conflict: 'id' },
+            timeout: 20000,
+          });
+          const saved = Array.isArray(created.data) ? (created.data[0] || null) : created.data;
+          return {
+            id: saved?.id || id,
+            updatedAt: saved?.updated_at || serverNow,
+            createdAt: saved?.created_at || null,
+            version: saved?.version != null ? Number(saved.version) : 1,
+          };
+        }
+
         console.log(`[SYNC-FORENSIC] STAGE-13 OCC conflict (atomic PATCH, 0 rows)`, {
           table, id, incomingVersion, serverVersion,
         });

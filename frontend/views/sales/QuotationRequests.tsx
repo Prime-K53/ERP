@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, FileText, RefreshCw, Loader2, MessageSquare,
   PackageCheck, Inbox, History, ChevronDown, ArrowUpRight, History as HistoryIcon,
-  BadgeCheck, Send, Flag, Trash2,
+  BadgeCheck, Send, Flag, Trash2, HandCoins,
 } from 'lucide-react';
 import {
   adminLifecycle, subscribeAdminEvents,
   AdminQuotationRequest, AdminQuotation, AdminRequestStatus,
   AdminSalesOrder, AdminDocumentVersion,
 } from '../../services/adminPortalClient';
+import PaymentRequests from './PaymentRequests';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -27,6 +28,7 @@ const REQUEST_TABS = [
   { key: 'inbox', label: 'Inbox', icon: Inbox, statuses: ['submitted', 'assigned', 'under_review', 'waiting_for_customer', 'ready_for_conversion'] },
   { key: 'quotations', label: 'Quotations', icon: FileText, statuses: [] },
   { key: 'orders', label: 'Orders', icon: PackageCheck, statuses: [] },
+  { key: 'payments', label: 'Payment Requests', icon: HandCoins, statuses: [] },
   { key: 'history', label: 'History', icon: History, statuses: ['rejected', 'cancelled', 'converted'] },
 ] as const;
 
@@ -173,6 +175,7 @@ const QuotationRequests: React.FC = () => {
   const [customerNameMap, setCustomerNameMap] = useState<Record<string, string>>({});
   const [staff, setStaff] = useState<{ id: string; username: string; email: string | null }[]>([]);
   const [staffNameMap, setStaffNameMap] = useState<Record<string, string>>({});
+  const [paymentCount, setPaymentCount] = useState(0);
 
   const loadAll = useCallback(async () => {
     try {
@@ -212,6 +215,12 @@ const QuotationRequests: React.FC = () => {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Support arriving with a target tab (e.g. redirect from /sales-flow/payment-requests).
+  useEffect(() => {
+    const target = (location.state as any)?.tab;
+    if (target) setTab(target);
+  }, [location.state]);
 
   useEffect(() => {
     const unsubscribePromise = subscribeAdminEvents({
@@ -362,7 +371,7 @@ const QuotationRequests: React.FC = () => {
               Customer Requests
             </h1>
             <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02 }}>
-              Review customer requests, issue official quotations, and generate official sales orders.
+              Review customer requests — quotations, orders, and bank-transfer payment intentions.
             </p>
           </div>
         </div>
@@ -386,7 +395,7 @@ const QuotationRequests: React.FC = () => {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {REQUEST_TABS.map((t) => {
-          const count = t.key === 'inbox' ? inboxCount : t.key === 'quotations' ? quotations.length : t.key === 'orders' ? orders.length : requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled' || r.status === 'converted').length;
+          const count = t.key === 'inbox' ? inboxCount : t.key === 'quotations' ? quotations.length : t.key === 'orders' ? orders.length : t.key === 'payments' ? paymentCount : requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled' || r.status === 'converted').length;
           return (
             <button key={t.key} onClick={() => setTab(t.key)} style={chipStyle(tab === t.key)}>
               <t.icon size={15} /> {t.label}
@@ -397,6 +406,7 @@ const QuotationRequests: React.FC = () => {
       </div>
 
       {tab === 'inbox' && <RequestInbox requests={activeRequests} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnPrimary={btnPrimary} btnGhost={btnGhost} setExpanded={setExpandedId} expandedId={expandedId} customerNameMap={customerNameMap} staff={staff} staffNameMap={staffNameMap} onGenerateQuote={startQuoteFlow} onGenerateOrder={startOrderFlow} />}
+      {tab === 'payments' && <PaymentRequests embedded onCountChange={setPaymentCount} />}
       {tab === 'quotations' && <QuotationPanel quotations={quotations} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnPrimary={btnPrimary} btnGhost={btnGhost} customerNameMap={customerNameMap} />}
       {tab === 'orders' && <OrdersPanel orders={orders} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnGhost={btnGhost} />}
       {tab === 'history' && (
