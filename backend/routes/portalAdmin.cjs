@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const multer = require('multer');
 const router = express.Router();
 const repo = require('../services/supabaseRepository.cjs');
 const portalAuthService = require('../services/portalAuthService.cjs');
@@ -933,6 +934,64 @@ router.post('/users/:id/invite', async (req, res) => {
   } catch (err) {
     console.error('[PortalAdmin] Invite user error:', err);
     res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+// ─── Portal Banner Ad Image Upload ─────────────────────────────────────────
+// Smart Operations Hub → Ads. Stores the image in the PUBLIC Supabase Storage
+// bucket `prime-erp-public` (banner images are public marketing content shown
+// to every portal customer) and returns the stable public URL to persist on
+// the ad record (portal_ads.data.imageUrl).
+const uploadAdImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.mimetype || '');
+    cb(ok ? null : new Error('Only PNG, JPEG, WebP, GIF or AVIF images are allowed'), ok);
+  },
+});
+
+router.post('/ads/upload', (req, res, next) => {
+  uploadAdImage.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'Failed to process image upload' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const serviceKey = process.env.SUPABASE_SECRET_KEY;
+    if (!SUPABASE_URL || SUPABASE_URL.includes('placeholder') || !serviceKey) {
+      return res.status(503).json({ error: 'Supabase is not configured on this server' });
+    }
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const bucket = 'prime-erp-public';
+    const safeName = String(req.file.originalname || 'ad.png')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(-80);
+    const objectPath = `ads/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
+    const base = SUPABASE_URL.replace(/\/+$/, '');
+
+    const uploadHeaders = {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': req.file.mimetype || 'application/octet-stream',
+      'x-upsert': 'false',
+    };
+    await axios.post(`${base}/storage/v1/object/${bucket}/${objectPath}`, req.file.buffer, {
+      headers: uploadHeaders,
+      timeout: 30000,
+      maxBodyLength: Infinity,
+    });
+
+    const url = `${base}/storage/v1/object/public/${bucket}/${objectPath}`;
+    res.status(201).json({ url, path: objectPath });
+  } catch (err) {
+    console.error('[PortalAdmin] Ad image upload error:', err?.response?.status, err?.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to upload image', detail: err?.response?.data?.message || err.message });
   }
 });
 

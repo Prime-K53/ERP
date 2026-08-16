@@ -31,7 +31,8 @@ function genId(prefix = 'prt') {
 }
 
 function parseJson(value, fallback = null) {
-  if (!value) return fallback;
+  if (value === null || value === undefined) return fallback;
+  if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
@@ -66,13 +67,37 @@ async function scopedRows(table, customerId) {
     : rows;
 }
 
+/**
+ * Customer's official orders from BOTH authoritative ERP order structures:
+ *   - `sales_orders` — SO-YYYY orders written by the backend shim
+ *     (portalLifecycleService) and the ERP frontend salesOrders store.
+ *   - `orders`      — ORD-XXXX orders written by the ERP frontend orders
+ *     store (the ERP internal Order History screen's source; e.g. orders
+ *     converted from a quotation in the ERP UI).
+ * Both are read through the canonical customer scope (PostgREST `or` /
+ * single-key filter) AND re-verified in JS, so a customer can NEVER see
+ * another customer's orders. Rows are deduplicated by id.
+ */
+async function getCustomerOrders(customerId) {
+  const [soRows, orderRows] = await Promise.all([
+    scopedRows('sales_orders', customerId),
+    scopedRows('orders', customerId),
+  ]);
+  const merged = new Map();
+  for (const row of [...soRows, ...orderRows]) {
+    const key = String(row.id);
+    if (!merged.has(key)) merged.set(key, row);
+  }
+  return Array.from(merged.values());
+}
+
 const portalService = {
 
   async getDashboard(portalUserId, customerId) {
     const [customerRows, invoices, orders, requests, quotations, notifications, pointRows, walletRows, shipments] = await Promise.all([
       getOneById('customers', customerId),
       getAllFrom('invoices', customerFilter('invoices', customerId)),
-      getAllFrom('sales_orders', customerFilter('sales_orders', customerId)),
+      getCustomerOrders(customerId),
       getAllFrom('quotation_requests', customerFilter('quotation_requests', customerId)),
       getAllFrom('quotations', customerFilter('quotations', customerId)),
       getAllFrom('portal_notifications', { 'portal_user_id': `eq.${portalUserId}` }),
@@ -343,11 +368,11 @@ const portalService = {
       });
     }
 
-    const recentOrders = await getAllFrom('sales_orders', customerFilter('sales_orders', customerId));
+    const recentOrders = await getCustomerOrders(customerId);
     for (const ord of recentOrders) {
       entries.push({
         date: ord.orderDate,
-        description: `Order ${ord.order_number || ord.id} ${ord.status || ''}`.trim(),
+        description: `Order ${ord.order_number || ord.orderNumber || ord.id} ${ord.status || ''}`.trim(),
         amount: null,
         type: 'order',
         status: ord.status,
@@ -379,7 +404,7 @@ const portalService = {
     const [requests, quotations, orders] = await Promise.all([
       getAllFrom('quotation_requests', customerFilter('quotation_requests', customerId)),
       getAllFrom('quotations', customerFilter('quotations', customerId)),
-      getAllFrom('sales_orders', customerFilter('sales_orders', customerId)),
+      getCustomerOrders(customerId),
     ]);
 
     const mappedRequests = requests.map((r) => ({
@@ -402,9 +427,9 @@ const portalService = {
     const mappedOrders = orders.map((o) => ({
       docType: 'order',
       id: o.id,
-      docNumber: o.order_number || o.id,
+      docNumber: o.order_number || o.orderNumber || o.id,
       status: o.status,
-      created_at: o.orderDate,
+      created_at: o.orderDate || o.created_at,
     }));
 
     return [...mappedRequests, ...mappedQuotations, ...mappedOrders]
@@ -444,32 +469,31 @@ const portalService = {
 
   async getOrders(customerId) {
     const [orders, customer] = await Promise.all([
-      getAllFrom('sales_orders', customerFilter('sales_orders', customerId)),
+      getCustomerOrders(customerId),
       getOneById('customers', customerId),
     ]);
     return orders.map((o) => ({
       ...o,
+      order_number: o.order_number || o.orderNumber,
       customerName: (customer && customer.name) || '',
-      totalAmount: o.total,
+      totalAmount: o.totalAmount ?? o.total ?? 0,
       items_json: o.items,
     }));
   },
 
   async getOrdersPaginated(customerId, { page = 1, pageSize = 20, status, search, dateFrom, dateTo } = {}) {
     const offset = (page - 1) * pageSize;
-    const filters = withCustomerScope('sales_orders', customerId);
-    if (status) filters['data->>status'] = `eq.${status}`;
-
-    const allRows = await getAllFrom('sales_orders', filters);
+    const allRows = await getCustomerOrders(customerId);
     let filtered = Array.isArray(allRows) ? allRows : [];
 
     // Request-chain fallback: an order converted from one of this customer's
-    // requests is authoritative for portal visibility even when the sales_order
+    // requests is authoritative for portal visibility even when the order
     // record's own customer key is mismatched (legacy records whose link was
     // recorded only on the request side). The request ↔ order link is the
     // permanent bidirectional reference, so it is resolved first and the order
-    // is fetched by id. Orders carrying NO customer key at all stay hidden
-    // (isolation: ownership must be provable).
+    // is fetched by id (from either authoritative order structure). Orders
+    // carrying NO customer key at all stay hidden (isolation: ownership must
+    // be provable).
     try {
       const requestRows = await getAllFrom('quotation_requests', customerFilter('quotation_requests', customerId));
       const linkedIds = new Set();
@@ -481,7 +505,7 @@ const portalService = {
         const known = new Set(filtered.map((o) => String(o.id)));
         for (const linkedId of linkedIds) {
           if (known.has(linkedId)) continue;
-          const order = await getOneById('sales_orders', linkedId);
+          const order = (await getOneById('sales_orders', linkedId)) || (await getOneById('orders', linkedId));
           if (!order) continue;
           // Defense in depth: never surface an order owned by another customer
           // even if the request linkage claims otherwise.
@@ -496,10 +520,14 @@ const portalService = {
       // Non-fatal: the direct customer-scope query above remains authoritative.
     }
 
+    if (status) {
+      const s = String(status).toLowerCase();
+      filtered = filtered.filter((o) => String(o.status || '').toLowerCase() === s);
+    }
     if (search) {
       const q = String(search).toLowerCase();
       filtered = filtered.filter((o) =>
-        String(o.order_number || '').toLowerCase().includes(q) ||
+        String(o.order_number || o.orderNumber || '').toLowerCase().includes(q) ||
         String(o.customerName || o.customer_name || '').toLowerCase().includes(q)
       );
     }
@@ -513,10 +541,11 @@ const portalService = {
   },
 
   async getOrderById(orderId, customerId) {
-    const order = await getOneById('sales_orders', orderId);
+    const order = (await getOneById('sales_orders', orderId)) || (await getOneById('orders', orderId));
     if (!order) return null;
     const orderCustomerId = order.customerId || order.customer_id || null;
     if (customerId && String(orderCustomerId) !== String(customerId)) return null;
+    order.order_number = order.order_number || order.orderNumber;
     order.items = parseJson(order.items, []).map((item) => {
       const price = Number(item.price ?? item.unitPrice ?? item.unit_price ?? 0);
       const quantity = Number(item.quantity ?? 1);
@@ -577,6 +606,24 @@ const portalService = {
   },
 
   async getInvoices(customerId) {
+    try {
+      const cloudInvoices = await withCloudTimeout(supabaseStore.listInvoices(customerId), 5000, 'Cloud invoices');
+      if (Array.isArray(cloudInvoices) && cloudInvoices.length > 0) {
+        return cloudInvoices.map((i) => ({
+          id: i.id,
+          invoice_number: i.invoice_number,
+          customer_name: i.customer_name,
+          total_amount: i.total_amount,
+          paid_amount: i.paid_amount,
+          status: i.status,
+          due_date: i.due_date,
+          created_at: i.created_at,
+        }));
+      }
+    } catch (err) {
+      console.warn('[PortalService] Cloud invoices unavailable, using local:', err.message);
+    }
+
     const invoices = await getAllFrom('invoices', customerFilter('invoices', customerId));
     return invoices.map((i) => ({
       id: i.id,
@@ -1375,25 +1422,31 @@ const portalService = {
   },
 
   async getShipments(customerId, { status, search } = {}) {
-    const [salesOrders, deliveryNotes] = await Promise.all([
+    const [salesOrders, deliveryNotes, shipments] = await Promise.all([
       scopedRows('sales_orders', customerId),
       scopedRows('delivery_notes', customerId),
+      scopedRows('shipments', customerId),
     ]);
 
     const results = [];
-    // Delivery notes are the authoritative delivery document: they carry the
-    // LIVE status from Inbound ("Warehouse Dispatched") through POD-sealed
-    // delivery, plus driver/vehicle/tracking. Push them first and suppress the
-    // linked sales order (whose status is NOT updated at dispatch), so the
-    // portal list and timeline reflect the real delivery stage.
+    // Shipments are the authoritative live-delivery documents: they carry
+    // tracking, driver, vehicle and ETA and are pushed first. Delivery notes
+    // then follow with their LIVE status from Inbound ("Warehouse Dispatched")
+    // through POD-sealed delivery; a linked sales order (whose status is NOT
+    // updated at dispatch) is suppressed so the portal list and timeline
+    // reflect the real delivery stage.
+    for (const sh of (Array.isArray(shipments) ? shipments : [])) {
+      if (results.some((r) => r.id === sh.id || r.id === sh.orderId || r.id === sh.order_id)) continue;
+      results.push({ ...sh, _source: 'shipments' });
+    }
     for (const dn of (Array.isArray(deliveryNotes) ? deliveryNotes : [])) {
       if (results.some((r) => r.id === dn.id || r.id === dn.order_id || r.id === dn.orderId)) continue;
       results.push({ ...dn, _source: 'delivery_notes' });
     }
     for (const so of (Array.isArray(salesOrders) ? salesOrders : [])) {
       // Sales orders only surface once they have entered the dispatch pipeline
-      // AND no linked delivery note already represents this delivery.
-      if (!so.tracking_number || !String(so.tracking_number).trim()) continue;
+      // AND no linked shipment/delivery note already represents this delivery.
+      if (!so.tracking_number && !so.trackingNumber) continue;
       if (results.some((r) => r.id === so.id || String(r.order_id || r.orderId || '') === String(so.id))) continue;
       results.push({ ...so, _source: 'sales_orders' });
     }
@@ -1406,29 +1459,36 @@ const portalService = {
     if (search) {
       const q = String(search).toLowerCase();
       filtered = filtered.filter((r) =>
-        String(r.order_number || '').toLowerCase().includes(q) ||
-        String(r.tracking_number || '').toLowerCase().includes(q) ||
+        String(r.order_number || r.orderNumber || '').toLowerCase().includes(q) ||
+        String(r.tracking_number || r.trackingNumber || '').toLowerCase().includes(q) ||
         String(r.customerName || r.customer_name || '').toLowerCase().includes(q)
       );
     }
-    filtered.sort((a, b) => String(b.orderDate || b.created_at || '').localeCompare(String(a.orderDate || a.created_at || '')));
+    filtered.sort((a, b) => String(b.orderDate || b.date || b.created_at || '').localeCompare(String(a.orderDate || a.date || a.created_at || '')));
     return filtered;
   },
 
   async getShipmentById(shipmentId, customerId) {
+    const sh = await getOneById('shipments', shipmentId);
+    if (sh) {
+      const shCustomerId = sh.customerId || sh.customer_id || null;
+      if (String(shCustomerId) !== String(customerId)) return null;
+      if (!sh.trackingNumber && !sh.tracking_number) return null;
+      return { ...sh, _source: 'shipments' };
+    }
     const row = await getOneById('sales_orders', shipmentId);
     if (row) {
       const rowCustomerId = row.customerId || row.customer_id || null;
       if (String(rowCustomerId) !== String(customerId)) return null;
-      if (!row.tracking_number || !String(row.tracking_number).trim()) return null;
-      return row;
+      if (!row.tracking_number && !row.trackingNumber) return null;
+      return { ...row, _source: 'sales_orders' };
     }
     const dn = await getOneById('delivery_notes', shipmentId);
     if (dn) {
       const dnCustomerId = dn.customerId || dn.customer_id || null;
       if (String(dnCustomerId) !== String(customerId)) return null;
-      if (!dn.tracking_number || !String(dn.tracking_number).trim()) return null;
-      return dn;
+      if (!dn.tracking_number && !dn.trackingNumber) return null;
+      return { ...dn, _source: 'delivery_notes' };
     }
     return null;
   },

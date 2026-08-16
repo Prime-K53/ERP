@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { dbService } from '../../services/db'
 import type { PortalAd, PortalAdStatus } from '../../types/ads'
 import { aiService } from '../../services/aiService'
+import { uploadAdImage } from '../../services/adminPortalClient'
 import {
   Plus, Search, Pencil, Trash2, X, Play, Pause, Megaphone, Sparkles, Clock,
   CheckCircle2, CheckCircle, AlertTriangle, Calendar, Wand2, Eye, Layers, Loader2,
+  ImagePlus, UploadCloud, Link2,
 } from 'lucide-react'
 
 const teal = {
@@ -157,6 +159,11 @@ export const AdsManager: React.FC = () => {
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState('')
 
+  // ── Image upload state ──
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageMode, setImageMode] = useState<'upload' | 'url'>('upload')
+  const [dragOver, setDragOver] = useState(false)
+
   const openNew = () => { setEditingId(null); setForm(emptyForm()); setActiveTab('Details'); setShowNew(true) }
 
   const load = useCallback(async () => {
@@ -205,8 +212,10 @@ export const AdsManager: React.FC = () => {
   }, [effective, ads])
 
   const saveNew = async () => {
-    if (!form.title || !String(form.title).trim()) {
-      setNotify({ kind: 'error', text: 'Ad title is required.' })
+    const hasTitle = Boolean(form.title && String(form.title).trim())
+    const hasImage = Boolean(form.imageUrl && String(form.imageUrl).trim())
+    if (!hasTitle && !hasImage) {
+      setNotify({ kind: 'error', text: 'Add a title, or upload an image for this ad.' })
       return
     }
     setSaving(true)
@@ -276,6 +285,29 @@ export const AdsManager: React.FC = () => {
     await load()
   }
 
+  // ── Image upload ──
+  const handleImageUpload = async (file: File | undefined) => {
+    if (!file) return
+    if (!/^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.type)) {
+      setNotify({ kind: 'error', text: 'Please choose a PNG, JPEG, WebP, GIF or AVIF image.' })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setNotify({ kind: 'error', text: 'Image must be 10 MB or smaller.' })
+      return
+    }
+    setUploadingImage(true)
+    try {
+      const { url } = await uploadAdImage(file)
+      setForm((p) => ({ ...p, imageUrl: url }))
+      setNotify({ kind: 'success', text: 'Image uploaded — customers will see it on the portal banner.' })
+    } catch (err: any) {
+      setNotify({ kind: 'error', text: err?.message || 'Image upload failed. Check your connection and try again.' })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   // ── AI generation ──
   const runAIGenerate = async () => {
     if (!aiBrief.trim()) {
@@ -314,6 +346,61 @@ export const AdsManager: React.FC = () => {
     const badge = ad.badge || 'Special Offer'
     const emoji = ad.emoji || '🎯'
     const ctaLabel = ad.ctaLabel || 'Order Now'
+    const imageUrl = ad.imageUrl && String(ad.imageUrl).trim()
+    const hasText = Boolean(String(ad.title || '').trim() || String(ad.subtitle || '').trim())
+
+    // Image-only ad — full-bleed image, no text overlay.
+    if (imageUrl && !hasText) {
+      return (
+        <div style={{ borderRadius: 14, overflow: 'hidden', position: 'relative', minHeight: compact ? 84 : 96, background: ad.gradient || GRADIENT_PRESETS[0].value }}>
+          <img
+            src={imageUrl}
+            alt={ad.title || 'Banner ad'}
+            style={{ width: '100%', minHeight: compact ? 84 : 96, objectFit: 'cover', display: 'block', aspectRatio: 'auto' }}
+          />
+        </div>
+      )
+    }
+
+    // Image + text ad — image background with a scrim for legibility.
+    if (imageUrl) {
+      return (
+        <div style={{
+          borderRadius: 14, overflow: 'hidden', position: 'relative',
+          color: '#fff', boxShadow: '0 10px 26px -12px rgba(11,62,57,.5)', minHeight: compact ? 84 : 96,
+        }}>
+          <img src={imageUrl} alt={ad.title || 'Banner ad'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,30,28,.82) 0%, rgba(8,30,28,.55) 55%, rgba(8,30,28,.12) 100%)' }} />
+          <div style={{ position: 'relative', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: compact ? 34 : 40, height: compact ? 34 : 40, borderRadius: 11, flexShrink: 0,
+              background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.24)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: compact ? 17 : 20,
+            }}>{emoji}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {!compact && (
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(255,255,255,.72)', marginBottom: 2 }}>
+                  {badge}
+                </div>
+              )}
+              <div style={{ fontSize: compact ? 13 : 15, fontWeight: 800, lineHeight: 1.25 }}>{title}</div>
+              {!compact && subtitle && (
+                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 1, lineHeight: 1.45 }}>{subtitle}</div>
+              )}
+            </div>
+            {!compact && (
+              <button style={{
+                flexShrink: 0, padding: '7px 12px', borderRadius: 9, border: 'none',
+                background: '#fff', color: '#0b3e39', fontSize: 11.5, fontWeight: 800, cursor: 'default',
+                boxShadow: '0 4px 10px -4px rgba(0,0,0,.35)',
+              }}>{ctaLabel}</button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Text-only ad — gradient banner.
     return (
       <div style={{
         borderRadius: 14, overflow: 'hidden', position: 'relative',
@@ -506,7 +593,7 @@ export const AdsManager: React.FC = () => {
                   </div>
                   <div style={{ minWidth: 180, flex: '1 1 200px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 800, color: ink }}>{ad.title}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 800, color: ink }}>{ad.title || (ad.imageUrl ? 'Image Ad' : 'Untitled Ad')}</span>
                       <StatusBadge status={status} />
                     </div>
                     <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: inkSoft, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -718,11 +805,89 @@ export const AdsManager: React.FC = () => {
                       </div>
 
                       <div style={{ marginBottom: 18 }}>
-                        <label style={labelStyle}>Hero Image URL (optional)</label>
-                        <input type="text" value={form.imageUrl || ''}
-                          onChange={(e) => setForm(p => ({ ...p, imageUrl: e.target.value }))}
-                          placeholder="https://… (leave empty to use the gradient)"
-                          style={modalInputStyle} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <label style={{ ...labelStyle, marginBottom: 0 }}>Banner Image (optional)</label>
+                          <div style={{ display: 'flex', gap: 4, padding: 3, background: '#f1f2f4', borderRadius: 8 }}>
+                            <button type="button" onClick={() => setImageMode('upload')} style={{
+                              padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                              display: 'flex', alignItems: 'center', gap: 5,
+                              background: imageMode === 'upload' ? '#fff' : 'transparent', color: imageMode === 'upload' ? teal[700] : inkSoft,
+                              boxShadow: imageMode === 'upload' ? '0 1px 4px rgba(0,0,0,.12)' : 'none',
+                            }}>
+                              <UploadCloud size={12} /> Upload
+                            </button>
+                            <button type="button" onClick={() => setImageMode('url')} style={{
+                              padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                              display: 'flex', alignItems: 'center', gap: 5,
+                              background: imageMode === 'url' ? '#fff' : 'transparent', color: imageMode === 'url' ? teal[700] : inkSoft,
+                              boxShadow: imageMode === 'url' ? '0 1px 4px rgba(0,0,0,.12)' : 'none',
+                            }}>
+                              <Link2 size={12} /> Paste URL
+                            </button>
+                          </div>
+                        </div>
+
+                        {imageMode === 'upload' ? (
+                          form.imageUrl ? (
+                            <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: `1.4px solid ${hairline}`, background: '#f8fafc' }}>
+                              <img src={form.imageUrl} alt="Banner preview" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+                              <div style={{ position: 'absolute', right: 8, top: 8, display: 'flex', gap: 6 }}>
+                                <button type="button" onClick={() => setImageMode('url')} title="Replace image"
+                                  style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(15,23,42,.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <ImagePlus size={14} />
+                                </button>
+                                <button type="button" onClick={() => setForm(p => ({ ...p, imageUrl: '' }))} title="Remove image"
+                                  style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(181,73,63,.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <label
+                              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                              onDragLeave={() => setDragOver(false)}
+                              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleImageUpload(e.dataTransfer.files?.[0]) }}
+                              style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                minHeight: 120, borderRadius: 10, cursor: uploadingImage ? 'default' : 'pointer',
+                                border: `1.6px dashed ${dragOver ? teal[500] : hairline}`,
+                                background: dragOver ? teal[50] : '#faf9f6',
+                                transition: 'all .15s ease', textAlign: 'center', padding: 16,
+                              }}
+                            >
+                              {uploadingImage ? (
+                                <>
+                                  <Loader2 size={22} className="animate-spin" style={{ color: teal[600] }} />
+                                  <span style={{ fontSize: 12, color: inkSoft, fontWeight: 600 }}>Uploading image…</span>
+                                </>
+                              ) : (
+                                <>
+                                  <div style={{ width: 40, height: 40, borderRadius: 10, background: teal[100], color: teal[600], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <ImagePlus size={19} />
+                                  </div>
+                                  <span style={{ fontSize: 12.5, color: ink, fontWeight: 600 }}>Click to choose an image, or drag &amp; drop here</span>
+                                  <span style={{ fontSize: 10.5, color: inkSoft }}>PNG, JPEG, WebP, GIF or AVIF — up to 10 MB</span>
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+                                disabled={uploadingImage}
+                                onChange={(e) => { handleImageUpload(e.target.files?.[0]); e.target.value = '' }}
+                                style={{ display: 'none' }}
+                              />
+                            </label>
+                          )
+                        ) : (
+                          <input type="text" value={form.imageUrl || ''}
+                            onChange={(e) => setForm(p => ({ ...p, imageUrl: e.target.value }))}
+                            placeholder="https://… (leave empty to use the gradient)"
+                            style={modalInputStyle} />
+                        )}
+
+                        <div style={{ marginTop: 8, fontSize: 11, color: inkSoft, lineHeight: 1.5 }}>
+                          <b style={{ color: ink }}>Text only</b> — no image. &nbsp;<b style={{ color: ink }}>Image only</b> — leave the title and subtitle empty. &nbsp;<b style={{ color: ink }}>Image + text</b> — your text appears over the image with a legibility scrim.
+                        </div>
                       </div>
                     </>
                   )}
@@ -860,16 +1025,17 @@ export const AdsManager: React.FC = () => {
                         Exactly how this ad renders in the customer portal banner carousel.
                       </p>
                       <BannerPreview ad={form} />
-                      <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: '#f8fafc', border: `1px solid ${hairline}`, fontSize: 11.5, color: inkSoft, lineHeight: 1.6 }}>
-                        <b style={{ color: ink }}>Details</b>
-                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          <span>Title: <b style={{ color: ink }}>{form.title || '—'}</b></span>
-                          <span>Badge: <b style={{ color: ink }}>{form.badge || '—'}</b></span>
-                          <span>CTA: <b style={{ color: ink }}>{form.ctaLabel || '—'}</b> → <b style={{ color: teal[700] }}>{form.ctaTarget || '/portal/orders'}</b></span>
-                          <span>Emoji: <b style={{ color: ink }}>{form.emoji || '—'}</b></span>
-                          <span>Priority: <b style={{ color: ink }}>{form.priority || 0}</b></span>
+<div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: '#f8fafc', border: `1px solid ${hairline}`, fontSize: 11.5, color: inkSoft, lineHeight: 1.6 }}>
+                          <b style={{ color: ink }}>Details</b>
+                          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span>Format: <b style={{ color: ink }}>{form.imageUrl ? (String(form.title || '').trim() || String(form.subtitle || '').trim() ? 'Image + Text' : 'Image only') : 'Text only'}</b></span>
+                            <span>Title: <b style={{ color: ink }}>{form.title || '—'}</b></span>
+                            <span>Badge: <b style={{ color: ink }}>{form.badge || '—'}</b></span>
+                            <span>CTA: <b style={{ color: ink }}>{form.ctaLabel || '—'}</b> → <b style={{ color: teal[700] }}>{form.ctaTarget || '/portal/orders'}</b></span>
+                            <span>Emoji: <b style={{ color: ink }}>{form.emoji || '—'}</b></span>
+                            <span>Priority: <b style={{ color: ink }}>{form.priority || 0}</b></span>
+                          </div>
                         </div>
-                      </div>
                     </>
                   )}
 

@@ -63,6 +63,7 @@ interface Slide {
   badge: string;
   title: string;
   subtitle: React.ReactNode;
+  imageUrl?: string;
   cta?: { label: string; to: string };
   onClick: () => void;
 }
@@ -97,15 +98,25 @@ const adToSlide = (ad: PortalAdInfo, navigate: (to: string) => void): Slide => {
   return {
     id: `ad-${ad.id}`,
     gradient: ad.gradient || 'linear-gradient(135deg,#0b3e39 0%,#1f8577 100%)',
+    imageUrl: ad.imageUrl || undefined,
     icon: <span style={{ fontSize: 22 }}>{ad.emoji || '🎯'}</span>,
     badge: ad.badge || 'Sponsored',
-    title: ad.title,
-    subtitle: (
-      <>
-        {ad.subtitle || 'Explore our latest offers.'}
-        {endsLabel}
-      </>
-    ),
+    title: ad.title || '',
+    subtitle: ad.subtitle
+      ? (
+        <>
+          {ad.subtitle}
+          {endsLabel}
+        </>
+      )
+      : ad.imageUrl
+        ? (<></>)
+        : (
+          <>
+            {'Explore our latest offers.'}
+            {endsLabel}
+          </>
+        ),
     cta: { label: ad.ctaLabel || 'Order Now', to: ctaTo },
     onClick: () => navigate(ctaTo),
   };
@@ -549,58 +560,83 @@ const CustomerDashboard: React.FC = () => {
             transform: `translateX(-${active * 100}%)`,
           }}
         >
-          {slides.map((s) => (
-            <div
-              key={s.id}
-              onClick={s.onClick}
-              style={{ minWidth: '100%', position: 'relative', background: s.gradient, cursor: 'pointer', overflow: 'hidden' }}
-            >
-              <div style={{ position: 'absolute', right: -40, top: -60, width: 190, height: 190, borderRadius: '50%', background: 'rgba(255,255,255,.07)' }} />
-              <div style={{ position: 'absolute', left: -50, bottom: -90, width: 210, height: 210, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
+          {slides.map((s) => {
+            const hasImage = Boolean(s.imageUrl)
+            const hasText = Boolean(s.title || s.subtitle)
+            return (
               <div
+                key={s.id}
+                onClick={s.onClick}
                 style={{
-                  position: 'relative', padding: '16px 52px 22px 16px',
-                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minHeight: 92,
+                  minWidth: '100%', position: 'relative',
+                  background: hasImage ? s.gradient : s.gradient,
+                  cursor: 'pointer', overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    width: 40, height: 40, borderRadius: 11, flexShrink: 0,
-                    background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.24)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-                    boxShadow: '0 4px 10px -4px rgba(0,0,0,.35)',
-                  }}
-                >
-                  {s.icon}
-                </div>
-                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(255,255,255,.72)', marginBottom: 2 }}>
-                    {s.badge}
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>{s.title}</div>
-                  <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 1, lineHeight: 1.45 }}>{s.subtitle}</div>
-                </div>
-                {s.cta ? (
-                  <button
-                    className="cpd-carousel-cta"
-                    onClick={(e) => { e.stopPropagation(); navigate(s.cta!.to); }}
+                {hasImage && (
+                  <img
+                    src={s.imageUrl}
+                    alt={s.title || 'Promotion'}
+                    loading="lazy"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                )}
+                {hasImage && hasText && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,30,28,.82) 0%, rgba(8,30,28,.55) 55%, rgba(8,30,28,.12) 100%)' }} />
+                )}
+                {!hasImage && (
+                  <>
+                    <div style={{ position: 'absolute', right: -40, top: -60, width: 190, height: 190, borderRadius: '50%', background: 'rgba(255,255,255,.07)' }} />
+                    <div style={{ position: 'absolute', left: -50, bottom: -90, width: 210, height: 210, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
+                  </>
+                )}
+                {hasText && (
+                  <div
                     style={{
-                      flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4,
-                      color: 'rgba(255,255,255,.92)', fontSize: 11, fontWeight: 700,
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontFamily: F, lineHeight: 1.4,
+                      position: 'relative', padding: '16px 52px 22px 16px',
+                      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minHeight: 92,
                     }}
                   >
-                    {s.cta.label} <ArrowRight size={12} />
-                  </button>
-                ) : (
-                  <div className="cpd-carousel-cta" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,.92)', fontSize: 11, fontWeight: 700 }}>
-                    Explore <ArrowRight size={12} />
+                    <div
+                      style={{
+                        width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+                        background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.24)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+                        boxShadow: '0 4px 10px -4px rgba(0,0,0,.35)',
+                      }}
+                    >
+                      {s.icon}
+                    </div>
+                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(255,255,255,.72)', marginBottom: 2 }}>
+                        {s.badge}
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.25 }}>{s.title}</div>
+                      <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 1, lineHeight: 1.45 }}>{s.subtitle}</div>
+                    </div>
+                    {s.cta ? (
+                      <button
+                        className="cpd-carousel-cta"
+                        onClick={(e) => { e.stopPropagation(); navigate(s.cta!.to); }}
+                        style={{
+                          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4,
+                          color: 'rgba(255,255,255,.92)', fontSize: 11, fontWeight: 700,
+                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                          fontFamily: F, lineHeight: 1.4,
+                        }}
+                      >
+                        {s.cta.label} <ArrowRight size={12} />
+                      </button>
+                    ) : (
+                      <div className="cpd-carousel-cta" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,.92)', fontSize: 11, fontWeight: 700 }}>
+                        Explore <ArrowRight size={12} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Arrows */}

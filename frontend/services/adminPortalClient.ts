@@ -29,7 +29,7 @@ function getAccessToken(): string | null {
 }
 
 async function adminRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
 
   // Send the Supabase JWT so the backend verifyAdminAuth middleware can decode it.
   const token = getAccessToken();
@@ -43,6 +43,9 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
     headers['x-user-role'] = user.role || 'Admin';
     if (user.email) headers['x-user-email'] = user.email;
     if (user.isSuperAdmin) headers['x-user-is-super-admin'] = 'true';
+  }
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
   }
   const res = await fetch(`${API_BASE_URL}/portal/admin${path}`, { ...options, headers });
   if (!res.ok) {
@@ -70,7 +73,18 @@ export const adminPortalApi = {
   delete<T>(path: string): Promise<T> {
     return adminRequest<T>(path, { method: 'DELETE' });
   },
+  /** POST raw (FormData) — used for binary file uploads. */
+  postForm<T>(path: string, formData: FormData): Promise<T> {
+    return adminRequest<T>(path, { method: 'POST', body: formData });
+  },
 };
+
+/** Uploads a banner image for a portal ad; returns the stable public URL. */
+export async function uploadAdImage(file: File): Promise<{ url: string; path: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return adminPortalApi.postForm<{ url: string; path: string }>('/ads/upload', form);
+}
 
 export interface AdminNotification {
   id: string;
