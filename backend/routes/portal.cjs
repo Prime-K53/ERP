@@ -9,6 +9,7 @@ const repo = require('../services/supabaseRepository.cjs');
 const portalService = require('../services/portalService.cjs');
 const portalAuthService = require('../services/portalAuthService.cjs');
 const portalLifecycleService = require('../services/portalLifecycleService.cjs');
+const paymentRequestService = require('../services/paymentRequestService.cjs');
 const { sensitiveLimiter, apiLimiter } = require('../middleware/rateLimiter.cjs');
 
 // Ensure ticket attachments upload directory exists
@@ -563,6 +564,63 @@ router.get('/invoices/:id', async (req, res) => {
 // To revert a payment, use the ERP admin interface.
 router.post('/invoices/:id/revert', async (req, res) => {
   res.status(403).json({ error: 'This feature is not available in the portal. Please contact your administrator to revert a payment.' });
+});
+
+// ─── Payment Requests (NON-ACCOUNTING bank-transfer intentions) ────────────
+// A payment request is customer intent to pay by bank transfer — workflow data
+// only. It NEVER creates a customer_payments row, payment allocation, Stripe
+// intent, or modifies the invoice. The actual bank payment happens outside the
+// portal; ERP staff later record the real accounting payment through the
+// existing ERP payment workflow.
+//
+// SECURITY: customer identity (customer_id) is derived from the portal JWT —
+// NEVER from the request body. The body carries only customer-controlled
+// fields: invoiceId, requestedAmount?, note?.
+router.post('/payment-requests', async (req, res) => {
+  try {
+    const { id: portalUserId, customer_id, email, full_name } = req.portalUser;
+    const { invoiceId, requestedAmount, note } = req.body || {};
+    if (!invoiceId) {
+      return res.status(400).json({ error: 'invoiceId is required' });
+    }
+    const result = await paymentRequestService.createRequest({
+      customerId: customer_id,
+      customerName: full_name || email || 'Customer',
+      invoiceId,
+      requestedAmount,
+      note,
+      portalUserId,
+      context: requestContext(req),
+    });
+    res.status(201).json(paymentRequestService.toPortalDto(result));
+  } catch (err) {
+    console.error('[Portal] Create payment request error:', err.message);
+    const status = /not found/i.test(err.message) ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Failed to create payment request' });
+  }
+});
+
+router.get('/payment-requests', async (req, res) => {
+  try {
+    const { customer_id } = req.portalUser;
+    const rows = await paymentRequestService.getRequestsForCustomer(customer_id);
+    res.json((rows || []).map(paymentRequestService.toPortalDto));
+  } catch (err) {
+    console.error('[Portal] Payment requests error:', err.message);
+    res.status(500).json({ error: 'Failed to load payment requests' });
+  }
+});
+
+router.get('/payment-requests/:id', async (req, res) => {
+  try {
+    const { customer_id } = req.portalUser;
+    const row = await paymentRequestService.getRequestById(req.params.id, customer_id);
+    if (!row) return res.status(404).json({ error: 'Payment request not found' });
+    res.json(paymentRequestService.toPortalDto(row));
+  } catch (err) {
+    console.error('[Portal] Payment request detail error:', err.message);
+    res.status(500).json({ error: 'Failed to load payment request' });
+  }
 });
 
 // ─── Payments ─────────────────────────────────────────────────

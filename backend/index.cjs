@@ -17,6 +17,7 @@ const { spawn } = require('child_process');
 const { randomUUID } = require('crypto');
 const { getFrontendDistPath } = require('./appRoot.cjs');
 const repo = require('./services/supabaseRepository.cjs');
+const paymentRequestService = require('./services/paymentRequestService.cjs');
 console.log('Requiring bootstrap...');
 const bootstrap = require('./bootstrap.cjs');
 const portalLifecycleService = require('./services/portalLifecycleService.cjs');
@@ -2082,6 +2083,62 @@ const result = await paymentAllocation.allocatePayment(payment, allocations);
     } catch (err) {
       console.error('[PaymentAllocation] reverse error:', err?.message || err);
       res.status(500).json({ error: err?.message || 'Failed to reverse allocation' });
+    }
+  });
+
+  // --- Customer Payment Requests (NON-ACCOUNTING bank-transfer intentions) ---
+  // Customers cannot pay through the portal. A payment request is the
+  // customer's intent to pay by bank transfer — workflow/communication data
+  // ONLY. It never creates a customer_payments row, a payment allocation, or
+  // modifies the invoice. ERP staff review the request here, then record the
+  // REAL accounting payment later through the existing customer-payment /
+  // allocation workflow (after verifying the bank receipt).
+  app.get('/api/payment-requests', requireRole('Admin', 'Accountant', 'Manager', 'Clerk', 'Viewer'), async (req, res) => {
+    try {
+      const { status } = req.query;
+      const rows = await paymentRequestService.listRequests({ status: status || undefined });
+      res.json(rows || []);
+    } catch (err) {
+      console.error('[PaymentRequests] GET error:', err?.message || err);
+      res.status(500).json({ error: err?.message || 'Failed to fetch payment requests' });
+    }
+  });
+
+  app.get('/api/payment-requests/:id', requireRole('Admin', 'Accountant', 'Manager', 'Clerk', 'Viewer'), async (req, res) => {
+    try {
+      const row = await paymentRequestService.getRequestById(req.params.id);
+      if (!row) return res.status(404).json({ error: 'Payment request not found' });
+      res.json(row);
+    } catch (err) {
+      console.error('[PaymentRequests] GET detail error:', err?.message || err);
+      res.status(500).json({ error: err?.message || 'Failed to fetch payment request' });
+    }
+  });
+
+  // Review actions: requested → under_review → confirmed | rejected | cancelled.
+  // Confirmation NEVER records the actual payment; linkedPaymentId is an
+  // optional reference to a payment recorded later by the ERP payment workflow.
+  app.post('/api/payment-requests/:id/review', requireRole('Admin', 'Accountant', 'Manager'), async (req, res) => {
+    try {
+      const { status, adminNotes, linkedPaymentId } = req.body || {};
+      const result = await paymentRequestService.reviewRequest(req.params.id, {
+        status,
+        adminNotes,
+        linkedPaymentId,
+        reviewedBy: req.user?.id || req.user?.username || req.user?.email || null,
+        context: {
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+          method: req.method,
+          path: req.originalUrl,
+          correlationId: req.correlationId,
+        },
+      });
+      res.json(result);
+    } catch (err) {
+      console.error('[PaymentRequests] review error:', err?.message || err);
+      const status = /not found/i.test(err.message) ? 404 : 400;
+      res.status(status).json({ error: err?.message || 'Failed to review payment request' });
     }
   });
 

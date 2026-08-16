@@ -861,6 +861,12 @@ const entityQueries = {
     upsert: (record) => upsert('quotation_requests', record),
     softDelete: (id) => softDelete('quotation_requests', id),
   },
+  payment_requests: {
+    getAll: (filters = {}) => getAll('payment_requests', filters),
+    getById: (id) => getById('payment_requests', id),
+    upsert: (record) => upsert('payment_requests', record),
+    softDelete: (id) => softDelete('payment_requests', id),
+  },
   support_tickets: {
     getAll: (filters = {}) => getAll('support_tickets', filters),
     getById: (id) => getById('support_tickets', id),

@@ -16,6 +16,7 @@
 
 const CUSTOMER_KEYS = {
   quotation_requests: ['customer_id'], // backend shim only (portalLifecycleService INSERT)
+  payment_requests: ['customer_id'], // backend shim only (paymentRequestService)
   sales_orders: ['customerId', 'customer_id'], // ERP frontend salesOrders store + backend shim
   orders: ['customerId'], // ERP frontend orders store only (ORD-XXXX entity)
   customer_payments: ['customerId'], // ERP frontend customerPayments store only
