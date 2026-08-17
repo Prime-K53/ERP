@@ -27,7 +27,16 @@ const idempotencyMiddleware = (options = {}) => {
       });
     }
 
-    const rows = await repo.getAll('idempotency_keys', { 'data->>key': `eq.${key}` });
+    // Keys are scoped to the authenticated actor so a replay can never hand
+    // one user another user's stored response (staff routes set req.user,
+    // portal routes set req.portalUser). Falls back to key-only lookup when
+    // no authenticated identity exists, preserving legacy behavior.
+    const userId = req.user?.id || req.portalUser?.id || null;
+    const keyFilters = { 'data->>key': `eq.${key}` };
+    if (userId) {
+      keyFilters['data->>user_id'] = `eq.${userId}`;
+    }
+    const rows = await repo.getAll('idempotency_keys', keyFilters);
     const existing = rows[0] || null;
 
     if (existing) {
@@ -51,7 +60,7 @@ const idempotencyMiddleware = (options = {}) => {
           key,
           method: req.method,
           path: req.originalUrl || req.url,
-          user_id: req.user?.id || null,
+          user_id: userId,
           expires_at: expiresAt,
         },
       };

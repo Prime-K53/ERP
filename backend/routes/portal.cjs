@@ -11,6 +11,7 @@ const portalAuthService = require('../services/portalAuthService.cjs');
 const portalLifecycleService = require('../services/portalLifecycleService.cjs');
 const paymentRequestService = require('../services/paymentRequestService.cjs');
 const { sensitiveLimiter, apiLimiter } = require('../middleware/rateLimiter.cjs');
+const { idempotencyMiddleware } = require('../middleware/idempotency.cjs');
 
 // Ensure ticket attachments upload directory exists
 const TICKET_ATTACHMENTS_DIR = path.join(__dirname, '..', 'storage', 'ticket-attachments');
@@ -167,7 +168,7 @@ router.get('/requests', async (req, res) => {
   }
 });
 
-router.post('/requests', async (req, res) => {
+router.post('/requests', idempotencyMiddleware(), async (req, res) => {
   try {
     const { id, customer_id, email, full_name } = req.portalUser;
     const { requestType, items, notes, requestedDeliveryDate, attachments, reorderOf, reorderOfNumber, promotionCode } = req.body;
