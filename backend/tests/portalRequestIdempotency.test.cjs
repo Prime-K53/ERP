@@ -38,8 +38,14 @@ jest.mock('../services/supabaseRepository.cjs', () => {
       if (table !== 'idempotency_keys') {
         throw new Error(`unexpected table in upsert: ${table}`);
       }
-      rows.set(record.id, { id: record.id, data: { ...record.data } });
-      return { id: record.id };
+      // Mirror cloudSyncStore.upsertRow(): the payload is stored verbatim
+      // inside the `data` JSONB column (canonical single-wrap), and creates
+      // are stamped with version 1 which the middleware must carry forward
+      // on the response write.
+      const existing = rows.get(record.id);
+      const version = existing ? (existing.version || 0) + 1 : 1;
+      rows.set(record.id, { id: record.id, data: { ...record }, version });
+      return { id: record.id, version };
     }),
     softDelete: jest.fn(async (table, id) => {
       if (table !== 'idempotency_keys') {

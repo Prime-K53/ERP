@@ -301,10 +301,21 @@ function computeTotals(items, discount = 0, taxRate = 0, deliveryFee = 0) {
 
 // ERP master catalog used to resolve authoritative prices. Browser-submitted
 // prices are display information only and are never trusted.
+//
+// The authoritative catalog lives in the cloud `products` table — the same
+// source the portal catalog is served from (portalService.getCatalog). The
+// cloud `inventory` table is never written by the sync gateway (the ERP
+// frontend maps its local inventory store to `products`, see
+// frontend/services/db.ts CLOUD_TABLE_MAP) and only holds placeholder rows,
+// so pricing must resolve from `products` or real order lines collapse to
+// price 0 / 'unknown_product'.
 async function getCatalogPriceMap() {
-  const cloud = await repo.getAll('inventory');
+  const cloud = await repo.getAll('products');
   const map = {};
   for (const item of cloud || []) {
+    // Mirror the portal catalog's deleted filter so a product that is no
+    // longer orderable is never silently priced from the master table.
+    if (String(item.status || '').toLowerCase() === 'deleted') continue;
     map[item.id] = {
       name: item.name || item.productName || null,
       sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? item.price ?? 0) || 0,

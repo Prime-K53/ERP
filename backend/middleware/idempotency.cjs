@@ -54,28 +54,34 @@ const idempotencyMiddleware = (options = {}) => {
       const id = randomUUID();
       const expiresAt = new Date(Date.now() + ttlMs).toISOString();
 
+      // Canonical storage contract: the metadata fields live AT the domain
+      // level. repo.upsert() → cloudSyncStore.upsertRow() stores the payload
+      // verbatim in the `data` JSONB column, so wrapping the fields in a
+      // `data` key produced a double-wrapped `data.data.key` row that the
+      // `data->>key` lookup could never match. The response write must also
+      // carry the version returned by the create so upsertRow can perform its
+      // atomic versioned PATCH (an unversioned update on an existing row is
+      // rejected as a version_required conflict).
       const record = {
         id,
-        data: {
-          key,
-          method: req.method,
-          path: req.originalUrl || req.url,
-          user_id: userId,
-          expires_at: expiresAt,
-        },
+        key,
+        method: req.method,
+        path: req.originalUrl || req.url,
+        user_id: userId,
+        expires_at: expiresAt,
       };
-      await repo.upsert('idempotency_keys', record);
+      const created = await repo.upsert('idempotency_keys', record);
+      const baseVersion = created && Number.isFinite(Number(created.version))
+        ? Number(created.version)
+        : null;
 
       const originalJson = res.json.bind(res);
       res.json = function(body) {
-        const d = record.data || record;
         repo.upsert('idempotency_keys', {
           ...record,
-          data: {
-            ...d,
-            response_code: res.statusCode,
-            response_body: JSON.stringify(body),
-          },
+          ...(baseVersion != null ? { version: baseVersion } : {}),
+          response_code: res.statusCode,
+          response_body: JSON.stringify(body),
           updated_at: new Date().toISOString(),
         }).catch(() => {});
         return originalJson(body);
