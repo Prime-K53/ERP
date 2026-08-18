@@ -4,9 +4,23 @@ import type { PortalAd, PortalAdStatus } from '../../types/ads'
 import { aiService } from '../../services/aiService'
 import { uploadAdImage } from '../../services/adminPortalClient'
 import {
+  BANNER_SPEC,
+  aspectConformance,
+  buildBannerValidation,
+  formatBannerBytes,
+  getImageDimensions,
+  isConformantMeta,
+  loadImageFile,
+  loadImageUrl,
+  prepareBannerBlob,
+  preparedBannerFile,
+  validateBannerFile,
+} from '../../services/bannerImage'
+import { BannerCropModal } from '../../components/ui/BannerCropModal'
+import {
   Plus, Search, Pencil, Trash2, X, Play, Pause, Megaphone, Sparkles, Clock,
   CheckCircle2, CheckCircle, AlertTriangle, Calendar, Wand2, Eye, Layers, Loader2,
-  ImagePlus, UploadCloud, Link2,
+  ImagePlus, UploadCloud, Link2, Scissors, ShieldCheck, FileWarning,
 } from 'lucide-react'
 
 const teal = {
@@ -89,6 +103,7 @@ const toCanonical = (f: Partial<PortalAd>): PortalAd => ({
   ctaLabel: f.ctaLabel ? String(f.ctaLabel).trim() : 'Order Now',
   ctaTarget: f.ctaTarget || '/portal/orders',
   imageUrl: f.imageUrl ? String(f.imageUrl).trim() : '',
+  imageMeta: f.imageMeta,
   gradient: f.gradient || GRADIENT_PRESETS[0].value,
   emoji: f.emoji || '🎯',
   priority: Number(f.priority ?? 0) || 0,
@@ -103,6 +118,35 @@ const toCanonical = (f: Partial<PortalAd>): PortalAd => ({
   aiGenerated: f.aiGenerated || false,
   aiPrompt: f.aiPrompt,
 })
+
+// Banners pasted as a plain URL bypass the 4:1 preparation pipeline, so they
+// carry no dimension metadata. Probe the actual asset so the API metadata the
+// portal receives always matches the real image; the portal can then decide
+// cover/contain without a runtime dimension probe. Failures are non-fatal —
+// the metadata is left absent and the portal probes dimensions itself.
+const resolveUrlImageMeta = async (f: Partial<PortalAd>): Promise<Partial<PortalAd>> => {
+  const url = f.imageUrl && String(f.imageUrl).trim()
+  if (!url || f.imageMeta) return f
+  try {
+    const d = await getImageDimensions(url)
+    if (!Number.isFinite(d.width) || !Number.isFinite(d.height) || d.width <= 0 || d.height <= 0) return f
+    const ext = (url.split('?')[0].match(/\.([a-z0-9]{2,5})$/i)?.[1] || '').toLowerCase()
+    const knownFormats = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'bmp'])
+    return {
+      ...f,
+      imageMeta: {
+        bannerType: BANNER_SPEC.bannerType,
+        width: d.width,
+        height: d.height,
+        aspectRatio: d.width / d.height,
+        format: knownFormats.has(ext) ? ext : undefined,
+        preparedAt: new Date().toISOString(),
+      },
+    }
+  } catch {
+    return f // offline / CORS-blocked — keep metadata absent
+  }
+}
 
 const modalTabs = [
   { id: 'Details' as const, label: 'Ad Details', icon: Megaphone },
@@ -163,6 +207,13 @@ export const AdsManager: React.FC = () => {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [imageMode, setImageMode] = useState<'upload' | 'url'>('upload')
   const [dragOver, setDragOver] = useState(false)
+  const [cropTarget, setCropTarget] = useState<{
+    image: HTMLImageElement
+    sourceName: string
+    onDone: (blob: Blob, output: { width: number; height: number }) => void
+  } | null>(null)
+  // ad id → banner is 4:1 conformant (checked lazily for legacy banners)
+  const [conformance, setConformance] = useState<Record<string, boolean>>({})
 
   const openNew = () => { setEditingId(null); setForm(emptyForm()); setActiveTab('Details'); setShowNew(true) }
 
@@ -220,11 +271,11 @@ export const AdsManager: React.FC = () => {
     }
     setSaving(true)
     try {
-      const record = toCanonical(form)
+      const record = toCanonical(await resolveUrlImageMeta(form))
       await dbService.put('portalAds', record)
       setShowNew(false)
       setForm(emptyForm())
-      setNotify({ kind: 'success', text: `Ad "${record.title}" created — it will appear on the portal banner when active.` })
+      setNotify({ kind: 'success', text: `Ad "${record.title || (record.imageUrl ? 'Image ad' : 'Untitled ad')}" created — it will appear on the portal banner when active.` })
       await load()
     } catch (err: any) {
       setNotify({ kind: 'error', text: err?.message || 'Failed to create ad' })
@@ -246,11 +297,11 @@ export const AdsManager: React.FC = () => {
   }
 
   const saveEdit = async () => {
-    if (!editingId || !form.title) return
+    if (!editingId) return
     setSaving(true)
     try {
       const existing = ads.find((a) => a.id === editingId)
-      const record = toCanonical({ ...existing, ...form, id: editingId })
+      const record = toCanonical(await resolveUrlImageMeta({ ...existing, ...form, id: editingId }))
       await dbService.put('portalAds', record)
       setShowNew(false)
       setEditingId(null)
@@ -285,28 +336,136 @@ export const AdsManager: React.FC = () => {
     await load()
   }
 
-  // ── Image upload ──
+  // ── Banner image pipeline: validate → crop/prepare → upload → preview ──
+  // Every banner is prepared as an exact 4:1 asset (1600 × 400 WebP) so the
+  // portal banner area never stretches or distorts it. Non-4:1 sources open
+  // the interactive crop tool; the backend re-validates on upload.
+
+  const applyUploadedBanner = (url: string, meta: any) =>
+    setForm((p) => ({ ...p, imageUrl: url, imageMeta: meta }))
+
+  const doUpload = async (blob: Blob) => {
+    const result = await uploadAdImage(preparedBannerFile(blob))
+    return result
+  }
+
   const handleImageUpload = async (file: File | undefined) => {
     if (!file) return
-    if (!/^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.type)) {
-      setNotify({ kind: 'error', text: 'Please choose a PNG, JPEG, WebP, GIF or AVIF image.' })
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setNotify({ kind: 'error', text: 'Image must be 10 MB or smaller.' })
+    const gate = validateBannerFile(file)
+    if (!gate.ok) {
+      setNotify({ kind: 'error', text: gate.error || 'Invalid image.' })
       return
     }
     setUploadingImage(true)
     try {
-      const { url } = await uploadAdImage(file)
-      setForm((p) => ({ ...p, imageUrl: url }))
-      setNotify({ kind: 'success', text: 'Image uploaded — customers will see it on the portal banner.' })
+      const img = await loadImageFile(file)
+      const report = buildBannerValidation(img.naturalWidth, img.naturalHeight)
+      if (!report.ok) {
+        setNotify({ kind: 'error', text: report.error || 'Invalid image.' })
+        return
+      }
+      if (report.conformant) {
+        // Already 4:1 → prepare directly (resize + WebP), no crop needed.
+        const blob = await prepareBannerBlob(img)
+        const result = await doUpload(blob)
+        applyUploadedBanner(result.url, result.meta)
+        setNotify({
+          kind: 'success',
+          text: `Banner prepared as 4:1 ${result.meta.format.toUpperCase()} (${result.meta.width} × ${result.meta.height} px) and uploaded.`,
+        })
+      } else {
+        // Not 4:1 → interactive crop with safe-area guide.
+        setCropTarget({
+          image: img,
+          sourceName: file.name,
+          onDone: async (blob, output) => {
+            setUploadingImage(true)
+            try {
+              const result = await doUpload(blob)
+              applyUploadedBanner(result.url, result.meta)
+              setNotify({
+                kind: 'success',
+                text: `Banner cropped to 4:1 (${output.width} × ${output.height} px), prepared as WebP and uploaded.`,
+              })
+            } catch (err: any) {
+              setNotify({ kind: 'error', text: err?.message || 'Upload failed after cropping. Please try again.' })
+            } finally {
+              setUploadingImage(false)
+            }
+          },
+        })
+      }
     } catch (err: any) {
       setNotify({ kind: 'error', text: err?.message || 'Image upload failed. Check your connection and try again.' })
     } finally {
       setUploadingImage(false)
     }
   }
+
+  // Re-crop an existing (possibly legacy / non-4:1) banner asset.
+  const handleRecrop = async (ad: PortalAd) => {
+    if (!ad.imageUrl) return
+    setUploadingImage(true)
+    try {
+      const img = await loadImageUrl(ad.imageUrl)
+      setCropTarget({
+        image: img,
+        sourceName: ad.title || 'banner',
+        onDone: async (blob) => {
+          setUploadingImage(true)
+          try {
+            const result = await doUpload(blob)
+            await dbService.put('portalAds', {
+              ...ad,
+              imageUrl: result.url,
+              imageMeta: result.meta,
+              updatedAt: new Date().toISOString(),
+            } as PortalAd)
+            setNotify({ kind: 'success', text: 'Banner re-cropped to 4:1 and replaced.' })
+            await load()
+          } catch (err: any) {
+            setNotify({ kind: 'error', text: err?.message || 'Re-crop failed. Please try again.' })
+          } finally {
+            setUploadingImage(false)
+          }
+        },
+      })
+    } catch (err: any) {
+      setNotify({ kind: 'error', text: err?.message || 'Could not load the banner image for re-cropping.' })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // Flag legacy banners that do not conform to the 4:1 spec.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      const next: Record<string, boolean> = {}
+      const withImages = ads.filter((a) => a.imageUrl && String(a.imageUrl).trim())
+      await Promise.all(withImages.map(async (a) => {
+        const url = String(a.imageUrl).trim()
+        if (a.imageMeta?.width && a.imageMeta?.height) {
+          next[a.id] = aspectConformance(a.imageMeta.width, a.imageMeta.height)
+          return
+        }
+        try {
+          const d = await getImageDimensions(url)
+          next[a.id] = aspectConformance(d.width, d.height)
+        } catch {
+          next[a.id] = true // unreadable (offline/blocked) — do not nag
+        }
+      }))
+      if (!cancelled) setConformance(next)
+    }
+    run()
+    return () => { cancelled = true }
+  }, [ads])
+
+  const nonConformingAds = useMemo(
+    () => ads.filter((a) => a.imageUrl && conformance[a.id] === false),
+    [ads, conformance]
+  )
 
   // ── AI generation ──
   const runAIGenerate = async () => {
@@ -340,6 +499,8 @@ export const AdsManager: React.FC = () => {
   }
 
   // Portal-style banner preview (mirrors CustomerDashboard carousel slide).
+  // The container enforces the SAME 4:1 ratio the customer portal uses, so
+  // the preview shows exactly the proportions customers see.
   const BannerPreview = ({ ad, compact = false }: { ad: Partial<PortalAd>; compact?: boolean }) => {
     const title = ad.title || 'Your ad title'
     const subtitle = ad.subtitle || 'Your supporting message appears here.'
@@ -349,14 +510,20 @@ export const AdsManager: React.FC = () => {
     const imageUrl = ad.imageUrl && String(ad.imageUrl).trim()
     const hasText = Boolean(String(ad.title || '').trim() || String(ad.subtitle || '').trim())
 
+    const frame: React.CSSProperties = {
+      borderRadius: 14, overflow: 'hidden', position: 'relative',
+      aspectRatio: '4 / 1', minHeight: compact ? 84 : 96,
+      width: '100%',
+    }
+
     // Image-only ad — full-bleed image, no text overlay.
     if (imageUrl && !hasText) {
       return (
-        <div style={{ borderRadius: 14, overflow: 'hidden', position: 'relative', minHeight: compact ? 84 : 96, background: ad.gradient || GRADIENT_PRESETS[0].value }}>
+        <div style={{ ...frame, background: ad.gradient || GRADIENT_PRESETS[0].value }}>
           <img
             src={imageUrl}
             alt={ad.title || 'Banner ad'}
-            style={{ width: '100%', minHeight: compact ? 84 : 96, objectFit: 'cover', display: 'block', aspectRatio: 'auto' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
         </div>
       )
@@ -366,8 +533,8 @@ export const AdsManager: React.FC = () => {
     if (imageUrl) {
       return (
         <div style={{
-          borderRadius: 14, overflow: 'hidden', position: 'relative',
-          color: '#fff', boxShadow: '0 10px 26px -12px rgba(11,62,57,.5)', minHeight: compact ? 84 : 96,
+          ...frame,
+          color: '#fff', boxShadow: '0 10px 26px -12px rgba(11,62,57,.5)',
         }}>
           <img src={imageUrl} alt={ad.title || 'Banner ad'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,30,28,.82) 0%, rgba(8,30,28,.55) 55%, rgba(8,30,28,.12) 100%)' }} />
@@ -403,9 +570,9 @@ export const AdsManager: React.FC = () => {
     // Text-only ad — gradient banner.
     return (
       <div style={{
-        borderRadius: 14, overflow: 'hidden', position: 'relative',
+        ...frame,
         background: ad.gradient || GRADIENT_PRESETS[0].value, color: '#fff',
-        boxShadow: '0 10px 26px -12px rgba(11,62,57,.5)', minHeight: compact ? 84 : 96,
+        boxShadow: '0 10px 26px -12px rgba(11,62,57,.5)',
       }}>
         <div style={{ position: 'absolute', right: -40, top: -60, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,.07)' }} />
         <div style={{ position: 'absolute', left: -50, bottom: -90, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
@@ -524,6 +691,22 @@ export const AdsManager: React.FC = () => {
         </div>
       )}
 
+      {!showNew && nonConformingAds.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, marginBottom: 14,
+          background: '#fdf6e3', border: `1.4px solid ${amber[300]}`, color: '#92400e', fontSize: 12.5, fontWeight: 600,
+          flexWrap: 'wrap',
+        }}>
+          <FileWarning size={16} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 220 }}>
+            {nonConformingAds.length} banner{nonConformingAds.length > 1 ? 's' : ''} don&apos;t match the 4:1 spec — they may appear cropped or distorted on the portal. Re-crop to fix.
+          </span>
+          <button onClick={() => setStatusFilter('all')} style={{ background: 'transparent', border: 'none', color: '#92400e', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
+            Re-crop banners
+          </button>
+        </div>
+      )}
+
       {/* ── Money bar ── */}
       <div className="customers-money-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
         <KpiCard kpiId="active" label="Active" value={fmtInt(stats.counts.active)}
@@ -595,6 +778,16 @@ export const AdsManager: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 800, color: ink }}>{ad.title || (ad.imageUrl ? 'Image Ad' : 'Untitled Ad')}</span>
                       <StatusBadge status={status} />
+                      {ad.imageUrl && conformance[ad.id] === false && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: amber[100], color: '#92400e' }}>
+                          <FileWarning size={11} /> Not 4:1
+                        </span>
+                      )}
+                      {ad.imageUrl && conformance[ad.id] === true && isConformantMeta(ad.imageMeta) && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: teal[100], color: teal[700] }}>
+                          <ShieldCheck size={11} /> 4:1 &middot; {ad.imageMeta.width} × {ad.imageMeta.height}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: inkSoft, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -617,6 +810,15 @@ export const AdsManager: React.FC = () => {
                     >
                       {status === 'active' ? <Pause size={13} /> : <Play size={13} />}
                     </button>
+                    {ad.imageUrl && conformance[ad.id] === false && (
+                      <button title="Re-crop to 4:1" onClick={() => handleRecrop(ad)}
+                        style={{ height: 32, padding: '0 10px', borderRadius: 8, border: 'none', cursor: 'pointer', background: amber[100], color: '#92400e', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, transition: 'transform .12s ease' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
+                      >
+                        <Scissors size={12} /> Re-crop
+                      </button>
+                    )}
                     <button title="Edit" onClick={() => startEdit(ad)}
                       style={{ width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer', background: '#f1f2f4', color: inkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .12s ease' }}
                       onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)' }}
@@ -732,8 +934,8 @@ export const AdsManager: React.FC = () => {
                       <div style={sectionLabelStyle}><span>Content</span></div>
 
                       <div style={{ marginBottom: 18 }}>
-                        <label style={labelStyle}>Ad Title <span style={{ color: danger, fontWeight: 700 }}>*</span></label>
-                        <input required type="text" value={form.title || ''}
+                        <label style={labelStyle}>Ad Title</label>
+                        <input type="text" value={form.title || ''}
                           onChange={(e) => setForm(p => ({ ...p, title: e.target.value }))}
                           placeholder="e.g. 20% Off Business Cards"
                           style={modalInputStyle} />
@@ -830,53 +1032,71 @@ export const AdsManager: React.FC = () => {
                         {imageMode === 'upload' ? (
                           form.imageUrl ? (
                             <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: `1.4px solid ${hairline}`, background: '#f8fafc' }}>
-                              <img src={form.imageUrl} alt="Banner preview" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+                              <img src={form.imageUrl} alt="Banner preview" style={{ width: '100%', aspectRatio: '4 / 1', minHeight: 96, objectFit: 'cover', display: 'block' }} />
                               <div style={{ position: 'absolute', right: 8, top: 8, display: 'flex', gap: 6 }}>
                                 <button type="button" onClick={() => setImageMode('url')} title="Replace image"
                                   style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(15,23,42,.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   <ImagePlus size={14} />
                                 </button>
-                                <button type="button" onClick={() => setForm(p => ({ ...p, imageUrl: '' }))} title="Remove image"
+                                <button type="button" onClick={() => setForm(p => ({ ...p, imageUrl: '', imageMeta: undefined }))} title="Remove image"
                                   style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(181,73,63,.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   <Trash2 size={13} />
                                 </button>
                               </div>
+                              {form.imageMeta && (
+                                <div style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(15,23,42,.72)', color: '#fff' }}>
+                                    <ShieldCheck size={11} color={teal[300]} /> 4:1 prepared &middot; {form.imageMeta.width} × {form.imageMeta.height} &middot; {form.imageMeta.format.toUpperCase()} &middot; {formatBannerBytes(form.imageMeta.fileSize)}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           ) : (
-                            <label
-                              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                              onDragLeave={() => setDragOver(false)}
-                              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleImageUpload(e.dataTransfer.files?.[0]) }}
-                              style={{
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                minHeight: 120, borderRadius: 10, cursor: uploadingImage ? 'default' : 'pointer',
-                                border: `1.6px dashed ${dragOver ? teal[500] : hairline}`,
-                                background: dragOver ? teal[50] : '#faf9f6',
-                                transition: 'all .15s ease', textAlign: 'center', padding: 16,
-                              }}
-                            >
-                              {uploadingImage ? (
-                                <>
-                                  <Loader2 size={22} className="animate-spin" style={{ color: teal[600] }} />
-                                  <span style={{ fontSize: 12, color: inkSoft, fontWeight: 600 }}>Uploading image…</span>
-                                </>
-                              ) : (
-                                <>
-                                  <div style={{ width: 40, height: 40, borderRadius: 10, background: teal[100], color: teal[600], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <ImagePlus size={19} />
-                                  </div>
-                                  <span style={{ fontSize: 12.5, color: ink, fontWeight: 600 }}>Click to choose an image, or drag &amp; drop here</span>
-                                  <span style={{ fontSize: 10.5, color: inkSoft }}>PNG, JPEG, WebP, GIF or AVIF — up to 10 MB</span>
-                                </>
-                              )}
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-                                disabled={uploadingImage}
-                                onChange={(e) => { handleImageUpload(e.target.files?.[0]); e.target.value = '' }}
-                                style={{ display: 'none' }}
-                              />
-                            </label>
+                            <>
+                              <div style={{ marginBottom: 8, padding: '9px 12px', borderRadius: 9, background: teal[50], border: `1px solid ${teal[200]}`, display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                                <ShieldCheck size={15} style={{ color: teal[600], flexShrink: 0, marginTop: 1 }} />
+                                <div style={{ fontSize: 11.5, color: teal[800], lineHeight: 1.55 }}>
+                                  <b>Recommended size: {BANNER_SPEC.recommendedWidth} × {BANNER_SPEC.recommendedHeight} px</b> &nbsp;&middot;&nbsp; <b>Aspect ratio: 4:1</b>
+                                  <br />
+                                  Minimum {BANNER_SPEC.minWidth} × {BANNER_SPEC.minHeight} px &middot; WebP preferred (JPG/PNG accepted) &middot; up to 2 MB.
+                                  Images that aren&apos;t 4:1 open a crop tool — banners are never stretched.
+                                </div>
+                              </div>
+                              <label
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={(e) => { e.preventDefault(); setDragOver(false); handleImageUpload(e.dataTransfer.files?.[0]) }}
+                                style={{
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                  minHeight: 120, borderRadius: 10, cursor: uploadingImage ? 'default' : 'pointer',
+                                  border: `1.6px dashed ${dragOver ? teal[500] : hairline}`,
+                                  background: dragOver ? teal[50] : '#faf9f6',
+                                  transition: 'all .15s ease', textAlign: 'center', padding: 16,
+                                }}
+                              >
+                                {uploadingImage ? (
+                                  <>
+                                    <Loader2 size={22} className="animate-spin" style={{ color: teal[600] }} />
+                                    <span style={{ fontSize: 12, color: inkSoft, fontWeight: 600 }}>Preparing banner…</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div style={{ width: 40, height: 40, borderRadius: 10, background: teal[100], color: teal[600], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <ImagePlus size={19} />
+                                    </div>
+                                    <span style={{ fontSize: 12.5, color: ink, fontWeight: 600 }}>Click to choose an image, or drag &amp; drop here</span>
+                                    <span style={{ fontSize: 10.5, color: inkSoft }}>WebP, JPG or PNG — up to 2 MB</span>
+                                  </>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  disabled={uploadingImage}
+                                  onChange={(e) => { handleImageUpload(e.target.files?.[0]); e.target.value = '' }}
+                                  style={{ display: 'none' }}
+                                />
+                              </label>
+                            </>
                           )
                         ) : (
                           <input type="text" value={form.imageUrl || ''}
@@ -1022,10 +1242,26 @@ export const AdsManager: React.FC = () => {
                     <>
                       <div style={sectionLabelStyle}><span>Live Preview</span></div>
                       <p style={{ fontSize: 12, color: inkSoft, margin: '0 0 14px', lineHeight: 1.5 }}>
-                        Exactly how this ad renders in the customer portal banner carousel.
+                        Exactly how this ad renders in the customer portal banner carousel — the preview uses the same 4:1 banner area as the portal.
                       </p>
                       <BannerPreview ad={form} />
-<div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: '#f8fafc', border: `1px solid ${hairline}`, fontSize: 11.5, color: inkSoft, lineHeight: 1.6 }}>
+                      {form.imageMeta && aspectConformance(form.imageMeta.width, form.imageMeta.height) && (
+                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 9, background: teal[50], border: `1px solid ${teal[200]}`, fontSize: 11.5, color: teal[800], fontWeight: 600 }}>
+                          <ShieldCheck size={14} style={{ color: teal[600], flexShrink: 0 }} />
+                          <span>
+                            4:1 compliant &middot; {form.imageMeta.width} × {form.imageMeta.height} px &middot; aspect {form.imageMeta.aspectRatio}:1
+                            {form.imageMeta.format ? ` &middot; ${form.imageMeta.format.toUpperCase()}` : ''}
+                            {typeof form.imageMeta.fileSize === 'number' ? ` &middot; ${formatBannerBytes(form.imageMeta.fileSize)}` : ''}
+                          </span>
+                        </div>
+                      )}
+                      {form.imageUrl && (!form.imageMeta || !aspectConformance(form.imageMeta.width, form.imageMeta.height)) && (
+                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 9, background: '#fdf6e3', border: `1.4px solid ${amber[300]}`, fontSize: 11.5, color: '#92400e', fontWeight: 600 }}>
+                          <FileWarning size={14} style={{ flexShrink: 0 }} />
+                          <span>This banner is not 4:1 compliant — re-crop it so it displays correctly on the portal.</span>
+                        </div>
+                      )}
+                      <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: '#f8fafc', border: `1px solid ${hairline}`, fontSize: 11.5, color: inkSoft, lineHeight: 1.6 }}>
                           <b style={{ color: ink }}>Details</b>
                           <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <span>Format: <b style={{ color: ink }}>{form.imageUrl ? (String(form.title || '').trim() || String(form.subtitle || '').trim() ? 'Image + Text' : 'Image only') : 'Text only'}</b></span>
@@ -1086,6 +1322,16 @@ export const AdsManager: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Interactive 4:1 crop tool ── */}
+      {cropTarget && (
+        <BannerCropModal
+          image={cropTarget.image}
+          sourceName={cropTarget.sourceName}
+          onCancel={() => setCropTarget(null)}
+          onConfirm={(blob, output) => cropTarget.onDone(blob, output)}
+        />
       )}
     </div>
   )

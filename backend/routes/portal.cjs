@@ -880,7 +880,7 @@ router.get('/referrals/:id', async (req, res) => {
   }
 });
 
-router.post('/referrals', async (req, res) => {
+router.post('/referrals', idempotencyMiddleware(), async (req, res) => {
   try {
     const { id, customer_id} = req.portalUser;
     const { referredCustomerId, notes } = req.body || {};

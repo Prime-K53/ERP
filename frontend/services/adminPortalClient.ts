@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config/api.js';
+import type { PortalAdImageMeta } from '../types/ads';
 
 interface AdminUserInfo {
   id: string;
@@ -79,11 +80,14 @@ export const adminPortalApi = {
   },
 };
 
-/** Uploads a banner image for a portal ad; returns the stable public URL. */
-export async function uploadAdImage(file: File): Promise<{ url: string; path: string }> {
+/**
+ * Uploads a banner image for a portal ad; returns the stable public URL plus
+ * the metadata of the prepared asset (server prepares an exact 4:1 WebP).
+ */
+export async function uploadAdImage(file: File): Promise<{ url: string; path: string; meta: PortalAdImageMeta }> {
   const form = new FormData();
   form.append('file', file);
-  return adminPortalApi.postForm<{ url: string; path: string }>('/ads/upload', form);
+  return adminPortalApi.postForm<{ url: string; path: string; meta: PortalAdImageMeta }>('/ads/upload', form);
 }
 
 export interface AdminNotification {
