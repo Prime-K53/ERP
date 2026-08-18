@@ -1,12 +1,14 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { logger } from '@/services/logger';
-import { useOrdersStore } from '../stores/ordersStore';
+import { useSalesOrderStore } from '../stores/salesOrderStore';
 import { Order, OrderPayment, OrderItem, Quotation } from '../types';
+import { SalesOrder } from '../types/salesOrder';
 import { useAuth } from './AuthContext';
 import { useSales } from './SalesContext';
 import { generateNextId } from '../utils/helpers';
 import { customerNotificationService } from '../services/customerNotificationService';
 import { aggregateMarketAdjustmentSnapshots, attachPricingBreakdown, summarizePricingBreakdown } from '../utils/pricingBreakdown';
+import { canonicalizeStatus } from '../types/salesOrder';
 
 interface OrdersContextType {
   orders: Order[];
@@ -22,13 +24,35 @@ interface OrdersContextType {
 
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
+/**
+ * Legacy projection: canonical sales orders are served to legacy consumers
+ * (Orders tab, Payments, reports) with a legacy-compatible `status` so existing
+ * comparisons ('Completed', 'Paid', 'Converted', ...) keep working unchanged.
+ * All writes translate back to the canonical model.
+ */
+export const toLegacyOrder = (o: SalesOrder): Order => {
+  const status = canonicalizeStatus(o.status);
+  let legacyStatus: string = status;
+  if (status === 'Fulfilled') legacyStatus = 'Completed';
+  else if (status === 'Converted') legacyStatus = 'Converted';
+  else if (o.invoiceStatus === 'Invoiced') legacyStatus = 'Converted';
+  else if (o.paymentStatus === 'Paid') legacyStatus = 'Paid';
+  else if (o.paymentStatus === 'Partially Paid') legacyStatus = 'Partially Paid';
+  return { ...o, status: legacyStatus } as unknown as Order;
+};
+
 export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { orders, isLoading, fetchOrders, addOrder, updateOrderStatus, recordPayment, cancelOrder } = useOrdersStore();
+  const store = useSalesOrderStore();
   const { companyConfig, notify, user } = useAuth();
   const salesContext = useSales();
 
+  const orders = store.salesOrders.map(toLegacyOrder);
+  const isLoading = store.isLoading;
+
   useEffect(() => {
-    fetchOrders();
+    store.runMigrationIfNeeded().finally(() => {
+      store.fetchSalesOrders();
+    });
   }, []);
 
   const toNum = (val: any, fallback = 0) => {
@@ -163,7 +187,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      await addOrder(newOrder);
+      await store.createFinancialOrder(newOrder as unknown as SalesOrder);
       await triggerSalesOrderNotification(newOrder);
 
       // Update quotation status to Converted
@@ -228,7 +252,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         roundingDifference: data.roundingDifference || pricingSummary.roundingTotal,
       };
 
-      await addOrder(newOrder);
+      await store.createFinancialOrder(newOrder as unknown as SalesOrder);
       await triggerSalesOrderNotification(newOrder);
       notify("Order created successfully", "success");
     } catch (error: any) {
@@ -252,7 +276,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reference: payment.reference
       };
 
-      await recordPayment(orderId, fullPayment);
+      await store.recordPayment(orderId, fullPayment);
       notify("Payment recorded successfully", "success");
     } catch (error: any) {
       notify(`Failed to record payment: ${error.message}`, "error");
@@ -262,7 +286,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleUpdateStatus = async (id: string, status: Order['status']) => {
     try {
-      await updateOrderStatus(id, status);
+      await store.updateOrderStatus(id, status);
       notify(`Order status updated to ${status}`, "success");
     } catch (error: any) {
       notify(`Failed to update status: ${error.message}`, "error");
@@ -272,7 +296,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleCancelOrder = async (id: string, reason: string) => {
     try {
-      await cancelOrder(id, reason);
+      await store.cancelOrder(id, reason);
       notify("Order cancelled successfully", "success");
     } catch (error: any) {
       notify(`Failed to cancel order: ${error.message}`, "error");
@@ -286,7 +310,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     <OrdersContext.Provider value={{
       orders,
       isLoading,
-      fetchOrders,
+      fetchOrders: store.fetchSalesOrders,
       createOrder: handleCreateOrder,
       updateOrderStatus: handleUpdateStatus,
       recordPayment: handleRecordPayment,

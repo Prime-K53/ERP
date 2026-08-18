@@ -23,6 +23,7 @@ import {
     CustomerReceiptInvoiceInput
 } from './receiptCalculationService';
 import { logger } from './logger';
+import { salesOrderService } from './salesOrderService';
 
 import {
     getCompanyConfig, getGLConfig, generateId, calculateBankBalance,
@@ -4492,12 +4493,14 @@ export const transactionService = {
     },
 
     async createOrder(order: Order) {
+        const canonical = salesOrderService.canonicalizeOrder(order);
         const result = await dbService.executeAtomicOperation(
-            ['orders', 'inventory', 'ledger', 'customers', 'walletTransactions', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
+            ['salesOrders', 'inventory', 'ledger', 'customers', 'walletTransactions', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
             async (tx) => {
+                const order = canonical;
                 await reserveIdempotencyKey(tx, 'order', order.id, order.idempotencyKey);
 
-                const orderStore = tx.objectStore('orders');
+                const orderStore = tx.objectStore('salesOrders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
@@ -4532,7 +4535,7 @@ export const transactionService = {
                 }
 
                 // 3. Status-based processing
-                if (order.status === 'Completed') {
+                if (order.status === 'Fulfilled' || order.status === 'Completed') {
                     // Deduct actual stock immediately if created as Completed
                     for (const item of order.items) {
                         const invItem = await inventoryStore.get(item.productId);
@@ -4695,11 +4698,11 @@ export const transactionService = {
 
     async recordOrderPayment(orderId: string, payment: OrderPayment) {
         const result = await dbService.executeAtomicOperation(
-            ['orders', 'ledger', 'customers', 'walletTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
+            ['salesOrders', 'ledger', 'customers', 'walletTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
             async (tx) => {
                 await reserveIdempotencyKey(tx, 'order_payment', `${orderId}:${payment.id || payment.paymentDate}:${payment.amountPaid}`);
 
-                const orderStore = tx.objectStore('orders');
+                const orderStore = tx.objectStore('salesOrders');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
                 const walletStore = tx.objectStore('walletTransactions');
@@ -4714,12 +4717,10 @@ export const transactionService = {
                 order.paidAmount += payment.amountPaid;
                 order.remainingBalance = order.totalAmount - order.paidAmount;
 
-                if (order.status !== 'Completed') {
-                    if (order.paidAmount >= order.totalAmount) {
-                        order.status = 'Paid';
-                    } else if (order.paidAmount > 0) {
-                        order.status = 'Partially Paid';
-                    }
+                const isTerminal = order.status === 'Fulfilled' || order.status === 'Completed'
+                    || order.status === 'Cancelled' || order.status === 'Converted';
+                if (!isTerminal) {
+                    order.paymentStatus = order.paidAmount >= order.totalAmount ? 'Paid' : 'Partially Paid';
                 }
 
                 await orderStore.put(order);
@@ -4794,10 +4795,12 @@ export const transactionService = {
     },
 
     async updateOrderStatus(orderId: string, status: Order['status']) {
+        const incoming = salesOrderService.canonicalizeStatus(status);
+        const incomingLegacyPayment = salesOrderService.legacyPaymentStatus(status);
         const result = await dbService.executeAtomicOperation(
-            ['orders', 'inventory', 'ledger', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions'],
+            ['salesOrders', 'inventory', 'ledger', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions'],
             async (tx) => {
-                const orderStore = tx.objectStore('orders');
+                const orderStore = tx.objectStore('salesOrders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const bomTemplatesStore = tx.objectStore('bomTemplates');
@@ -4817,10 +4820,18 @@ export const transactionService = {
                 }
 
                 const oldStatus = order.status;
-                order.status = status;
+                const oldCanonical = salesOrderService.canonicalizeStatus(oldStatus);
+
+                if (incoming === 'Converted' && !incomingLegacyPayment) {
+                    order.invoiceStatus = 'Invoiced';
+                } else if (incomingLegacyPayment) {
+                    order.paymentStatus = incomingLegacyPayment;
+                } else {
+                    order.status = incoming;
+                }
 
                 // Fulfillment logic
-                if (status === 'Completed' && oldStatus !== 'Completed') {
+                if (incoming === 'Fulfilled' && oldCanonical !== 'Fulfilled') {
                     // 1. Pre-fetch data for adjustment processing
                     const inventory = await inventoryStore.getAll();
                     const bomTemplates: BOMTemplate[] = await bomTemplatesStore.getAll();
@@ -4931,9 +4942,9 @@ export const transactionService = {
 
     async cancelOrder(orderId: string, reason: string) {
         const result = await dbService.executeAtomicOperation(
-            ['orders', 'inventory', 'ledger', 'customers', 'walletTransactions'],
+            ['salesOrders', 'inventory', 'ledger', 'customers', 'walletTransactions'],
             async (tx) => {
-                const orderStore = tx.objectStore('orders');
+                const orderStore = tx.objectStore('salesOrders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
@@ -4942,7 +4953,8 @@ export const transactionService = {
                 const order = await orderStore.get(orderId);
                 if (!order) throw new Error("Order not found");
 
-                if (order.status === 'Completed') throw new Error("Cannot cancel a completed order");
+                const orderCanonical = salesOrderService.canonicalizeStatus(order.status);
+                if (orderCanonical === 'Fulfilled' || orderCanonical === 'Converted') throw new Error("Cannot cancel a completed order");
 
                 // 1. Release Reserved Stock
                 for (const item of order.items) {

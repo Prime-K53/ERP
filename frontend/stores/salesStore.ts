@@ -3,6 +3,7 @@ import { logger } from '@/services/logger';
 import { Sale, Quotation, JobOrder, HeldOrder, ZReport, CustomerPayment, Shipment, Customer, SalesExchange, ReprintJob, DeliveryNote, SalesOrder } from '../types';
 import { api } from '../services/api';
 import { transactionService } from '../services/transactionService';
+import { useSalesOrderStore } from './salesOrderStore';
 import { generateCustomerId, generateNextId } from '../utils/helpers';
 import { customerNotificationService } from '../services/customerNotificationService';
 import { adminLifecycle, type PortalCredentials } from '../services/adminPortalClient';
@@ -405,7 +406,7 @@ addCustomerPayment: async (payment) => {
     const prev = get().salesOrders;
     set(state => ({ salesOrders: [...state.salesOrders, newOrder] }));
     try {
-      await api.sales.saveSalesOrder(newOrder);
+      await useSalesOrderStore.getState().createSalesOrder(newOrder);
     } catch (error) {
       set({ salesOrders: prev });
       throw error;
@@ -415,7 +416,7 @@ addCustomerPayment: async (payment) => {
     const prev = get().salesOrders;
     set(state => ({ salesOrders: state.salesOrders.map(o => o.id === order.id ? order : o) }));
     try {
-      await api.sales.saveSalesOrder(order);
+      await useSalesOrderStore.getState().updateSalesOrder(order);
     } catch (error) {
       set({ salesOrders: prev });
       throw error;
@@ -425,7 +426,7 @@ addCustomerPayment: async (payment) => {
     const prev = get().salesOrders;
     set(state => ({ salesOrders: state.salesOrders.filter(o => o.id !== id) }));
     try {
-      await api.sales.deleteSalesOrder(id);
+      await useSalesOrderStore.getState().deleteSalesOrder(id);
     } catch (error) {
       set({ salesOrders: prev });
       throw error;
