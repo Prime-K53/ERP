@@ -971,6 +971,7 @@ const portalLifecycleService = {
         ctaLabel: ad.ctaLabel,
         ctaTarget: ad.ctaTarget,
         imageUrl: ad.imageUrl,
+        imageMeta: ad.imageMeta || null,
         gradient: ad.gradient,
         emoji: ad.emoji,
         endsAt: ad.endsAt,

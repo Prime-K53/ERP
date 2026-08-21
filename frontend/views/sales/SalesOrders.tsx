@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useSalesStore } from '../../stores/salesStore';
+import { useSalesOrderStore } from '../../stores/salesOrderStore';
 import { useFinanceStore } from '../../stores/financeStore';
-import { adminLifecycle, OrderPrefillPayload } from '../../services/adminPortalClient';
+import { OrderPrefillPayload } from '../../services/adminPortalClient';
+import { salesOrderService } from '../../services/salesOrderService';
+import { toast } from '../../components/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { generateNextId } from '../../utils/helpers';
 import SalesOrderForm from './SalesOrderForm';
@@ -113,37 +115,13 @@ const RowActions: React.FC<RowActionsProps> = ({ order, onEdit, onConvert, onCha
 );
 
 const SalesOrders: React.FC = () => {
-  const { salesOrders, isLoading, fetchSalesData, addSalesOrder, updateSalesOrder } = useSalesStore();
+  const store = useSalesOrderStore();
+  const { salesOrders, isLoading, fetchSalesOrders } = store;
   const { addInvoice } = useFinanceStore();
   const location = useLocation();
   const isMobile = useMediaQuery('(max-width: 767px)');
   const [editing, setEditing] = useState<any | null>(null);
   const [pendingOrderRequest, setPendingOrderRequest] = useState<{ requestId: string; requestNumber: string } | null>(null);
-
-  const completeOrderRequest = async (order: any) => {
-    if (!pendingOrderRequest) return null;
-    try {
-      const res = await adminLifecycle.requests.completeOrder(pendingOrderRequest.requestId, {
-        erpOrderId: order.id || undefined,
-        orderSnapshot: {
-          items: order.items || [],
-          subtotal: order.subtotal || 0,
-          discounts: order.discounts || 0,
-          tax: order.tax || 0,
-          otherCharges: 0,
-          total: order.total || 0,
-          notes: order.notes || null,
-          deliveryDate: order.deliveryDate || null,
-          customerId: order.customerId || null,
-          customerName: order.customerName || null
-        }
-      });
-      return res || null;
-    } catch (err: any) {
-      alert('Request conversion failed: ' + (err?.message || err));
-      return null;
-    }
-  };
 
   const handleCreate = async (o: any) => {
     // Converting a portal request → the ERP record is saved first (offline-safe),
@@ -154,28 +132,27 @@ const SalesOrders: React.FC = () => {
     if (pendingOrderRequest) {
       const orderId = o.id || generateNextId('SO', salesOrders);
       const orderToSave = { ...o, id: orderId };
-      await addSalesOrder(orderToSave);
-      const res = await completeOrderRequest(orderToSave);
-      if (res?.id) {
-        await updateSalesOrder({
-          ...orderToSave,
-          id: res.id,
-          orderNumber: res.orderNumber || '',
-          sourceRequestId: pendingOrderRequest.requestId,
-          sourceRequestNumber: pendingOrderRequest.requestNumber,
-          status: 'Confirmed',
-        });
-        alert(`Official sales order ${res.orderNumber || res.id} created. Request ${pendingOrderRequest.requestNumber} marked converted and the customer notified.`);
+      const result = await store.adoptQuotationRequest({
+        id: pendingOrderRequest.requestId,
+        requestNumber: pendingOrderRequest.requestNumber,
+      }, orderToSave);
+      if (result.adopted) {
+        toast.success(`Official sales order ${result.officialNumber || result.officialId} created. Request ${pendingOrderRequest.requestNumber} marked converted and the customer notified.`);
       } else {
-        alert('Sales order saved locally, but the request could not be marked converted right now. Retry from Customer Requests when online.');
+        toast.error(result.error || 'Sales order saved locally, but the request could not be marked converted right now. Retry from Customer Requests when online.');
       }
-      await fetchSalesData();
+      await fetchSalesOrders(true);
       setPendingOrderRequest(null);
       setEditing(null);
       return;
     }
-    await addSalesOrder(o);
-    await fetchSalesData();
+    try {
+      await store.createSalesOrder(o);
+      toast.success('Sales order saved');
+    } catch (err: any) {
+      toast.error(`Failed to save sales order: ${err?.message || err}`);
+    }
+    await fetchSalesOrders(true);
   };
 
   React.useEffect(() => {
@@ -205,36 +182,27 @@ const SalesOrders: React.FC = () => {
       setPendingOrderRequest({ requestId: p.id, requestNumber: p.requestNumber });
       window.history.replaceState({}, '');
     }
-    fetchSalesData().catch(() => {});
+    fetchSalesOrders().catch(() => {});
   }, []);
 
   const handleConvertToInvoice = async (order: any) => {
-    const invoice = {
-      id: '',
-      customerId: order.customerId,
-      customerName: order.customerName || '',
-      date: new Date().toISOString(),
-      dueDate: order.deliveryDate || null,
-      lines: (order.items || []).map((it: any) => ({ itemId: it.product_id || it.id, description: it.product_name || it.description || '', quantity: it.quantity, unitPrice: it.unit_price || it.unitPrice || 0, total: it.line_total || (it.quantity * (it.unit_price || it.unitPrice || 0)) })),
-      totalAmount: order.total || 0,
-      status: 'Unpaid',
-      sourceOrderId: order.id
-    };
-
     try {
-      await addInvoice(invoice);
-      alert('Converted to invoice');
+      const invoice = salesOrderService.buildInvoiceFromOrder(order);
+      const invoiceId = await addInvoice(invoice);
+      await store.updateSalesOrder({ ...order, ...salesOrderService.markInvoiced(order, invoiceId, invoice.invoiceNumber) });
+      toast.success('Converted to invoice');
     } catch (err: any) {
-      alert('Failed to convert: ' + (err?.message || err));
+      toast.error('Failed to convert: ' + (err?.message || err));
     }
   };
 
   const changeStatus = async (order: any, status: string) => {
     try {
-      await updateSalesOrder({ ...order, status });
-      await fetchSalesData();
+      salesOrderService.assertCanTransition(order.status, status);
+      await store.updateSalesOrder({ ...order, status });
+      toast.success(`Sales order status updated to ${status}`);
     } catch (err: any) {
-      alert('Failed to update status: ' + (err?.message || err));
+      toast.error('Failed to update status: ' + (err?.message || err));
     }
   };
 
@@ -298,7 +266,7 @@ const SalesOrders: React.FC = () => {
                 <SalesOrderForm
                   initial={editing}
                   onCreate={pendingOrderRequest ? handleCreate : undefined}
-                  onDone={() => { setEditing(null); void fetchSalesData(); }}
+                  onDone={() => { setEditing(null); void fetchSalesOrders(); }}
                 />
               </div>
             )}
@@ -349,7 +317,7 @@ const SalesOrders: React.FC = () => {
                     }}
                   >
                     <div style={{ padding: '12px 14px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: inkSoft, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.id}</span>
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: inkSoft, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.orderNumber || o.id}</span>
                       <span style={{
                         display: 'inline-block',
                         padding: '3px 10px',
@@ -387,7 +355,7 @@ const SalesOrders: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
                 <tr style={{ background: teal[50] }}>
-                  {['ID', 'Customer', 'Order Date', 'Status', 'Total', 'Actions'].map((h) => (
+                  {['Number', 'Customer', 'Order Date', 'Status', 'Total', 'Actions'].map((h) => (
                     <th key={h} style={{
                       padding: '10px 14px',
                       textAlign: 'left',
@@ -409,7 +377,7 @@ const SalesOrders: React.FC = () => {
                   const sc = statusBadgeColors[o.status] || { bg: paper, color: inkSoft, border: hairline };
                   return (
                     <tr key={o.id} style={{ borderBottom: `1px solid ${hairline}` }}>
-                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: ink, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{o.id}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: ink, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{o.orderNumber || o.id}</td>
                       <td style={{ padding: '10px 14px', color: ink }} className="hidden md:table-cell">{o.customerId || '-'}</td>
                       <td style={{ padding: '10px 14px', color: inkSoft, fontSize: 13, whiteSpace: 'nowrap' }} className="hidden md:table-cell">{new Date(o.orderDate).toLocaleDateString()}</td>
                       <td style={{ padding: '10px 14px' }}>

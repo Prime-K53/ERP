@@ -97,6 +97,63 @@ const MAX_BATCH_SIZE = 100;
 
 const VALID_TABLE_PATTERN = /^[a-z_][a-z0-9_]*$/;
 
+// ─── portal_ads payload validation (Customer Portal banner pipeline) ────────
+// The portal renders banners at a fixed 4:1 area, so a record carrying an
+// arbitrary/non-image URL or inconsistent dimension metadata could break the
+// dashboard layout. This focused guard runs only for the portal_ads table —
+// every other table keeps its existing generic gateway behavior.
+
+const HTTP_URL_PATTERN = /^https?:\/\/[^\s]+$/i;
+
+function validatePortalAdPayload(op) {
+  if (op.operation === 'delete') {
+    return null; // deletes only carry { id, deleted } — nothing to validate
+  }
+  const p = op.payload;
+  if (!p || typeof p !== 'object' || Array.isArray(p)) {
+    return 'portal_ads payload must be an object';
+  }
+  if (typeof p.id !== 'string' || p.id.length === 0) {
+    return 'portal_ads payload requires a non-empty string id';
+  }
+  if (p.title != null && typeof p.title !== 'string') {
+    return 'portal_ads title must be a string';
+  }
+  if (p.imageUrl != null) {
+    if (typeof p.imageUrl !== 'string' || !HTTP_URL_PATTERN.test(p.imageUrl)) {
+      return 'portal_ads imageUrl must be a valid http(s) URL';
+    }
+  }
+  if (p.imageMeta != null) {
+    const m = p.imageMeta;
+    if (!m || typeof m !== 'object' || Array.isArray(m)) {
+      return 'portal_ads imageMeta must be an object';
+    }
+    const w = Number(m.width);
+    const h = Number(m.height);
+    if (!(Number.isFinite(w) && w > 0) || !(Number.isFinite(h) && h > 0)) {
+      return 'portal_ads imageMeta requires positive numeric width and height';
+    }
+    if (m.aspectRatio != null) {
+      const ar = Number(m.aspectRatio);
+      if (!(Number.isFinite(ar) && ar > 0)) {
+        return 'portal_ads imageMeta aspectRatio must be a positive number';
+      }
+      const fromDims = w / h;
+      if (Math.abs(ar - fromDims) / fromDims > 0.01) {
+        return `portal_ads imageMeta aspectRatio ${ar} does not match width/height (${fromDims})`;
+      }
+    }
+    if (m.format != null && typeof m.format !== 'string') {
+      return 'portal_ads imageMeta format must be a string';
+    }
+    if (m.fileSize != null && !(Number.isFinite(Number(m.fileSize)) && Number(m.fileSize) >= 0)) {
+      return 'portal_ads imageMeta fileSize must be a non-negative number';
+    }
+  }
+  return null;
+}
+
 router.post('/ops', async (req, res) => {
   try {
     // B5: Authorization — reject portal customers and any unauthenticated caller.
@@ -159,6 +216,15 @@ router.post('/ops', async (req, res) => {
       if (!ALLOWED_TABLES.has(table)) {
         results.push({ operationId: op?.operationId, ok: false, error: `table not allowed: ${table}`, retryable: false });
         continue;
+      }
+
+      if (table === 'portal_ads') {
+        const adError = validatePortalAdPayload(op);
+        if (adError) {
+          console.warn(`[sync] portal_ads validation rejected ${op?.operationId}`, { error: adError });
+          results.push({ operationId: op?.operationId, ok: false, id: op?.recordId || null, error: adError, retryable: false });
+          continue;
+        }
       }
 
       let result;

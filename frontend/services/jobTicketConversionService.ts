@@ -621,9 +621,9 @@ const convertOrderToJobTicket = async (orderId: string, options: ConversionOptio
   const force = Boolean(options.force);
 
   const conversion = await dbService.executeAtomicOperation(
-    ['orders', 'jobTickets', 'workOrders', 'auditLogs', 'idempotencyKeys'],
+    ['salesOrders', 'jobTickets', 'workOrders', 'auditLogs', 'idempotencyKeys'],
     async (tx) => {
-      const orderStore = tx.objectStore('orders');
+      const orderStore = tx.objectStore('salesOrders');
       const jobTicketStore = tx.objectStore('jobTickets');
       const workOrderStore = tx.objectStore('workOrders');
       const auditLogStore = tx.objectStore('auditLogs');

@@ -569,6 +569,9 @@ const CustomerDashboard: React.FC = () => {
                 onClick={s.onClick}
                 style={{
                   minWidth: '100%', position: 'relative',
+                  // Canonical 4:1 banner area — matches the ERP banner spec.
+                  // minHeight keeps overlay text legible on very narrow screens.
+                  aspectRatio: '4 / 1', minHeight: 92,
                   background: hasImage ? s.gradient : s.gradient,
                   cursor: 'pointer', overflow: 'hidden',
                 }}

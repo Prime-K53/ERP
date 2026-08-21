@@ -178,6 +178,75 @@ async function listRows(table) {
   return out;
 }
 
+// ─── Sales order official-number minting ────────────────────────────────────
+// The canonical sales order number is backend-authoritative (`SO-YYYY-######`).
+// Portal-created orders already get one server-side (portalLifecycleService).
+// Admin-created orders arrive here through the sync gateway with a provisional
+// or missing number, so the gateway mints the official number at write time.
+// Minting is idempotent: an already-official number in the payload is kept,
+// and a row that already carries an official number on the server is reused
+// (never re-minted) so retries cannot produce two numbers for one order.
+
+const SALES_ORDER_NUMBER_PATTERN = /^SO-\d{4}-\d{6}$/;
+
+/**
+ * Pure decision helper (unit-testable): returns the official number to use, or
+ * null when one must be minted. `payloadNumber` is preferred; `rowNumber` is
+ * the number already committed on the server (used for idempotent replays).
+ */
+function pickSalesOrderNumber({ payload, rowNumber }) {
+  const has = (v) => typeof v === 'string' && v.trim().length > 0;
+  const data = payload && typeof payload === 'object' ? payload : {};
+  const payloadNumber = has(data.order_number)
+    ? data.order_number
+    : (has(data.orderNumber) && SALES_ORDER_NUMBER_PATTERN.test(data.orderNumber) ? data.orderNumber : null);
+  if (payloadNumber) return payloadNumber;
+  return has(rowNumber) ? rowNumber : null;
+}
+
+/**
+ * Pure scanner (unit-testable): next sequence value across every committed
+ * sales_orders row, reading both key spellings (`order_number` snake_case from
+ * the portal, `orderNumber` camelCase from admin-synced records).
+ */
+function nextSalesOrderNumber(rows) {
+  const year = new Date().getFullYear();
+  const prefixToken = `SO-${year}-`;
+  let maxSeq = 0;
+  for (const row of rows || []) {
+    const data = row && typeof row === 'object'
+      ? (row.data && typeof row.data === 'object' ? row.data : row)
+      : {};
+    const value = String(data.order_number || data.orderNumber || '');
+    if (!value.startsWith(prefixToken)) continue;
+    const num = parseInt(value.slice(prefixToken.length), 10);
+    if (Number.isFinite(num) && num > maxSeq) maxSeq = num;
+  }
+  return `${prefixToken}${String(maxSeq + 1).padStart(6, '0')}`;
+}
+
+/**
+ * Resolve the official sales order number for an incoming upsert. Returns the
+ * number to stamp onto the payload, or null when the payload already carries a
+ * settled official number (in which case nothing needs to be injected).
+ * Never throws — the gateway must not block a business write on numbering.
+ */
+async function ensureSalesOrderNumber(payload) {
+  const settled = pickSalesOrderNumber({ payload, rowNumber: null });
+  if (settled) return settled;
+  let rowNumber = null;
+  try {
+    const existing = await getRow('sales_orders', payload.id);
+    rowNumber = existing && existing.data && typeof existing.data === 'object'
+      ? (existing.data.order_number || existing.data.orderNumber || null)
+      : null;
+  } catch { /* row missing or cloud unreachable — mint below */ }
+  const fromRow = pickSalesOrderNumber({ payload: {}, rowNumber });
+  if (fromRow) return fromRow;
+  const rows = await listRows('sales_orders');
+  return nextSalesOrderNumber(rows);
+}
+
 /**
  * Read the current server row and compare it against the version the client
  * based its edit on. Returns either the matched row (the write can proceed)
@@ -578,6 +647,19 @@ async function applyOp(op) {
       if (!id) {
         return { operationId, ok: false, error: 'recordId or payload.id is required for upsert', retryable: false };
       }
+      if (table === 'sales_orders' && payload && typeof payload === 'object') {
+        try {
+          const officialNumber = await ensureSalesOrderNumber(payload);
+          if (officialNumber) {
+            payload.order_number = officialNumber;
+            console.log(`[cloudSyncStore] sales_orders ${id} official number: ${officialNumber}`);
+          }
+        } catch (mintErr) {
+          // Numbering must never block the business write — the row is saved
+          // without an official number and the next push re-runs the mint.
+          console.warn(`[cloudSyncStore] sales_orders ${id} number mint skipped:`, mintErr?.message || mintErr);
+        }
+      }
       result = await upsertRow(table, id, payload);
     }
 
@@ -648,4 +730,6 @@ module.exports = {
   recordIdempotency,
   countTombstones,
   purgeTombstones,
+  pickSalesOrderNumber,
+  nextSalesOrderNumber,
 };

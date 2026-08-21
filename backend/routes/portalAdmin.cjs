@@ -8,6 +8,7 @@ const portalLifecycleService = require('../services/portalLifecycleService.cjs')
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { canUseHeaderAuth, getHeaderAuthUser } = require('../middleware/auth.cjs');
+const { BannerImageError, processBannerImage } = require('../services/bannerImageService.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -938,16 +939,21 @@ router.post('/users/:id/invite', async (req, res) => {
 });
 
 // ─── Portal Banner Ad Image Upload ─────────────────────────────────────────
-// Smart Operations Hub → Ads. Stores the image in the PUBLIC Supabase Storage
-// bucket `prime-erp-public` (banner images are public marketing content shown
-// to every portal customer) and returns the stable public URL to persist on
-// the ad record (portal_ads.data.imageUrl).
+// Smart Operations Hub → Ads. Every banner is prepared for the customer
+// portal's 4:1 banner area by bannerImageService (validate → exact 4:1 crop
+// → 1600 × 400 WebP). The ERP UI performs an interactive 4:1 crop before
+// uploading; this endpoint enforces the same spec server-side (defense in
+// depth) so the stored asset is always a 4:1, never stretched.
+// The optimized image is stored in the PUBLIC Supabase Storage bucket
+// `prime-erp-public` (banner images are public marketing content shown to
+// every portal customer) and the stable public URL plus final metadata is
+// returned to persist on the ad record (portal_ads.data.imageUrl / .imageMeta).
 const uploadAdImage = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const ok = /^image\/(png|jpe?g|webp|gif|avif)$/i.test(file.mimetype || '');
-    cb(ok ? null : new Error('Only PNG, JPEG, WebP, GIF or AVIF images are allowed'), ok);
+    const ok = /^image\/(png|jpe?g|webp)$/i.test(file.mimetype || '');
+    cb(ok ? null : new Error('Only WebP, JPG or PNG images are allowed'), ok);
   },
 });
 
@@ -968,27 +974,40 @@ router.post('/ads/upload', (req, res, next) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
+    // Validate → crop to exact 4:1 → optimize to 1600 × 400 WebP.
+    let prepared;
+    try {
+      prepared = await processBannerImage(req.file.buffer);
+    } catch (err) {
+      if (err instanceof BannerImageError) {
+        return res.status(err.status || 400).json({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
+
     const bucket = 'prime-erp-public';
     const safeName = String(req.file.originalname || 'ad.png')
       .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(-80);
-    const objectPath = `ads/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
+      .slice(-80)
+      .replace(/\.(png|jpe?g|webp|gif|avif)$/i, '')
+      .slice(0, 76);
+    const objectPath = `ads/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}.webp`;
     const base = SUPABASE_URL.replace(/\/+$/, '');
 
     const uploadHeaders = {
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': req.file.mimetype || 'application/octet-stream',
+      'Content-Type': 'image/webp',
       'x-upsert': 'false',
     };
-    await axios.post(`${base}/storage/v1/object/${bucket}/${objectPath}`, req.file.buffer, {
+    await axios.post(`${base}/storage/v1/object/${bucket}/${objectPath}`, prepared.buffer, {
       headers: uploadHeaders,
       timeout: 30000,
       maxBodyLength: Infinity,
     });
 
     const url = `${base}/storage/v1/object/public/${bucket}/${objectPath}`;
-    res.status(201).json({ url, path: objectPath });
+    res.status(201).json({ url, path: objectPath, meta: prepared.meta });
   } catch (err) {
     console.error('[PortalAdmin] Ad image upload error:', err?.response?.status, err?.response?.data || err.message);
     res.status(500).json({ error: 'Failed to upload image', detail: err?.response?.data?.message || err.message });
