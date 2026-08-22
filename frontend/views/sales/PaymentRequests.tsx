@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE_URL } from '../../config/api.js';
 import { getJsonRequestHeaders } from '../../services/requestHeaders';
 import { useAuth } from '../../context/AuthContext';
+import { formatDate } from '../../utils/formatters';
 import {
   HandCoins, RefreshCw, Search, X, CheckCircle2, Clock, Eye,
   Ban, XCircle, AlertTriangle, Building2, FileText, Banknote, CalendarDays,
@@ -63,13 +64,6 @@ const ALL_STATUSES: Status[] = ['requested', 'under_review', 'confirmed', 'rejec
 const fmtAmount = (n: number | undefined, currency: string): string => {
   const v = Number(n ?? 0);
   return `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-
-const fmtDate = (iso?: string): string => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 interface PaymentRequestsProps {
@@ -331,7 +325,7 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
                     <td style={{ padding: '10px 14px' }}>{statusChip(r.status)}</td>
                     <td style={{ padding: '10px 14px', color: inkSoft, whiteSpace: 'nowrap' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <CalendarDays size={13} /> {fmtDate(r.requested_at || r.created_at)}
+                        <CalendarDays size={13} /> {formatDate(r.requested_at || r.created_at)}
                       </span>
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
@@ -389,7 +383,7 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CalendarDays size={14} style={{ color: teal[500], flexShrink: 0 }} />
-                <span style={{ color: inkSoft }}>Requested {fmtDate(selected.requested_at || selected.created_at)}</span>
+                <span style={{ color: inkSoft }}>Requested {formatDate(selected.requested_at || selected.created_at)}</span>
               </div>
 
               {selected.note && (
@@ -409,7 +403,7 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
                   )}
                   {selected.reviewed_by && (
                     <div style={{ marginTop: selected.admin_notes ? 6 : 0, fontSize: 11 }}>
-                      Reviewed by {selected.reviewed_by} · {fmtDate(selected.reviewed_at)}
+                      Reviewed by {selected.reviewed_by} · {formatDate(selected.reviewed_at)}
                     </div>
                   )}
                 </div>

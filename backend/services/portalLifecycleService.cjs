@@ -980,7 +980,7 @@ const portalLifecycleService = {
 
   async getRequests({ customerId, status } = {}) {
     let query = `
-      SELECT q.*, c.name AS resolved_customer_name
+      SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
       FROM quotation_requests q
       LEFT JOIN customers c ON c.id = q.customer_id
       WHERE 1=1`;
@@ -993,7 +993,7 @@ const portalLifecycleService = {
     return rows.map((r) => ({
       ...r,
       status: r.quotation_id ? (r.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : r.status) : normalizeRequestStatus(r.status),
-      customer_name: r.resolved_customer_name || r.customer_name,
+      customer_name: r.resolved_customer_name || r.customer_email || r.customer_name,
       items: parseJson(r.items, []),
       attachments: parseJson(r.attachments, []),
       promotion: parseJson(r.promotion, null),
@@ -1002,7 +1002,7 @@ const portalLifecycleService = {
 
   async getRequestById(id, { customerId} = {}) {
     const request = await getOne(
-      `SELECT q.*, c.name AS resolved_customer_name
+      `SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
          FROM quotation_requests q
          LEFT JOIN customers c ON c.id = q.customer_id
         WHERE q.id = ?`,
@@ -1011,7 +1011,7 @@ const portalLifecycleService = {
     if (!request) return null;
     if (customerId && String(request.customer_id ?? request.customerId ?? '') !== String(customerId)) return null;
     request.status = request.quotation_id ? (request.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : request.status) : normalizeRequestStatus(request.status);
-    request.customer_name = request.resolved_customer_name || request.customer_name;
+    request.customer_name = request.resolved_customer_name || request.customer_email || request.customer_name;
     request.items = parseJson(request.items, []);
     request.attachments = parseJson(request.attachments, []);
     request.promotion = parseJson(request.promotion, null);
@@ -1050,6 +1050,33 @@ const portalLifecycleService = {
   // ─── Admin: review requests ────────────────────────────────────────────────
   async adminListRequests({ status } = {}) {
     return this.getRequests({ status });
+  },
+
+  async getInboxRequests() {
+    const customerRows = await getAll(
+      `SELECT DISTINCT customer_id FROM admin_notifications WHERE is_read = 0 AND customer_id IS NOT NULL`,
+      []
+    );
+    if (!customerRows || customerRows.length === 0) return [];
+    const ids = customerRows.map((r) => r.customer_id);
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await getAll(
+      `SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
+       FROM quotation_requests q
+       LEFT JOIN customers c ON c.id = q.customer_id
+       WHERE q.customer_id IN (${placeholders})
+         AND q.status NOT IN ('rejected', 'cancelled', 'converted')
+       ORDER BY q.created_at DESC`,
+      ids
+    );
+    return rows.map((r) => ({
+      ...r,
+      status: r.quotation_id ? (r.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : r.status) : normalizeRequestStatus(r.status),
+      customer_name: r.resolved_customer_name || r.customer_email || r.customer_name,
+      items: parseJson(r.items, []),
+      attachments: parseJson(r.attachments, []),
+      promotion: parseJson(r.promotion, null),
+    }));
   },
 
   async adminGetRequest(id) {
@@ -1590,7 +1617,7 @@ const portalLifecycleService = {
     // list, the portal and the document chain all reference ONE order. Without
     // an erpOrderId a fresh canonical record is created as before.
     const orderId = erpOrderId || genId('so');
-    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'SO');
+    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'ORD');
     const itemsJson = JSON.stringify(
       normalizedItems.map((item) => ({
         id: item.productId || genId('itm'),
@@ -1735,7 +1762,7 @@ const portalLifecycleService = {
     const customerName = (customer && customer.name) || 'Customer';
 
     const id = genId('req');
-    const requestNumber = await workflowEngine.nextYearScopedNumber('quotation_requests', 'request_number', 'ODR');
+    const requestNumber = await workflowEngine.nextYearScopedNumber('quotation_requests', 'request_number', workflowEngine.requestNumberPrefix('order'));
     const { subtotal } = computeTotals(items);
 
     await runQuery(
@@ -1776,7 +1803,7 @@ const portalLifecycleService = {
   // ─── Quotation reads ───────────────────────────────────────────────────────
   async getQuotations({ customerId, status } = {}) {
     let query = `
-      SELECT q.*, c.name AS resolved_customer_name
+      SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
       FROM quotations q
       LEFT JOIN customers c ON c.id = q.customer_id
       WHERE 1=1`;
@@ -1795,14 +1822,14 @@ const portalLifecycleService = {
     }
     return rows.map((r) => ({
       ...r,
-      customer_name: r.resolved_customer_name || r.customer_name,
+      customer_name: r.resolved_customer_name || r.customer_email || r.customer_name,
       items: parseJson(r.items, []),
     }));
   },
 
   async getQuotationById(id, { customerId} = {}) {
     const quotation = await getOne(
-      `SELECT q.*, c.name AS resolved_customer_name
+      `SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
          FROM quotations q
          LEFT JOIN customers c ON c.id = q.customer_id
         WHERE q.id = ?`,
@@ -1810,7 +1837,7 @@ const portalLifecycleService = {
     );
     if (!quotation) return null;
     if (customerId && String(quotation.customer_id ?? quotation.customerId ?? '') !== String(customerId)) return null;
-    quotation.customer_name = quotation.resolved_customer_name || quotation.customer_name;
+    quotation.customer_name = quotation.resolved_customer_name || quotation.customer_email || quotation.customer_name;
     quotation.items = parseJson(quotation.items, []);
     await applyQuotationExpiry(quotation);
     return quotation;
@@ -2003,7 +2030,7 @@ const portalLifecycleService = {
     }
 
     const orderId = genId('so');
-    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'SO');
+    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'ORD');
     const itemsJson = JSON.stringify(
       quotation.items.map((item) => ({
         id: item.productId || genId('itm'),
@@ -2313,6 +2340,15 @@ const portalLifecycleService = {
     });
 
     if (isCustomer) {
+      // If the request was waiting for a customer response, move it back to
+      // submitted so the admin inbox picks it up as requiring attention.
+      if (docType === 'request' && doc.status === REQUEST_STATUS.WAITING_FOR_CUSTOMER) {
+        await runQuery(
+          `UPDATE quotation_requests SET status = ?, updated_at = ? WHERE id = ?`,
+          [REQUEST_STATUS.SUBMITTED, nowIso(), docId]
+        ).catch(() => {});
+      }
+
       await notifyAdmin({ type: NOTIFICATION_TYPES.DECISION, title: 'Customer comment added',
         body: `${actorName} commented on a ${docType}: ${text.slice(0, 140)}`,
         link: '#/sales-flow/requests', customerId: doc.customer_id, customerName: actorName,

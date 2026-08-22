@@ -9,6 +9,7 @@ import { generateNextId } from '../utils/helpers';
 import { customerNotificationService } from '../services/customerNotificationService';
 import { aggregateMarketAdjustmentSnapshots, attachPricingBreakdown, summarizePricingBreakdown } from '../utils/pricingBreakdown';
 import { canonicalizeStatus } from '../types/salesOrder';
+import { salesOrderService } from '../services/salesOrderService';
 
 interface OrdersContextType {
   orders: Order[];
@@ -98,7 +99,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         notify('This quotation has already been converted to an order', 'warning');
         return existingOrder.id;
       }
-      const orderNumber = generateNextId('ORD', orders, companyConfig);
+      const orderNumber = salesOrderService.generateProvisionalOrderId(orders, 'SO');
       const conversionDate = new Date().toLocaleDateString();
       const acceptedBy = quotation.customerName || 'Customer';
       const conversionDetails = {
@@ -205,7 +206,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleCreateOrder = async (data: any) => {
     try {
-      const orderNumber = data.orderNumber || data.id || generateNextId('ORD', orders, companyConfig);
+      const orderNumber = data.orderNumber || data.id || salesOrderService.generateProvisionalOrderId(orders, 'SO');
 
       const subtotal = toNum(data.subtotal) || data.items.reduce((sum: number, it: any) => sum + (toNum(it.subtotal || (toNum(it.quantity || it.qty) * toNum(it.unitPrice || it.price || it.cost)))), 0);
       const discount = toNum(data.discount);

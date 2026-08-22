@@ -1800,7 +1800,7 @@ export const transactionService = {
             );
             if (dup) return null;
 
-            const orderId = generateNextId('SO', existing, getCompanyConfig());
+            const orderId = salesOrderService.generateProvisionalOrderId(existing, 'SO');
 
             const items: SalesOrderItem[] = (invoice.items || []).map((it: CartItem, idx: number) => {
                 const quantity = Number(it.quantity ?? it.qty ?? 1);
@@ -4712,6 +4712,12 @@ export const transactionService = {
                 const order = await orderStore.get(orderId);
                 if (!order) throw new Error("Order not found");
 
+                // Terminal status protection: cannot record payment on a Cancelled order
+                const orderCanonical = salesOrderService.canonicalizeStatus(order.status);
+                if (orderCanonical === 'Cancelled') {
+                    throw new Error("Cannot record payment on a cancelled sales order");
+                }
+
                 // 1. Update Order
                 order.payments = [...(order.payments || []), payment];
                 order.paidAmount += payment.amountPaid;
@@ -4813,7 +4819,7 @@ export const transactionService = {
                     const found = allOrders.find((o: Order) => o.id === orderId);
                     if (!found) {
                         console.warn(`[Orders.UpdateStatus] Order ${orderId} not found locally — skipping status update. Invoice was already created.`);
-                        return { success: true, message: 'Order not found locally — status unchanged' };
+                        return { success: true, message: 'Order not found locally — no-op' };
                     }
                     orderStore.put(found);
                     return { success: true, message: 'Order re-synced locally, no status change applied' };
@@ -4821,6 +4827,17 @@ export const transactionService = {
 
                 const oldStatus = order.status;
                 const oldCanonical = salesOrderService.canonicalizeStatus(oldStatus);
+
+                // Idempotency: if the order is already in the target canonical status, no-op
+                if (!incomingLegacyPayment && incoming === oldCanonical) {
+                    return { success: true, message: `Order already in status ${incoming}` };
+                }
+
+                // Terminal status protection: cannot transition FROM a terminal status
+                // (except specific allowed transitions like Fulfilled/Converted are both terminal)
+                if (salesOrderService.isTerminalStatus(oldCanonical) && !salesOrderService.isTerminalStatus(incoming) && incoming !== 'Cancelled') {
+                    throw new Error(`Cannot transition from terminal status ${oldCanonical} to ${incoming}`);
+                }
 
                 if (incoming === 'Converted' && !incomingLegacyPayment) {
                     order.invoiceStatus = 'Invoiced';
@@ -4954,6 +4971,10 @@ export const transactionService = {
                 if (!order) throw new Error("Order not found");
 
                 const orderCanonical = salesOrderService.canonicalizeStatus(order.status);
+                // Idempotency: if already cancelled, no-op
+                if (orderCanonical === 'Cancelled') {
+                    return { success: true, message: 'Order already cancelled' };
+                }
                 if (orderCanonical === 'Fulfilled' || orderCanonical === 'Converted') throw new Error("Cannot cancel a completed order");
 
                 // 1. Release Reserved Stock

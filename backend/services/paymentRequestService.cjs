@@ -257,6 +257,16 @@ async function getRequestById(id, customerId = null) {
     const rowCustomerId = row.customer_id ?? row.customerId ?? null;
     if (String(rowCustomerId ?? '') !== String(customerId)) return null;
   }
+  // Resolve customer name from the authoritative customers table.
+  if (row.customer_id) {
+    try {
+      const customer = await repo.getById('customers', String(row.customer_id));
+      if (customer) {
+        row.customer_name = customer.name || row.customer_name || null;
+        row.customer_email = customer.email || null;
+      }
+    } catch (_) { /* best-effort */ }
+  }
   return row;
 }
 
@@ -269,10 +279,31 @@ async function listRequests({ status } = {}) {
   const filters = {};
   if (status) filters['data->>status'] = `eq.${String(status)}`;
   const rows = await repo.getAll('payment_requests', filters);
-  (rows || []).sort((a, b) =>
+  if (!rows || rows.length === 0) return [];
+
+  // Resolve customer names from the authoritative customers table (same
+  // approach as portalLifecycleService.getRequests).
+  let customerMap = {};
+  try {
+    const customers = await repo.getAll('customers');
+    for (const c of (customers || [])) {
+      if (c.id) customerMap[c.id] = c;
+    }
+  } catch (_) { /* best-effort */ }
+
+  const resolved = rows.map((r) => {
+    const c = customerMap[r.customer_id] || null;
+    return {
+      ...r,
+      customer_name: (c && c.name) || r.customer_name || null,
+      customer_email: (c && c.email) || null,
+    };
+  });
+
+  resolved.sort((a, b) =>
     String(b.requested_at || b.created_at || '').localeCompare(String(a.requested_at || a.created_at || ''))
   );
-  return rows || [];
+  return resolved;
 }
 
 /**

@@ -138,7 +138,7 @@ export default function AICopilot() {
   const allData = { sales: sales || [], invoices: invoices || [], expenses: expenses || [], customers: customers || [], inventory: inventory || [], purchases: purchases || [] };
 
   const handleSend = useCallback(async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
+    const text = String(overrideText ?? input).trim();
     if (!text || typingRef.current) return;
     typingRef.current = true;
     setInput('');
@@ -293,7 +293,7 @@ export default function AICopilot() {
                   wordBreak: 'break-word',
                   whiteSpace: 'pre-wrap',
                 }}>
-                  {m.content}
+                  {typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}
                 </div>
               ))}
               {typing && (

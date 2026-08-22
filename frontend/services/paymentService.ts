@@ -5,10 +5,11 @@ import {
     buildCustomerReceiptDoc,
     calculateCustomerPaymentSnapshot
 } from './receiptCalculationService';
+import { buildLedgerFromRecords } from './customerLedger';
 
 export interface LedgerEntry {
     date: string;
-    type: 'INVOICE' | 'PAYMENT';
+    type: 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE';
     reference_no: string;
     memo?: string;
     debit: number;
@@ -17,23 +18,12 @@ export interface LedgerEntry {
 
 export const paymentService = {
     /**
-     * Calculates the total outstanding balance for a customer before applying a new payment.
-     * Equivalent to: 
-     * SELECT SUM(total_amount - paidAmount) as outstanding_balance 
-     * FROM invoices 
-     * WHERE customer_id = ? AND status != 'Paid';
+     * Canonical outstanding balance — derived by the authoritative customer
+     * ledger (services/customerLedger.ts), shared with the backend and all
+     * other financial views. Previously this was a private per-invoice sum.
      */
     async getCustomerOutstandingBalance(customerId: string): Promise<number> {
-        const invoices = await dbService.getAll<Invoice>('invoices');
-
-        const outstandingBalance = invoices
-            .filter(inv => inv.customerId === customerId && inv.status !== 'Paid' && inv.status !== 'Cancelled')
-            .reduce((sum, inv) => {
-                const balance = (inv.totalAmount || 0) - (inv.paidAmount || 0);
-                return sum + (balance > 0 ? balance : 0);
-            }, 0);
-
-        return roundFinancial(outstandingBalance);
+        return roundFinancial(await getOutstandingViaLedger(customerId));
     },
 
     /**
@@ -158,61 +148,51 @@ export const paymentService = {
     },
 
     /**
-     * Fetches the Ledger for a specific customer within a date range.
-     * Equivalent to the user provided SQL query:
-     * SELECT date, type, reference_no, debit, credit 
-     * FROM ( ... UNION ALL ... ) 
-     * WHERE customer_id = ? AND date BETWEEN ? AND ? 
-     * ORDER BY date ASC;
+     * Fetches the canonical customer ledger within a date range.
+     * Inclusion rules, amounts (amountApplied ?? amountRetained ?? amount),
+     * signs, and ordering all come from the authoritative ledger module —
+     * identical to the backend and every other financial view.
      */
     async getCustomerLedger(customerId: string, startDate: string, endDate: string): Promise<LedgerEntry[]> {
-        const allInvoices = await dbService.getAll<Invoice>('invoices');
-        const customerInvoices = allInvoices.filter(inv => inv.customerId === customerId);
-        const allPayments = await dbService.getAll<CustomerPayment>('customerPayments');
-        const customerPayments = allPayments.filter(payment => payment.customerId === customerId);
-
-        // Map Invoices to Ledger Entries
-        const invoiceEntries: LedgerEntry[] = customerInvoices.map(inv => ({
-            date: inv.date,
-            type: 'INVOICE',
-            reference_no: inv.reference || inv.id, // Use reference if available, else ID
-            memo: 'Invoice',
-            debit: inv.totalAmount,
-            credit: 0
-        }));
-
-        // Map payments to Ledger Entries using retained amount as source of truth.
-        const paymentEntries: LedgerEntry[] = customerPayments.map(payment => ({
-            date: payment.date,
-            type: 'PAYMENT',
-            reference_no: payment.id,
-            memo: payment.paymentMethod ? `Payment (${payment.paymentMethod})` : 'Payment',
-            debit: 0,
-            credit: roundFinancial(
-                Number(
-                    payment.amountRetained ??
-                    payment.receiptSnapshot?.amountRetained ??
-                    payment.amount ??
-                    0
-                )
-            )
-        }));
+        const [allInvoices, allPayments] = await Promise.all([
+            dbService.getAll<any>('invoices'),
+            dbService.getAll<any>('customerPayments'),
+        ]);
+        const ledger = buildLedgerFromRecords({
+            customerId,
+            invoices: allInvoices.filter(inv => inv.customerId === customerId),
+            payments: allPayments.filter(payment => payment.customerId === customerId),
+        });
 
         const start = new Date(startDate);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        // Combine and Filter by Date Range
-        const allEntries = [...invoiceEntries, ...paymentEntries].filter(entry => {
-            const entryDate = new Date(entry.date);
-            return !Number.isNaN(entryDate.getTime()) && entryDate >= start && entryDate <= end;
-        });
-
-        // Sort by Date ASC
-        allEntries.sort((a, b) => {
-            return new Date(a.date).getTime() - new Date(b.date).getTime();
-        });
-
-        return allEntries;
+        return ledger.transactions
+            .map(tx => ({
+                date: String(tx.date || ''),
+                type: tx.type === 'credit_note' ? 'CREDIT_NOTE' as const : tx.type === 'payment' ? 'PAYMENT' as const : 'INVOICE' as const,
+                reference_no: tx.reference,
+                memo: tx.description,
+                debit: tx.debit,
+                credit: tx.credit,
+            }))
+            .filter(entry => {
+                const entryDate = new Date(entry.date);
+                return !Number.isNaN(entryDate.getTime()) && entryDate >= start && entryDate <= end;
+            });
     }
 };
+
+async function getOutstandingViaLedger(customerId: string): Promise<number> {
+    const [allInvoices, allPayments] = await Promise.all([
+        dbService.getAll<any>('invoices'),
+        dbService.getAll<any>('customerPayments'),
+    ]);
+    const ledger = buildLedgerFromRecords({
+        customerId,
+        invoices: allInvoices.filter(inv => inv.customerId === customerId),
+        payments: allPayments.filter(payment => payment.customerId === customerId),
+    });
+    return ledger.outstandingBalance;
+}

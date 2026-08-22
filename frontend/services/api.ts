@@ -11,7 +11,7 @@ import {
   MaintenanceLog, UserRole,
   ExamPaper, ExamPrintingBatch, School, ExamJob, Customer, Supplier, SupplierPayment, SalesReturn,
   ExaminationJob, ExaminationJobSubject, ExaminationInvoiceGroup, ExaminationRecurringProfile,
-  Order, OrderPayment, OrderItem, BillOfMaterial, BOMTemplate, MarketAdjustment
+  Order, BillOfMaterial, BOMTemplate, MarketAdjustment
 } from '../types';
 import { logger } from './logger';
 import { transactionService } from './transactionService';
@@ -375,25 +375,10 @@ export const api = {
       return { success: true };
     }, 'Sales.CancelExchange'),
 
-    // Orders Section
+    // Legacy Orders Section — DEPRECATED: only kept for one-time migration (salesOrderStore.runMigrationIfNeeded).
+    // All runtime Sales Order operations MUST go through the canonical salesOrders path.
+    /** @deprecated Migration-only — reads from legacy IndexedDB 'orders' store. */
     getAllOrders: () => handle(() => dbService.getAll<Order>('orders'), 'Orders.GetAll'),
-    getOrderById: (id: string) => handle(() => dbService.get<Order>('orders', id), 'Orders.GetById'),
-    createOrder: (order: Order) => handle(async () => {
-      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.Create');
-      return transactionService.createOrder(order);
-    }, 'Orders.Create'),
-    recordOrderPayment: (orderId: string, payment: OrderPayment) => handle(async () => {
-      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.RecordPayment');
-      return transactionService.recordOrderPayment(orderId, payment);
-    }, 'Orders.RecordPayment'),
-    updateOrderStatus: (orderId: string, status: Order['status']) => handle(async () => {
-      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.UpdateStatus');
-      return transactionService.updateOrderStatus(orderId, status);
-    }, 'Orders.UpdateStatus'),
-    cancelOrder: (orderId: string, reason: string) => handle(async () => {
-      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.Cancel');
-      return transactionService.cancelOrder(orderId, reason);
-    }, 'Orders.Cancel'),
   },
 
   procurement: {

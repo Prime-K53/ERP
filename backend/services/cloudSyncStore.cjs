@@ -179,7 +179,7 @@ async function listRows(table) {
 }
 
 // ─── Sales order official-number minting ────────────────────────────────────
-// The canonical sales order number is backend-authoritative (`SO-YYYY-######`).
+// The canonical sales order number is backend-authoritative (`ORD-YYYY-######`).
 // Portal-created orders already get one server-side (portalLifecycleService).
 // Admin-created orders arrive here through the sync gateway with a provisional
 // or missing number, so the gateway mints the official number at write time.
@@ -187,7 +187,7 @@ async function listRows(table) {
 // and a row that already carries an official number on the server is reused
 // (never re-minted) so retries cannot produce two numbers for one order.
 
-const SALES_ORDER_NUMBER_PATTERN = /^SO-\d{4}-\d{6}$/;
+const SALES_ORDER_NUMBER_PATTERN = /^ORD-\d{4}-\d{6}$/;
 
 /**
  * Pure decision helper (unit-testable): returns the official number to use, or
@@ -211,7 +211,7 @@ function pickSalesOrderNumber({ payload, rowNumber }) {
  */
 function nextSalesOrderNumber(rows) {
   const year = new Date().getFullYear();
-  const prefixToken = `SO-${year}-`;
+  const prefixToken = `ORD-${year}-`;
   let maxSeq = 0;
   for (const row of rows || []) {
     const data = row && typeof row === 'object'

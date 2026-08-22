@@ -176,6 +176,7 @@ const InternalToolsHub = lazyWithRetry('./views/InternalToolsHub', () => import(
 const Payments = lazyWithRetry('./views/sales/Payments', () => import('./views/sales/Payments'));
 const Orders = lazyWithRetry('./views/sales/Orders', () => import('./views/sales/Orders'));
 const QuotationRequests = lazyWithRetry('./views/sales/QuotationRequests', () => import('./views/sales/QuotationRequests'));
+const QuotationRequestsHub = lazyWithRetry('./views/sales/QuotationRequestsHub', () => import('./views/sales/QuotationRequestsHub'));
 const JobTickets = lazyWithRetry('./views/sales/JobTickets', () => import('./views/sales/JobTickets'));
 const Clients = lazyWithRetry('./views/sales/Clients', () => import('./views/sales/Clients'));
 const ShippingManager = lazyWithRetry('./views/sales/ShippingManager', () => import('./views/sales/ShippingManager'));
@@ -829,7 +830,7 @@ const AppLayout: React.FC = () => {
                   <Route path="/sales-flow" element={<SalesFlowHub />} />
                   <Route path="/sales-flow/pos" element={<ProtectedRoute permission="sales.pos"><POS /></ProtectedRoute>} />
                   <Route path="/sales-flow/quotations" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
-                  <Route path="/sales-flow/requests" element={<ProtectedRoute permission="sales.view"><QuotationRequests /></ProtectedRoute>} />
+                  <Route path="/sales-flow/requests" element={<ProtectedRoute permission="sales.view"><QuotationRequestsHub /></ProtectedRoute>} />
                   <Route path="/sales-flow/orders" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
                   <Route path="/sales-flow/invoices" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
                   <Route path="/sales-flow/subscriptions" element={<ProtectedRoute permission="sales.view"><SubscriptionsView /></ProtectedRoute>} />

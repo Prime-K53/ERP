@@ -133,6 +133,7 @@ export interface AdminQuotationRequest {
   request_number: string;
   customer_id: string;
   customer_name: string;
+  customer_email?: string;
   request_type: string;
   items: AdminRequestItem[];
   subtotal: number;
@@ -394,6 +395,9 @@ export const adminLifecycle = {
   requests: {
     list(status?: string): Promise<AdminQuotationRequest[]> {
       return adminPortalApi.get<AdminQuotationRequest[]>(`/requests${status ? `?status=${status}` : ''}`);
+    },
+    inbox(): Promise<AdminQuotationRequest[]> {
+      return adminPortalApi.get<AdminQuotationRequest[]>('/requests/inbox');
     },
     get(id: string): Promise<AdminQuotationRequest> {
       return adminPortalApi.get<AdminQuotationRequest>(`/requests/${id}`);

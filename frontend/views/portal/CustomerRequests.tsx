@@ -1,25 +1,41 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Plus, Loader2, ArrowUpRight, Search, RefreshCw, SlidersHorizontal, Trash2, ChevronRight } from 'lucide-react';
+import {
+  ClipboardList, Plus, Loader2, ArrowUpRight, Search, RefreshCw,
+  Trash2, ChevronRight, FileText, X, PackageCheck, MessageSquare,
+} from 'lucide-react';
 import { portalLifecycle, QuotationRequestRecord } from '../../services/portalApiClient';
-
-import { useCustomerAuth } from '../../context/CustomerAuthContext';
 import { useToast } from './components/Toast';
 import PortalPageHeader from './components/PortalPageHeader';
-import PortalCard from './components/PortalCard';
-import PortalButton from './components/PortalButton';
 import PortalInput from './components/PortalInput';
 import EmptyState from './components/EmptyState';
-import StatusBadge from './components/StatusBadge';
 import PortalLoadingSkeleton from './components/PortalLoadingSkeleton';
-import { DEFAULT_PAGE_SIZE, FRIENDLY_STATUS_MAP } from './constants';
-import { F } from './portalStyles';
+import ConfirmDialog from './components/ConfirmDialog';
+import { DEFAULT_PAGE_SIZE, FRIENDLY_STATUS_MAP, REQUEST_STATUS_META } from './constants';
+import { F, MONO } from './portalStyles';
 
-const SWIPE_THRESHOLD = 80;
+type RequestTab = 'all' | 'pending' | 'converted' | 'cancelled';
+
+const TABS: { key: RequestTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'converted', label: 'Converted' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
+const STATUS_TO_TAB: Record<string, RequestTab> = {
+  submitted: 'pending',
+  assigned: 'pending',
+  under_review: 'pending',
+  waiting_for_customer: 'pending',
+  ready_for_conversion: 'pending',
+  converted: 'converted',
+  rejected: 'cancelled',
+  cancelled: 'cancelled',
+};
 
 const CustomerRequests: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useCustomerAuth();
   const { addToast } = useToast();
   const [requests, setRequests] = useState<QuotationRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,22 +43,20 @@ const CustomerRequests: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [tab, setTab] = useState<RequestTab>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [confirmState, setConfirmState] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
-  const [showFilterSheet, setShowFilterSheet] = useState(false);
-  const [swipedId, setSwipedId] = useState<string | null>(null);
-  const touchStartX = useRef<number>(0);
-  const touchCurrentX = useRef<number>(0);
-  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [detailRequest, setDetailRequest] = useState<QuotationRequestRecord | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<QuotationRequestRecord | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await portalLifecycle.requests.list({ page, pageSize: DEFAULT_PAGE_SIZE, search: search || undefined, status: statusFilter || undefined });
+      const data = await portalLifecycle.requests.list({ page, pageSize: DEFAULT_PAGE_SIZE, search: search || undefined });
       if ('requests' in data && data.requests.length > 0) {
         setRequests(data.requests);
         setTotalPages(data.totalPages);
@@ -62,7 +76,7 @@ const CustomerRequests: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [page, search, statusFilter]);
+  }, [page, search]);
 
   useEffect(() => {
     load();
@@ -86,22 +100,41 @@ const CustomerRequests: React.FC = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, tab]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await load();
   };
 
-  const handleCancelClick = (id: string) => {
-    setConfirmState({ open: true, id });
-    setSwipedId(null);
+  const filtered = useMemo(() => {
+    return requests.filter((r) => {
+      const matchesTab = tab === 'all' || STATUS_TO_TAB[r.status] === tab;
+      const q = search.trim().toLowerCase();
+      const matchesSearch = !q ||
+        (r.request_number || '').toLowerCase().includes(q) ||
+        (r.customer_name || '').toLowerCase().includes(q) ||
+        (r.request_type || '').toLowerCase().includes(q);
+      return matchesTab && matchesSearch;
+    });
+  }, [requests, tab, search]);
+
+  const counts = useMemo(() => ({
+    all: requests.length,
+    pending: requests.filter((r) => STATUS_TO_TAB[r.status] === 'pending').length,
+    converted: requests.filter((r) => r.status === 'converted').length,
+    cancelled: requests.filter((r) => r.status === 'cancelled' || r.status === 'rejected').length,
+  }), [requests]);
+
+  const handleCancelClick = (r: QuotationRequestRecord) => {
+    setCancelTarget(r);
+    setConfirmOpen(true);
   };
 
   const handleCancelConfirm = async () => {
-    if (!confirmState.id) return;
-    const id = confirmState.id;
-    setConfirmState({ open: false, id: null });
+    if (!cancelTarget) return;
+    const id = cancelTarget.id;
+    setConfirmOpen(false);
     setCancellingId(id);
     try {
       await portalLifecycle.requests.cancel(id);
@@ -111,351 +144,374 @@ const CustomerRequests: React.FC = () => {
       addToast('error', err.message || 'Failed to cancel request');
     } finally {
       setCancellingId(null);
+      setCancelTarget(null);
     }
   };
 
-  const handleTouchStart = (id: string, e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchCurrentX.current = e.touches[0].clientX;
-    setSwipedId(prev => prev === id ? null : prev);
+  const canCancel = (status: string) => ['submitted', 'assigned', 'under_review', 'waiting_for_customer', 'ready_for_conversion'].includes(status);
+
+  const getStatusChip = (status: string) => {
+    const meta = REQUEST_STATUS_META[status] || { label: status, color: '#64748B', bg: '#F1F5F9' };
+    return (
+      <span style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+        padding: '3px 10px', borderRadius: 6,
+        background: meta.bg, color: meta.color,
+        whiteSpace: 'nowrap',
+      }}>
+        {FRIENDLY_STATUS_MAP[status] || status}
+      </span>
+    );
   };
-
-  const handleTouchMove = (id: string, e: React.TouchEvent) => {
-    touchCurrentX.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (id: string) => {
-    const diff = touchStartX.current - touchCurrentX.current;
-    if (diff > SWIPE_THRESHOLD) {
-      setSwipedId(id);
-    } else if (diff < -SWIPE_THRESHOLD) {
-      setSwipedId(null);
-    }
-  };
-
-  const sorted = useMemo(
-    () => [...requests].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()),
-    [requests]
-  );
-
-  const statusOptions = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const r of requests) {
-      const raw = r.status || '';
-      const friendly = FRIENDLY_STATUS_MAP[raw] || raw;
-      if (friendly && !map[friendly]) map[friendly] = raw;
-    }
-    return map;
-  }, [requests]);
-
-  const activeFilterCount = (statusFilter ? 1 : 0) + (search ? 1 : 0);
 
   if (loading && page === 1) return <div style={{ padding: 16 }}><PortalLoadingSkeleton type="table" count={6} /></div>;
 
   return (
-    <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
-      <div style={{ padding: '16px 20px 0' }}>
-        {error && (
-          <div style={{
-            background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 10, padding: '10px 14px', fontSize: 12.5,
-            marginBottom: 10, lineHeight: 1.4,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12
-          }}>
-            <span>{error}</span>
-            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B91C1C', padding: 4, flexShrink: 0 }} aria-label="Dismiss error">
-              <ArrowUpRight size={14} style={{ transform: 'rotate(45deg)' }} />
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <Search size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6' }} />
-            <PortalInput
-              label=""
-              placeholder="Search requests..."
-              value={search}
-              onChange={(v) => { setPage(1); setSearch(v); }}
-              onFocus={() => {}}
-              onBlur={() => {}}
-              style={{ paddingLeft: 42, borderRadius: 14, height: 48, fontSize: 15 }}
-            />
-          </div>
-          <button
-            onClick={() => setShowFilterSheet(true)}
-            style={{
-              width: 48, height: 48, borderRadius: 14, border: `1px solid ${activeFilterCount ? '#4ed3c7' : '#E9EDF3'}`,
-              background: activeFilterCount ? '#eef7f6' : '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0
-            }}
-          >
-            <SlidersHorizontal size={18} color={activeFilterCount ? '#146b60' : '#8A94A6'} />
-            {activeFilterCount > 0 && (
-              <span style={{
-                position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #1f8577, #0f544c)', color: '#fff',
-                fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                {activeFilterCount}
-              </span>
-            )}
+    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
+      {error && (
+        <div style={{
+          background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', borderRadius: 10, padding: '10px 14px', fontSize: 12.5,
+          marginBottom: 10, lineHeight: 1.4,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12
+        }}>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 4, flexShrink: 0 }} aria-label="Dismiss error">
+            <ArrowUpRight size={14} style={{ transform: 'rotate(45deg)' }} />
           </button>
         </div>
+      )}
 
-        {refreshing && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 0', color: '#146b60' }}>
-            <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Refreshing...</span>
-          </div>
-        )}
-      </div>
-
-      <div style={{ padding: '12px 20px 28px' }}>
-        {sorted.length === 0 ? (
-          <EmptyState
-            icon={ClipboardList}
-            title="No requests yet"
-            description="Submit a quotation or order request and track it here."
-            action={{ label: 'New Request', onClick: () => navigate('/portal/new-request') }}
-          />
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, color: '#8A94A6', fontWeight: 500 }}>
-                {total} request{total !== 1 ? 's' : ''} {statusFilter ? '• filtered' : ''}
-              </span>
-              <button onClick={handleRefresh} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#146b60', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}>
-                <RefreshCw size={14} /> Refresh
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {sorted.map((r, idx) => {
-                const itemCount = (r.items || []).reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-                const friendlyStatus = FRIENDLY_STATUS_MAP[r.status] || r.status;
-                const isSwiped = swipedId === r.id;
-                const canCancel = r.status === 'submitted' || r.status === 'assigned' || r.status === 'under_review' || r.status === 'waiting_for_customer';
-                return (
-                  <div
-                    key={r.id}
-                    style={{ position: 'relative', overflow: 'hidden', borderRadius: 18 }}
-                    onTouchStart={(e) => handleTouchStart(r.id, e)}
-                    onTouchMove={(e) => handleTouchMove(r.id, e)}
-                    onTouchEnd={() => handleTouchEnd(r.id)}
-                  >
-                    <div style={{
-                      position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 8px',
-                      background: 'linear-gradient(135deg, rgba(181,73,63,0.08), rgba(181,73,63,0.15))', borderRadius: 18,
-                      transform: isSwiped ? 'translateX(0)' : 'translateX(100%)', transition: 'transform .25s cubic-bezier(.4,0,.2,1)'
-                    }}>
-                      {canCancel && (
-                        <button
-                          onClick={() => handleCancelClick(r.id)}
-                          disabled={cancellingId === r.id}
-                          style={{
-                            width: 72, height: '100%', border: 'none', borderRadius: 18, cursor: 'pointer',
-                            background: 'linear-gradient(135deg, #b5493f, rgba(181,73,63,0.87))', color: '#fff',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                            boxShadow: '0 4px 12px -4px rgba(181,73,63,.5)'
-                          }}
-                        >
-                          {cancellingId === r.id ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={18} />}
-                          <span style={{ fontSize: 10, fontWeight: 700 }}>Cancel</span>
-                        </button>
-                      )}
-                    </div>
-
-                    <PortalCard
-                      hoverable
-                      onClick={() => navigate(`/portal/requests/${r.id}`)}
-                      style={{ transform: isSwiped ? 'translateX(-88px)' : 'translateX(0)', transition: 'transform .25s cubic-bezier(.4,0,.2,1)', position: 'relative', padding: 0, overflow: 'visible' }}
-                    >
-                      <div
-                        style={{
-                          borderRadius: 14, padding: '14px 16px', background: '#fff',
-                          border: '1px solid rgba(16,24,40,0.06)', borderLeft: '4px solid #d99a3f',
-                          display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', width: '100%',
-                          boxShadow: '0 1px 2px rgba(16,24,40,0.04)', transition: 'all .15s ease',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <div style={{ width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FEF3C7', flexShrink: 0 }}>
-                          <ClipboardList size={16} color="#b97e2b" />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0b3e39' }}>{r.request_number}</div>
-                          <div style={{ fontSize: 10, color: '#8A94A6', marginTop: 1, lineHeight: 1.3 }}>
-                            {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • {itemCount} item{itemCount === 1 ? '' : 's'} • K {Number(r.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                        <div style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, background: '#eef7f6', fontSize: 10, fontWeight: 600, color: '#0f544c', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, border: '1px solid #d3ece9' }}>
-                          View
-                          <ChevronRight size={10} />
-                        </div>
-                      </div>
-                    </PortalCard>
-                  </div>
-                );
-              })}
-            </div>
-
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, gap: 12 }}>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  style={{
-                    flex: 1, padding: '8px 14px', borderRadius: 10, border: '1px solid #E9EDF3', background: '#fff',
-                    cursor: page <= 1 ? 'not-allowed' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontSize: 12, fontWeight: 600, color: '#4A5568',
-                    transition: 'all .15s ease'
-                  }}
-                >
-                  Previous
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      style={{
-                        width: 32, height: 32, borderRadius: 8, border: p === page ? 'none' : '1px solid #E9EDF3',
-                        background: p === page ? '#008A4C' : '#fff',
-                        color: p === page ? '#fff' : '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        boxShadow: p === page ? '0 4px 10px -3px rgba(0,138,76,.6)' : 'none', transition: 'all .15s ease'
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  style={{
-                    flex: 1, padding: '8px 14px', borderRadius: 10, border: '1px solid #E9EDF3', background: '#fff',
-                    cursor: page >= totalPages ? 'not-allowed' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontSize: 12, fontWeight: 600, color: '#4A5568',
-                    transition: 'all .15s ease'
-                  }}
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Floating Action Button */}
-      <button
-        onClick={() => navigate('/portal/new-request')}
-        style={{
-          position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 18, border: 'none', cursor: 'pointer',
-          background: 'linear-gradient(135deg, #008A4C, #006B3A)',
-          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 8px 24px -8px rgba(0,138,76,.6)', zIndex: 40, transition: 'transform .15s ease'
+      <PortalPageHeader
+        title="Customer Requests"
+        subtitle="Review and track your quotation and order requests"
+        icon={ClipboardList}
+        action={{
+          label: 'New Request',
+          onClick: () => navigate('/portal/new-request'),
+          icon: Plus,
         }}
-        onTouchStart={() => {}}
-      >
-        <Plus size={24} strokeWidth={3} />
-      </button>
+      />
 
-      {/* Filter Bottom Sheet */}
-      {showFilterSheet && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
-          onClick={() => setShowFilterSheet(false)}
-        >
-          <div style={{ background: 'rgba(0,0,0,.4)', backdropFilter: 'blur(4px)', flex: 1 }} />
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: '24px 24px 0 0', padding: '20px 24px 28px',
-              boxShadow: '0 -8px 32px -16px rgba(0,0,0,.3)', animation: 'slideUp .3s cubic-bezier(.4,0,.2,1)'
-            }}
-          >
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#E9EDF3', margin: '0 auto 16px' }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1A202C', margin: 0 }}>Filters</h3>
-              <button onClick={() => { setStatusFilter(''); setSearch(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#146b60', fontSize: 13, fontWeight: 600 }}>
-                Clear all
-              </button>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, marginBottom: 8, display: 'block' }}>Status</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button
-                  onClick={() => { setStatusFilter(''); setShowFilterSheet(false); }}
-                  style={{
-                    padding: '10px 16px', borderRadius: 12, border: `1px solid ${!statusFilter ? '#4ed3c7' : '#E9EDF3'}`,
-                    background: !statusFilter ? '#eef7f6' : '#fff', color: !statusFilter ? '#0f544c' : '#0b3e39',
-                    fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease'
-                  }}
-                >
-                  All
-                </button>
-                {Object.entries(statusOptions).map(([label, raw]) => (
-                  <button
-                    key={raw}
-                    onClick={() => { setStatusFilter(raw); setShowFilterSheet(false); }}
-                    style={{
-                      padding: '10px 16px', borderRadius: 12, border: `1px solid ${statusFilter === raw ? '#4ed3c7' : '#E9EDF3'}`,
-                      background: statusFilter === raw ? '#eef7f6' : '#fff', color: statusFilter === raw ? '#0f544c' : '#0b3e39',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease'
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+      <style>{`
+        @keyframes cpoSlideUp { from { transform: translateY(100%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+      `}</style>
+      <div style={{ display: 'flex', gap: 6, padding: '6px 0', borderBottom: '1px solid #E9EDF3', marginBottom: 14 }}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
             <button
-              onClick={() => setShowFilterSheet(false)}
+              key={t.key}
+              onClick={() => setTab(t.key)}
               style={{
-                width: '100%', padding: '14px 0', borderRadius: 14, border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, #008A4C, #006B3A)', color: '#fff',
-                fontSize: 15, fontWeight: 700, boxShadow: '0 6px 16px -6px rgba(0,138,76,.5)'
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px', borderRadius: 8,
+                border: active ? '1px solid transparent' : '1px solid #E2E8F0',
+                background: active ? '#0F2C59' : '#fff',
+                color: active ? '#fff' : '#475569',
+                fontSize: 12, fontWeight: 700, letterSpacing: '0.05em',
+                cursor: 'pointer', transition: 'all .15s ease', lineHeight: 1.4,
               }}
             >
-              Show {total} result{total !== 1 ? 's' : ''}
+              {t.label}
+              <span style={{
+                marginLeft: 4, fontSize: 10, fontWeight: 700, borderRadius: 6, padding: '1px 7px',
+                background: active ? 'rgba(255,255,255,.18)' : '#F1F5F9', color: active ? '#fff' : '#64748B',
+              }}>
+                {counts[t.key]}
+              </span>
             </button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 14 }}>
+        <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6', pointerEvents: 'none' }} />
+        <PortalInput
+          label=""
+          placeholder="Search by request #, type, or item..."
+          value={search}
+          onChange={(v) => { setPage(1); setSearch(v); }}
+          onFocus={() => {}}
+          onBlur={() => {}}
+          style={{ paddingLeft: 40, height: 44, fontSize: 13 }}
+        />
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<ClipboardList size={28} />}
+          title="No requests found"
+          description={search ? 'Try adjusting your search or filters.' : 'Your requests will appear here once submitted.'}
+        />
+      ) : (
+        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #E9EDF3', overflow: 'hidden' }}>
+          {filtered.map((r, index) => {
+            const itemCount = (r.items || []).reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+            const subtotal = Number(r.subtotal || 0);
+            const isLast = index === filtered.length - 1;
+            const isCancelling = cancellingId === r.id;
+
+            return (
+              <div
+                key={r.id}
+                style={{
+                  padding: '14px 16px',
+                  borderBottom: isLast ? 'none' : '1px solid #F1F5F9',
+                  borderLeft: '3px solid transparent',
+                  background: '#fff',
+                  transition: 'all 200ms cubic-bezier(.4,0,.2,1)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#F8FAFC';
+                  e.currentTarget.style.borderLeftColor = '#0F2C59';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#fff';
+                  e.currentTarget.style.borderLeftColor = 'transparent';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
+                        {r.request_number}
+                      </span>
+                      {getStatusChip(r.status)}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', background: '#F1F5F9', padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase' }}>
+                        {r.request_type || 'quotation'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 3 }}>
+                      {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {' • '}{itemCount} item{itemCount === 1 ? '' : 's'}
+                      {' • '}<span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {canCancel(r.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCancelClick(r); }}
+                        disabled={isCancelling}
+                        style={{
+                          padding: '6px 12px', borderRadius: 8, border: '1px solid #FECACA', background: '#FFF7F7',
+                          color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 4, transition: 'all .15s ease',
+                        }}
+                      >
+                        {isCancelling ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
+                        Cancel
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setDetailRequest(r)}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff',
+                        color: '#0F2C59', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 4, transition: 'all .15s ease',
+                      }}
+                    >
+                      View <ChevronRight size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {r.quotation_number && (
+                  <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginTop: 2 }}>
+                    Quotation: #{r.quotation_number}
+                  </div>
+                )}
+                {r.sales_order_number && (
+                  <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginTop: 2 }}>
+                    Order: #{r.sales_order_number}
+                  </div>
+                )}
+                {r.status === 'waiting_for_customer' && (
+                  <div style={{ fontSize: 12, color: '#7C3AED', fontWeight: 600, marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <MessageSquare size={12} /> Waiting for your response
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, gap: 12 }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            style={{
+              flex: 1, padding: '8px 14px', borderRadius: 10, border: '1px solid #E9EDF3', background: '#fff',
+              cursor: page <= 1 ? 'not-allowed' : 'pointer', opacity: page <= 1 ? 0.4 : 1, fontSize: 12, fontWeight: 600, color: '#4A5568',
+              transition: 'all .15s ease'
+            }}
+          >
+            Previous
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: p === page ? 'none' : '1px solid #E9EDF0',
+                  background: p === page ? '#0F2C59' : '#fff',
+                  color: p === page ? '#fff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  boxShadow: p === page ? '0 4px 10px -3px rgba(15,44,89,.6)' : 'none', transition: 'all .15s ease'
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            style={{
+              flex: 1, padding: '8px 14px', borderRadius: 10, border: '1px solid #E9EDF3', background: '#fff',
+              cursor: page >= totalPages ? 'not-allowed' : 'pointer', opacity: page >= totalPages ? 0.4 : 1, fontSize: 12, fontWeight: 600, color: '#4A5568',
+              transition: 'all .15s ease'
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {detailRequest && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(2px)',
+          }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setDetailRequest(null); }}
+        >
+          <div style={{
+            background: '#fff', width: '100%', maxWidth: 640, maxHeight: '88vh', overflowY: 'auto',
+            borderRadius: '20px 20px 0 0', boxShadow: '0 -16px 48px rgba(2,8,23,.3)',
+            animation: 'cpoSlideUp .28s cubic-bezier(.16,1,.3,1)',
+          }}>
+            <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1A202C' }}>{detailRequest.request_number}</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#64748B' }}>
+                  {detailRequest.request_type === 'order' ? 'Order Request' : 'Quotation Request'}
+                  {' • '}{new Date(detailRequest.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <button onClick={() => setDetailRequest(null)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A94A6', padding: 4, borderRadius: 8 }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '14px 20px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                {getStatusChip(detailRequest.status)}
+                {detailRequest.quotation_number && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                    <FileText size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                    Quotation: #{detailRequest.quotation_number}
+                  </span>
+                )}
+                {detailRequest.sales_order_number && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                    <PackageCheck size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                    Order: #{detailRequest.sales_order_number}
+                  </span>
+                )}
+              </div>
+
+              {detailRequest.items && detailRequest.items.length > 0 && (
+                <div style={{ marginBottom: 14, border: '1px solid #E9EDF3', borderRadius: 12, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC' }}>
+                        <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Item</th>
+                        <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', width: 70 }}>Qty</th>
+                        <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', width: 100 }}>Price</th>
+                        <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', width: 100 }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailRequest.items.map((item, i) => (
+                        <tr key={i} style={{ borderTop: i > 0 ? '1px solid #F1F5F9' : 'none' }}>
+                          <td style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, color: '#1A202C' }}>{item.name}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 13, color: '#4A5568' }}>x{item.quantity}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 13, color: '#4A5568', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>K {Number(item.unitPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#1A202C', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
+                            K {((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ padding: '8px 12px', borderTop: '1px solid #E9EDF3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Subtotal</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#1A202C', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
+                      K {Number(detailRequest.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {detailRequest.notes && (
+                <div style={{ padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E9EDF3', marginBottom: 14 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Notes</div>
+                  <p style={{ margin: 0, fontSize: 13, color: '#334155', lineHeight: 1.5 }}>{detailRequest.notes}</p>
+                </div>
+              )}
+
+              {detailRequest.requested_delivery_date && (
+                <div style={{ fontSize: 12, color: '#64748B', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 600 }}>Requested Delivery:</span>
+                  {new Date(detailRequest.requested_delivery_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => { setDetailRequest(null); navigate(`/portal/requests/${detailRequest.id}`); }}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid #E9EDF3', background: '#fff',
+                    color: '#0F172A', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease',
+                  }}
+                >
+                  View Full Details
+                </button>
+                {canCancel(detailRequest.status) && (
+                  <button
+                    onClick={() => { setDetailRequest(null); setCancelTarget(detailRequest); setConfirmOpen(true); }}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+                      background: '#DC2626', color: '#fff', fontSize: 13, fontWeight: 700,
+                      boxShadow: '0 4px 12px -4px rgba(220,38,38,.5)', transition: 'all .15s ease',
+                    }}
+                  >
+                    Cancel Request
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Confirm Dialog */}
-      {confirmState.open && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(6px)', animation: 'fadeIn .2s ease' }} onClick={() => setConfirmState({ open: false, id: null })}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 24, width: '100%', maxWidth: 360, overflow: 'hidden',
-            boxShadow: '0 20px 40px -12px rgba(0,0,0,.4)', animation: 'scaleIn .2s cubic-bezier(.4,0,.2,1)'
-          }}>
-            <div style={{ padding: '22px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1A202C', margin: 0 }}>Cancel Request</h3>
-              <button onClick={() => setConfirmState({ open: false, id: null })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 10, color: '#8A94A6' }} aria-label="Close">
-                <ArrowUpRight size={18} style={{ transform: 'rotate(45deg)' }} />
-              </button>
-            </div>
-            <div style={{ padding: '16px 24px 24px', fontSize: 14, color: '#8A94A6', lineHeight: 1.6 }}>
-              Are you sure you want to cancel this request? This action cannot be undone.
-            </div>
-            <div style={{ display: 'flex', gap: 10, padding: '0 24px 24px' }}>
-              <button onClick={() => setConfirmState({ open: false, id: null })} style={{
-                flex: 1, padding: '14px 0', borderRadius: 14, border: '1px solid #E9EDF3', background: '#fff',
-                color: '#0b3e39', fontSize: 14, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease'
-              }}>
-                Keep Request
-              </button>
-              <button onClick={handleCancelConfirm} style={{
-                flex: 1, padding: '14px 0', borderRadius: 14, border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, #b5493f, rgba(181,73,63,0.87))', color: '#fff',
-                fontSize: 14, fontWeight: 700, boxShadow: '0 6px 16px -6px rgba(181,73,63,.5)', transition: 'all .15s ease'
-              }}>
-                Cancel Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Cancel Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Cancel Request"
+        message={cancelTarget ? `Are you sure you want to cancel request ${cancelTarget.request_number}? This action cannot be undone.` : ''}
+        confirmLabel="Cancel Request"
+        cancelLabel="Keep Request"
+        variant="danger"
+        onConfirm={handleCancelConfirm}
+        onCancel={() => { setConfirmOpen(false); setCancelTarget(null); }}
+      />
     </div>
   );
 };

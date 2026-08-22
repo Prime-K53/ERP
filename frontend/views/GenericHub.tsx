@@ -9,6 +9,7 @@ interface HubOption {
   icon:
     | React.ComponentType<{ size?: number; color?: string }>
     | React.ReactElement<{ size?: number; color?: string }>;
+  badge?: number | string;
 }
 
 interface GenericHubProps {
@@ -133,15 +134,30 @@ const GenericHub: React.FC<GenericHubProps> = ({ title, subtitle, options, accen
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <h3 style={{
-                  fontSize: '16px',
-                  fontWeight: 700,
-                  color: teal[800],
-                  margin: 0,
-                  letterSpacing: 0.01
-                }}>
-                  {option.label}
-                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+                  <h3 style={{
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    color: teal[800],
+                    margin: 0,
+                    letterSpacing: 0.01
+                  }}>
+                    {option.label}
+                  </h3>
+                  {option.badge ? (
+                    <span style={{
+                      padding: '1px 8px',
+                      background: '#dc2626',
+                      color: '#fff',
+                      borderRadius: 999,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      lineHeight: '18px',
+                      minWidth: 20,
+                      textAlign: 'center'
+                    }}>{option.badge}</span>
+                  ) : null}
+                </div>
                 <p style={{
                   fontSize: '11px',
                   color: inkSoft,

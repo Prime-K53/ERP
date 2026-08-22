@@ -16,6 +16,20 @@ export function formatDateTime(
   });
 }
 
+export function formatDate(
+  value?: string | Date | null,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!value) return '—';
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', options || {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function getDeliveryStatusBadge(
   status: DeliveryStatus | string
 ): { label: string; bg: string; color: string; border: string } {

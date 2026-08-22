@@ -107,6 +107,7 @@ export interface SalesOrder {
   invoiceNumber?: string | null;
   sourceRequestId?: string;
   sourceRequestNumber?: string;
+  referenceDoc?: string;
   source?: string;
   conversionDetails?: SalesOrderConversionDetails;
   convertedAt?: string;
@@ -134,6 +135,10 @@ export interface SalesOrder {
   updatedAt?: string;
   idempotencyKey?: string;
   companyId?: string;
+  /** Optimistic concurrency control version — bumped on every cloud write. */
+  version?: number;
+  /** Server-side updated_at timestamp, preserved during cloud-to-local merge. */
+  serverUpdatedAt?: string;
   [key: string]: any;
 }
 

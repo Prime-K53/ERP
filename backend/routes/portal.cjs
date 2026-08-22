@@ -175,10 +175,12 @@ router.post('/requests', idempotencyMiddleware(), async (req, res) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'At least one line item is required' });
     }
+    const customerRecord = customer_id ? await repo.getById('customers', customer_id).catch(() => null) : null;
+    const customerName = (customerRecord && customerRecord.name) || full_name || email || 'Customer';
     const result = await portalLifecycleService.createQuotationRequest({
       portalUserId: id,
       customerId: customer_id,
-      customerName: full_name || email || 'Customer',
+      customerName,
       requestType,
       items,
       notes,
@@ -1121,64 +1123,16 @@ router.post('/payments/intent', async (req, res) => {
   }
 });
 
-// Record a completed payment (called after Stripe confirms the payment)
+// Record a completed payment — DISABLED.
+// This endpoint was a SECOND, competing payment pipeline: it wrote bare
+// customer_payments rows and mutated invoices directly in the cloud,
+// bypassing the ERP transaction pipeline (no allocations snapshot, no
+// customer.balance/ledger update, lowercase statuses). Payments must follow
+// the approved workflow: customer submits a PAYMENT REQUEST → ERP verifies →
+// a real customer_payment is posted through the ERP accounting pipeline →
+// only then does the ledger change. Historical records are untouched.
 router.post('/payments', async (req, res) => {
-  try {
-    const { customer_id } = req.portalUser;
-    const { invoiceId, amount, currency = 'USD', paymentMethod = 'Card', reference, transactionId } = req.body;
-
-    const invoice = await portalService.getInvoiceById(invoiceId, customer_id);
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-
-    const remaining = Number(invoice.total_amount) - Number(invoice.paid_amount || 0) - Number(amount);
-    let newStatus;
-    if (remaining <= 0) newStatus = 'paid';
-    else newStatus = 'partially_paid';
-
-    const paymentId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-    const payment = {
-      id: paymentId,
-      customerId: customer_id,
-      customerName: req.portalUser.customer_name || '',
-      amount,
-      date: new Date().toISOString(),
-      method: paymentMethod,
-      reference: reference || transactionId || '',
-      allocations: [{ invoice_id: invoiceId, allocated: amount }],
-      createdBy: req.portalUser.id,
-    };
-    await repo.upsert('customer_payments', payment);
-
-    const oldInvoice = await repo.getById('invoices', invoiceId);
-    if (oldInvoice) {
-      await repo.upsert('invoices', {
-        ...oldInvoice,
-        paid_amount: Number(oldInvoice.paid_amount || 0) + Number(amount),
-        status: newStatus,
-        paid_at: new Date().toISOString(),
-      });
-    }
-
-    // Emit realtime event and notification
-    portalLifecycleService.publishErpEvent({
-      customerId: customer_id,
-      docType: 'invoice',
-      docId: String(invoiceId),
-      eventType: 'payment_made',
-      docNumber: invoice.invoice_number,
-      title: 'Payment received',
-      body: `A payment of K ${Number(amount).toFixed(2)} has been applied to invoice ${invoice.invoice_number}.`,
-      link: `#/portal/invoices/${invoiceId}`,
-      notificationType: 'payment_received',
-      actor: { type: 'customer', id: req.portalUser.id },
-      metadata: { amount, currency, paymentMethod },
-    });
-
-    res.json({ success: true, paymentId, status: newStatus });
-  } catch (err) {
-    console.error('[Portal] Record payment error:', err);
-    res.status(500).json({ error: 'Failed to record payment' });
-  }
+  res.status(403).json({ error: 'Direct portal payments are not available. Please submit a payment request; our team will confirm it once your payment is verified.' });
 });
 
 module.exports = router;

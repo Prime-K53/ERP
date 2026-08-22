@@ -58,12 +58,14 @@ const CheckoutForm: React.FC<{
       }
       if (paymentIntent && paymentIntent.status === 'succeeded') {
         const amountToRecord = Number(invoice.total_amount) - Number(invoice.paid_amount || 0);
-        await portalLifecycle.payments.recordPayment(invoice.id, amountToRecord, {
-          paymentMethod: 'Card',
-          currency: invoice.currency || 'USD',
-          transactionId: paymentIntent.id,
-        });
-        addToast('success', 'Payment successful!');
+        // Payments follow the approved workflow: submit a payment request
+        // (workflow only); ERP staff verify and post the real payment.
+        await portalLifecycle.payments.requestPayment(
+          invoice.id,
+          amountToRecord,
+          `Card payment ${paymentIntent.id}`,
+        );
+        addToast('success', 'Payment received — pending verification');
         onSuccess();
       }
     } catch (err: any) {

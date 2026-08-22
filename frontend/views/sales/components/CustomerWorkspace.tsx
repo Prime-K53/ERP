@@ -37,6 +37,7 @@ import type { Referral, ReferralReward } from '../../../types/referral';
 import type { ReferralTimelineEntry, ReferralAuditEntry } from '../../../types/referral-extended';
 import { EngagementDashboard } from './EngagementDashboard';
 import { EngagementTimeline } from './EngagementTimeline';
+import { buildLedgerFromRecords } from '../../../services/customerLedger';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -322,12 +323,23 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
   const activeGroupTitle = menuGroups.find(g => g.items.some(i => i.id === activeTab))?.title || 'Customer Profile';
   const activeItemLabel = menuGroups.flatMap(g => g.items).find(i => i.id === activeTab)?.label || activeTab;
 
+  // Canonical ledger — single authoritative definition shared with the
+  // backend (services/customerLedger.ts). The stored customers.balance field
+  // is a deprecated cache and is no longer the financial source of truth.
+  const canonicalLedger = useMemo(
+    () => buildLedgerFromRecords({ customerId: customer.id, invoices: customerInvoices, payments: customerPaymentsList }),
+    [customer.id, customerInvoices, customerPaymentsList]
+  );
+
   // KPIs
   const kpis = useMemo(() => {
     const totalInvoiced = customerInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
     const totalPaid = customerInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
     const overdueBalance = customerInvoices
-      .filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled' && isAfter(new Date(), parseISO(inv.dueDate)))
+      .filter(inv => {
+        const status = String(inv.status || '').toLowerCase();
+        return status !== 'paid' && status !== 'cancelled' && status !== 'voided' && isAfter(new Date(), parseISO(inv.dueDate));
+      })
       .reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0);
 
     const ytdSales = customerInvoices
@@ -337,55 +349,39 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
     const lastInvoice = customerInvoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
     return {
-      balance: customer.balance || 0,
+      balance: canonicalLedger.closingBalance,
       overdueBalance,
       creditLimit: customer.creditLimit || 0,
-      outstandingBalance: customerInvoices
-        .filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled')
-        .reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0),
+      outstandingBalance: canonicalLedger.outstandingBalance,
       ytdSales,
       lastInvoiceTotal: lastInvoice?.totalAmount || 0,
       lastInvoiceDate: lastInvoice?.date || null
     };
-  }, [customer, customerInvoices]);
+  }, [customer, customerInvoices, canonicalLedger]);
 
   const { openingBalance, ledgerEntries } = useMemo(() => {
-    // Combine invoices and payments into a chronological ledger
-    const allEntries = [
-      ...customerInvoices.map(inv => ({
-        date: inv.date,
-        id: inv.id,
-        memo: inv.memo || 'Invoice',
-        totalAmount: inv.totalAmount,
-        subAccountId: inv.subAccountId,
-        type: 'Invoice'
-      })),
-      ...customerPaymentsList.map(payment => ({
-        date: payment.date,
-        id: payment.id,
-        memo: payment.memo || 'Customer Payment',
-        amount: payment.amount,
-        subAccountId: payment.subAccountId,
-        type: 'Payment'
-      }))
-    ]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Canonical ledger transactions (validated inclusion/sign/ordering rules),
+    // enriched with display-only metadata (memo, sub-account) from the raw
+    // records. The running balances come exclusively from the canonical
+    // module — never recomputed locally.
+    const invMeta = new Map(customerInvoices.map(inv => [String(inv.id), inv]));
+    const payMeta = new Map(customerPaymentsList.map(p => [String(p.id), p]));
 
-    // Calculate running balance for ALL entries first to get correct opening balance
-    let balance = 0;
-    const entriesWithBalance = allEntries.map(entry => {
-      const debit = 'totalAmount' in entry ? entry.totalAmount : 0;
-      const credit = 'amount' in entry ? entry.amount : 0;
-      balance += (debit - credit);
-
-      const accountName = entry.subAccountId ?
-        customer.subAccounts?.find(s => s.id === entry.subAccountId)?.name : 'Main Account';
-
+    const entriesWithBalance = canonicalLedger.transactions.map(tx => {
+      const meta: any = tx.type === 'payment' ? payMeta.get(tx.id) : invMeta.get(tx.id);
+      const subAccountId = meta?.subAccountId;
+      const accountName = subAccountId
+        ? customer.subAccounts?.find(s => s.id === subAccountId)?.name
+        : 'Main Account';
       return {
-        ...entry,
-        debit,
-        credit,
-        runningBalance: balance,
+        date: tx.date || '',
+        id: tx.id,
+        memo: meta?.memo || (tx.type === 'payment' ? 'Customer Payment' : 'Invoice'),
+        subAccountId,
+        type: tx.type === 'payment' ? 'Payment' : 'Invoice',
+        debit: tx.debit,
+        credit: tx.credit,
+        runningBalance: tx.balance,
         accountName
       };
     });
@@ -393,16 +389,25 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
     const startDate = ledgerStartDate ? parseISO(ledgerStartDate) : null;
     const endDate = ledgerEndDate ? parseISO(ledgerEndDate) : null;
 
+    // Undated entries sort to epoch 0 — matching the canonical module's
+    // deterministic ordering.
+    const tsOf = (s: string) => {
+      const t = new Date(s).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const startT = startDate ? startDate.getTime() : null;
+    const endT = endDate ? endDate.getTime() : null;
+
     // Opening balance is the balance of the last entry before the start date
-    const lastEntryBeforeStart = startDate
-      ? entriesWithBalance.filter(e => parseISO(e.date) < startDate).pop()
+    const lastEntryBeforeStart = startT != null
+      ? entriesWithBalance.filter(e => tsOf(e.date) < startT!).pop()
       : null;
     const openingBal = lastEntryBeforeStart ? lastEntryBeforeStart.runningBalance : 0;
 
     const filtered = entriesWithBalance.filter(item => {
-      const date = parseISO(item.date);
-      const isAfterStart = !startDate || date >= startDate;
-      const isBeforeEnd = !endDate || date <= endDate;
+      const itemTs = tsOf(item.date);
+      const isAfterStart = startT == null || itemTs >= startT;
+      const isBeforeEnd = endT == null || itemTs <= endT;
 
       const matchesType = ledgerTypeFilter === 'All' ||
         (ledgerTypeFilter === 'Invoice' && item.type === 'Invoice') ||
@@ -416,7 +421,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
     });
 
     return { openingBalance: openingBal, ledgerEntries: filtered };
-  }, [customerInvoices, customerPaymentsList, ledgerStartDate, ledgerEndDate, ledgerTypeFilter, ledgerSubAccountFilter, customer.subAccounts]);
+  }, [canonicalLedger, customerInvoices, customerPaymentsList, ledgerStartDate, ledgerEndDate, ledgerTypeFilter, ledgerSubAccountFilter, customer.subAccounts]);
 
   const handleExportLedger = () => {
     const headers = ['Date', 'Reference', 'Description', 'Account', 'Debit', 'Credit', 'Balance'];

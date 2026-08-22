@@ -5,13 +5,14 @@ import { DocLink } from '../../../components/DocLink';
 import { useDocumentPreview } from '../../../hooks/useDocumentPreview';
 import { useAuth } from '../../../context/AuthContext';
 import { Quotation, Invoice, JobOrder, RecurringInvoice, DeliveryNote, CartItem, SalesExchange, Order } from '../../../types';
+import { AdminQuotationRequest } from '../../../services/adminPortalClient';
 import { WhatsAppLogo } from '../../../components/Icons';
 import { usePagination } from '../../../hooks/usePagination';
 import Pagination from '../../../components/Pagination';
 import { OfflineImage } from '../../../components/OfflineImage';
 import { mapToInvoiceData } from '../../../utils/pdfMapper';
 import { resolveTransactionPricingSummary } from '../../../utils/pricingBreakdown';
-import { Edit2, Trash2, Star, List, LayoutGrid, CheckCircle, Check, Clock, User, Calendar, Box, Eye, Send, Copy, Plus, Phone, ChevronRight, FileText, FileCheck, Briefcase, Mail, MessageCircle, Repeat, XCircle, Archive, History as HistoryIcon, Users, RefreshCw, ArrowUp, ArrowDown, Link as LinkIcon, Paperclip, CalendarClock, AlertTriangle, Download, Truck, MoreVertical, Play, Pause, Package, Globe, DollarSign, TrendingUp, Zap, Target, Share2, ExternalLink, PlayCircle, Coins, Wallet, ShoppingBag, Printer, Search, X } from 'lucide-react';
+import { Edit2, Trash2, Star, List, LayoutGrid, CheckCircle, Check, Clock, User, Calendar, Box, Eye, Send, Copy, Plus, Phone, ChevronRight, FileText, FileCheck, Briefcase, Mail, MessageCircle, Repeat, XCircle, Archive, History as HistoryIcon, Users, RefreshCw, ArrowUp, ArrowDown, Link as LinkIcon, Paperclip, CalendarClock, AlertTriangle, Download, Truck, MoreVertical, Play, Pause, Package, Globe, DollarSign, TrendingUp, Zap, Target, Share2, ExternalLink, PlayCircle, Coins, Wallet, ShoppingBag, Printer, Search, X, ArrowUpRight, MessageSquare } from 'lucide-react';
 import { TableEmptyState } from '../../../components/EmptyState';
 
 const paper = '#FEFDFB', ink = '#23282A', inkSoft = '#5c6567', hairline = '#e4ddd1';
@@ -427,11 +428,11 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-[#5c6567]">Total:</span>
-                                        <span className="font-bold text-[#23282A]">{companyConfig.currencySymbol}{item.totalAmount.toLocaleString()}</span>
+                                        <span className="font-bold text-[#23282A]">{companyConfig.currencySymbol}{(item.totalAmount || 0).toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-[#5c6567]">Paid:</span>
-                                        <span className="font-bold text-[#1f8577]">{companyConfig.currencySymbol}{item.paidAmount.toLocaleString()}</span>
+                                        <span className="font-bold text-[#1f8577]">{companyConfig.currencySymbol}{(item.paidAmount || 0).toLocaleString()}</span>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
@@ -501,11 +502,11 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                                         <td className="table-body-cell text-left font-medium text-slate-900 truncate">
                                             {o.customerName}
                                             <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">
-                                                {companyConfig.currencySymbol}{o.totalAmount.toLocaleString()} · {new Date(o.orderDate).toLocaleDateString()}
+                                                {companyConfig.currencySymbol}{(o.totalAmount || 0).toLocaleString()} · {new Date(o.orderDate).toLocaleDateString()}
                                             </span>
                                         </td>
-                                        <td className="table-body-cell text-right font-bold finance-nums truncate hidden sm:table-cell">{companyConfig.currencySymbol}{o.totalAmount.toLocaleString()}</td>
-                                        <td className="table-body-cell text-right font-bold text-emerald-600 finance-nums truncate hidden lg:table-cell">{companyConfig.currencySymbol}{o.paidAmount.toLocaleString()}</td>
+                                        <td className="table-body-cell text-right font-bold finance-nums truncate hidden sm:table-cell">{companyConfig.currencySymbol}{(o.totalAmount || 0).toLocaleString()}</td>
+                                        <td className="table-body-cell text-right font-bold text-emerald-600 finance-nums truncate hidden lg:table-cell">{companyConfig.currencySymbol}{(o.paidAmount || 0).toLocaleString()}</td>
                                         <td className="table-body-cell text-center">
                                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${o.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                                 o.status === 'Paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
@@ -1609,6 +1610,194 @@ export const RecurringList: React.FC<ListProps<RecurringInvoice>> = (props) => {
                 </div>
                 <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
             </div>
+        </div>
+    );
+};
+
+export const QuotationRequestList: React.FC<ListProps<AdminQuotationRequest> & { onAction?: (item: AdminQuotationRequest, action: string) => void; customerNameMap?: Record<string, string> }> = (props) => {
+    const { companyConfig } = useAuth();
+    const { openMenuId, menuPos, menuRef, handleContextMenu, handleRowClick, setOpenMenuId } = useContextMenu();
+    const { hoveredId, hoverPos, onMouseEnter, onMouseMove, onMouseLeave } = useHoverTimer(2000);
+
+    const { currentItems, currentPage, maxPage, totalItems, next, prev, first, last, setItemsPerPage, itemsPerPage } = usePagination(props.data, props.viewMode === 'Card' ? CARD_ITEMS_PER_PAGE : LIST_ITEMS_PER_PAGE);
+
+    const currentRequest = (props.data || []).find((d: any) => d.id === openMenuId);
+    const hoveredRequest = (props.data || []).find((d: any) => d.id === hoveredId);
+
+    const requestStatusMeta: Record<string, { label: string; color: string; bg: string }> = {
+        draft: { label: 'Draft', color: '#64748b', bg: '#f1f5f9' },
+        submitted: { label: 'Submitted', color: '#1d4ed8', bg: '#eff6ff' },
+        assigned: { label: 'Assigned', color: '#0f766e', bg: '#f0fdfa' },
+        under_review: { label: 'Under Review', color: '#b45309', bg: '#fffbeb' },
+        waiting_for_customer: { label: 'Waiting', color: '#7c3aed', bg: '#f5f3ff' },
+        ready_for_conversion: { label: 'Ready', color: '#047857', bg: '#ecfdf5' },
+        converted: { label: 'Converted', color: '#0f766e', bg: '#f0fdfa' },
+        rejected: { label: 'Rejected', color: '#b91c1c', bg: '#fef2f2' },
+        cancelled: { label: 'Cancelled', color: '#64748b', bg: '#f1f5f9' },
+    };
+
+    const renderMenu = (r: AdminQuotationRequest) => {
+        const menuWidth = 256;
+        const menuHeight = 400;
+        let x = menuPos!.x;
+        let y = menuPos!.y;
+        if (x + menuWidth > window.innerWidth) x = Math.max(0, window.innerWidth - menuWidth);
+        if (y + menuHeight > window.innerHeight) y = Math.max(0, window.innerHeight - menuHeight);
+
+        return (
+            <div
+                ref={menuRef}
+                className="fixed w-64 bg-[#FEFDFB]/95 backdrop-blur-xl rounded-xl shadow-2xl border border-[#e4ddd1] z-[70] animate-in fade-in zoom-in-95 duration-100 flex flex-col py-1 text-left overflow-y-auto custom-scrollbar"
+                style={{ top: y, left: x, maxHeight: '90vh' }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="px-4 py-2 border-b border-[#e4ddd1] text-[10px] font-bold text-[#5c6567] uppercase tracking-tight bg-[#eef7f6] rounded-t-xl shrink-0">Request Actions</div>
+                <div className="overflow-y-auto custom-scrollbar flex-1">
+                    <button onClick={() => { setOpenMenuId(null); props.onView(r); }} className="w-full px-4 py-2 text-xs font-medium text-[#23282A] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                        <FileText size={14} /> View Detail
+                    </button>
+                    {r.status !== 'converted' && r.request_type !== 'order' && (
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_quote'); }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                            <FileCheck size={14} /> Generate Quotation
+                        </button>
+                    )}
+                    {r.status === 'ready_for_conversion' && r.request_type === 'order' && (
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_order'); }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                            <Truck size={14} /> Generate Sales Order
+                        </button>
+                    )}
+                    {r.status !== 'converted' && r.status !== 'rejected' && (
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'reject'); }} className="w-full px-4 py-2 text-xs font-medium text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                            <XCircle size={14} /> Reject Request
+                        </button>
+                    )}
+                    <div className="my-1 border-t border-[#e4ddd1]"></div>
+                    {r.quotation_number && (
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_quotation'); }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                            <ArrowUpRight size={14} /> View Quotation {r.quotation_number}
+                        </button>
+                    )}
+                    {r.sales_order_number && (
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_order'); }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                            <ArrowUpRight size={14} /> View Order {r.sales_order_number}
+                        </button>
+                    )}
+                    <div className="my-1 border-t border-[#e4ddd1]"></div>
+                    <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'delete'); }} className="w-full px-4 py-2 text-xs text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                        <Trash2 size={14} /> Delete
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col h-full w-full">
+            {openMenuId && menuPos && currentRequest && renderMenu(currentRequest)}
+
+            {props.viewMode === 'Card' ? (
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
+                        {(currentItems || []).map((item: any) => {
+                            const meta = requestStatusMeta[item.status] || { label: item.status, color: '#475569', bg: '#f8fafc' };
+                            const subtotal = (item.items || []).reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+                            return (
+                                <div key={item.id} onClick={() => props.onView(item)} onMouseEnter={(e) => onMouseEnter(item.id, e)} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}
+                                    className="bg-[#FEFDFB] border border-[#e4ddd1] rounded-2xl p-4 cursor-pointer hover:shadow-md hover:border-[#a6d9d3] transition-all group">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-2 rounded-lg bg-[#eef7f6] text-[#1f8577]"><MessageSquare size={16} /></div>
+                                            <div>
+                                                <p className="text-xs font-bold text-[#23282A] font-mono">{item.request_number}</p>
+                                                <p className="text-[10px] text-[#5c6567]">{item.request_type || 'quotation'}</p>
+                                            </div>
+                                        </div>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '33' }}>{meta.label}</span>
+                                    </div>
+                                    <p className="text-xs text-[#5c6567] mb-2 truncate">{props.customerNameMap?.[item.customer_id] || item.customer_name || 'Unknown Customer'}</p>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-[#23282A] font-mono">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-[10px] text-[#5c6567]">{new Date(item.created_at).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="mt-3">
+                        <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-sm border border-white/60 overflow-hidden w-full flex flex-col">
+                    {(props.searchTerm !== undefined || props.onSearchChange) && (
+                        <div className="p-3 border-b border-slate-200/60 flex justify-between items-center bg-slate-50/30 shrink-0">
+                            <div className="relative w-full max-w-md">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5c6567]" size={14} />
+                                <input type="text" placeholder="Search requests..." value={props.searchTerm || ''} onChange={e => props.onSearchChange?.(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 border border-slate-200/80 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/50 font-normal" />
+                                {props.searchTerm && props.onSearchClear && (
+                                    <button onClick={props.onSearchClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5c6567] hover:text-slate-600"><X size={14} /></button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
+                        <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
+                            <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <SortableTh field="request_number" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%]">Request No.</SortableTh>
+                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%] hidden sm:table-cell">Date</SortableTh>
+                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%]">Customer</SortableTh>
+                                    <SortableTh field="request_type" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%] hidden md:table-cell">Type</SortableTh>
+                                    <SortableTh field="total" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right md:w-[14%] hidden sm:table-cell">Total</SortableTh>
+                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14%]">Status</SortableTh>
+                                    <th className="table-header text-center md:w-[16%]">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100/50">
+                                {(currentItems || []).length === 0 ? (
+                                    <tr><td colSpan={7} className="text-center py-12 text-[#5c6567] text-xs">No quotation requests found.</td></tr>
+                                ) : (currentItems || []).map((r: any) => {
+                                    const meta = requestStatusMeta[r.status] || { label: r.status, color: '#475569', bg: '#f8fafc' };
+                                    const subtotal = (r.items || []).reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+                                    const isSelected = props.selectedId === r.id;
+                                    return (
+                                        <tr key={r.id} className={`transition-colors cursor-pointer group ${isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-blue-50/50 border-l-4 border-l-transparent'}`}
+                                            onClick={() => props.onView(r)} onContextMenu={(e) => handleContextMenu(e, r.id)}
+                                            onMouseEnter={(e) => onMouseEnter(r.id, e)} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+                                            <td className="table-body-cell text-left font-mono text-slate-500 font-bold truncate">{r.request_number}</td>
+                                            <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{new Date(r.created_at).toLocaleDateString()}</td>
+                                            <td className="table-body-cell text-left font-medium text-slate-900 truncate">
+                                                {props.customerNameMap?.[r.customer_id] || r.customer_name || 'Unknown Customer'}
+                                                <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">K {subtotal.toLocaleString()} · {new Date(r.created_at).toLocaleDateString()}</span>
+                                            </td>
+                                            <td className="table-body-cell text-left text-xs capitalize hidden md:table-cell">{r.request_type || 'quotation'}</td>
+                                            <td className="table-body-cell text-right font-medium finance-nums truncate hidden sm:table-cell">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                            <td className="table-body-cell text-center">
+                                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '33' }}>{meta.label}</span>
+                                            </td>
+                                            <td className="table-body-cell text-center" onClick={e => e.stopPropagation()}>
+                                                <div className="flex justify-center gap-0.5 md:gap-1 items-center shrink-0">
+                                                    <button onClick={(e) => { e.stopPropagation(); props.onView(r); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="View Detail">
+                                                        <ChevronRight size={12} className="md:w-[14px] md:h-[14px]" />
+                                                    </button>
+                                                    {r.status !== 'converted' && r.request_type !== 'order' && (
+                                                        <button onClick={(e) => { e.stopPropagation(); props.onAction?.(r, 'generate_quote'); }} className="p-1 md:p-1.5 text-[#1f8577] hover:text-[#0f544c] bg-slate-50 hover:bg-[#eef7f6] border border-transparent hover:border-[#a6d9d3] rounded transition-all hidden sm:flex" title="Generate Quotation">
+                                                            <FileCheck size={12} className="md:w-[14px] md:h-[14px]" />
+                                                        </button>
+                                                    )}
+                                                    <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, r.id); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={12} className="md:w-[14px] md:h-[14px]" /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
+                </div>
+            )}
         </div>
     );
 };

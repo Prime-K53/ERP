@@ -14,6 +14,7 @@ import { api } from '../services/api';
 import { examinationBatchService } from '../services/examinationBatchService';
 import { jobTicketConversionService } from '../services/jobTicketConversionService';
 import { generateNextSalesInvoiceNumber } from '../services/documentNumberService';
+import { salesOrderService } from '../services/salesOrderService';
 import { addDays, addMonths, addYears, isBefore, parseISO, format, isSameDay } from 'date-fns';
 import { aggregateMarketAdjustmentSnapshots, attachPricingBreakdown, summarizePricingBreakdown } from '../utils/pricingBreakdown';
 
@@ -1294,7 +1295,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     try {
                         const orderToSave: SalesOrder = {
                             ...order,
-                            id: order.id || generateNextId('SO', salesStore.salesOrders, companyConfig)
+                            id: order.id || salesOrderService.generateProvisionalOrderId(salesStore.salesOrders, 'SO')
                         };
 
                         // Check availability before confirming

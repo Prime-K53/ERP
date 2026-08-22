@@ -1740,24 +1740,24 @@ const Orders: React.FC = () => {
                              </div>
                          ))}
                      </>
-                 ) : activeView === 'Orders' ? (
-                     <>
-                         {[
-                             { label: 'Total Orders', value: `${currency}${orderStats.totalOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: '#1f8577', bg: '#eef7f6' },
-                             { label: 'Completed', value: `${orderStats.completedCount} orders`, icon: CheckCircle, color: '#1f8577', bg: '#eef7f6' },
-                             { label: 'Pending Value', value: `${currency}${orderStats.pendingValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Clock, color: '#1f8577', bg: '#eef7f6' },
-                             { label: 'Outstanding', value: `${currency}${orderStats.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, color: '#1f8577', bg: '#eef7f6' }
-                         ].map((item, idx) => (
-                             <div key={idx} onClick={() => {}} style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 14, background: '#FEFDFB', border: '1.4px solid #e4ddd1', borderLeft: '4px solid ' + item.color, boxShadow: '0 1px 3px rgba(0,0,0,.04)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'transform .15s ease, box-shadow .15s ease' }}>
-                                 <div style={{ padding: 10, borderRadius: 10, background: item.bg, color: item.color, display: 'inline-flex' }}><item.icon size={20} /></div>
-                                 <div style={{ minWidth: 0 }}>
-                                     <p style={{ fontSize: 10, fontWeight: 700, color: '#5c6567', textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{item.label}</p>
-                                     <p style={{ fontSize: 18, fontWeight: 700, color: '#23282A', margin: 0, fontFamily: "'JetBrains Mono', monospace", letterSpacing: -0.2 }}>{item.value}</p>
-                                 </div>
-                             </div>
-                         ))}
-                     </>
-                 ) : null}
+                  ) : activeView === 'Orders' ? (
+                      <>
+                          {[
+                              { label: 'Total Orders', value: `${currency}${orderStats.totalOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: '#1f8577', bg: '#eef7f6' },
+                              { label: 'Completed', value: `${orderStats.completedCount} orders`, icon: CheckCircle, color: '#1f8577', bg: '#eef7f6' },
+                              { label: 'Pending Value', value: `${currency}${orderStats.pendingValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Clock, color: '#1f8577', bg: '#eef7f6' },
+                              { label: 'Outstanding', value: `${currency}${orderStats.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, color: '#1f8577', bg: '#eef7f6' }
+                          ].map((item, idx) => (
+                              <div key={idx} onClick={() => {}} style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 14, background: '#FEFDFB', border: '1.4px solid #e4ddd1', borderLeft: '4px solid ' + item.color, boxShadow: '0 1px 3px rgba(0,0,0,.04)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'transform .15s ease, box-shadow .15s ease' }}>
+                                  <div style={{ padding: 10, borderRadius: 10, background: item.bg, color: item.color, display: 'inline-flex' }}><item.icon size={20} /></div>
+                                  <div style={{ minWidth: 0 }}>
+                                      <p style={{ fontSize: 10, fontWeight: 700, color: '#5c6567', textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{item.label}</p>
+                                      <p style={{ fontSize: 18, fontWeight: 700, color: '#23282A', margin: 0, fontFamily: "'JetBrains Mono', monospace", letterSpacing: -0.2 }}>{item.value}</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </>
+                  ) : null}
              </div>
 
             {activeView === 'Invoices' && showVisualDashboard && (
@@ -1781,7 +1781,7 @@ const Orders: React.FC = () => {
                                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#5c6567' }} tickFormatter={(val) => `${currency}${val / 1000} k`} />
                                     <Tooltip
                                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                                        formatter={(val) => [`${currency}${val.toLocaleString()} `]}
+                                        formatter={(val) => [`${currency}${(val || 0).toLocaleString()} `]}
                                     />
                                     <Bar dataKey="revenue" fill="#1f8577" radius={[4, 4, 0, 0]} barSize={30} />
                                     <Bar dataKey="profit" fill="#3fa294" radius={[4, 4, 0, 0]} barSize={30} />

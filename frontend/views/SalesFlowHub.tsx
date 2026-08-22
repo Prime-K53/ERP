@@ -4,12 +4,6 @@ import GenericHub from './GenericHub';
 
 const options = [
   {
-    label: 'Quotation Requests',
-    description: 'Review customer requests, issue official quotations, and convert accepted quotes into orders.',
-    path: '/sales-flow/requests',
-    icon: Inbox,
-  },
-  {
     label: 'Quotations',
     description: 'Generate professional estimates and track customer approval status.',
     path: '/sales-flow/quotations',

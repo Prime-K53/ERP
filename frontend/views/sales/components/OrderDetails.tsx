@@ -135,8 +135,8 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                                                 <DocLink docNumber={item.productId} targetPage="/inventory" rowId={`item-${item.productId}`} currentPage={location.pathname} />
                                                             </div>
                                                         </td>
-                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 500, color: ink }}>{currency}{item.unitPrice.toLocaleString()}</td>
-                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: ink }}>{currency}{item.subtotal.toLocaleString()}</td>
+                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 500, color: ink }}>{currency}{(item.unitPrice || 0).toLocaleString()}</td>
+                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: ink }}>{currency}{(item.subtotal || 0).toLocaleString()}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -175,21 +175,21 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                             {order.tax && order.tax > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,.6)', marginBottom: 8 }}>
                                                     <span>Tax ({order.taxRate}%)</span>
-                                                    <span>{currency}{order.tax.toLocaleString()}</span>
+                                                    <span>{currency}{(order.tax || 0).toLocaleString()}</span>
                                                 </div>
                                             )}
                                             <div style={{ height: 1, background: 'rgba(255,255,255,.1)', margin: '8px 0' }} />
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.08, color: amber[300] }}>Total Amount</span>
-                                                <span style={{ fontSize: 24, fontWeight: 800 }}>{currency}{order.totalAmount.toLocaleString()}</span>
+                                                <span style={{ fontSize: 24, fontWeight: 800 }}>{currency}{(order.totalAmount || 0).toLocaleString()}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
                                                 <span style={{ fontSize: 11, color: '#6ee7b7' }}>Paid Amount</span>
-                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#6ee7b7' }}>{currency}{order.paidAmount.toLocaleString()}</span>
+                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#6ee7b7' }}>{currency}{(order.paidAmount || 0).toLocaleString()}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
                                                 <span style={{ fontSize: 11, color: '#fca5a5' }}>Balance Due</span>
-                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#fca5a5' }}>{currency}{order.remainingBalance.toLocaleString()}</span>
+                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#fca5a5' }}>{currency}{(order.remainingBalance || 0).toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -209,7 +209,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                                             <DollarSign size={20} />
                                                         </div>
                                                         <div>
-                                                            <div style={{ fontWeight: 700, color: ink }}>{currency}{payment.amountPaid.toLocaleString()}</div>
+                                                            <div style={{ fontWeight: 700, color: ink }}>{currency}{(payment.amountPaid || 0).toLocaleString()}</div>
                                                             <div style={{ fontSize: 11, color: inkSoft, marginTop: 2 }}>via {payment.paymentMethod} &bull; {new Date(payment.paymentDate).toLocaleDateString()}</div>
                                                         </div>
                                                     </div>

@@ -934,25 +934,22 @@ export const portalLifecycle = {
     get(id: string): Promise<any> {
       return portalApi.get(`/payments/${id}`);
     },
+    /**
+     * Submit a PAYMENT REQUEST (workflow only — no money moves, no invoice
+     * mutation). ERP staff verify the bank payment and post a real
+     * customer_payment through the accounting pipeline; the ledger changes
+     * only then. Direct portal payment recording is disabled server-side.
+     */
+    requestPayment(invoiceId: string, requestedAmount?: number, note?: string): Promise<any> {
+      return portalApi.post('/payment-requests', {
+        invoiceId,
+        requestedAmount,
+        note,
+      });
+    },
     /** Create a Stripe PaymentIntent (or mock client secret) for an invoice */
     createIntent(invoiceId: string, amount: number, currency?: string): Promise<{ clientSecret: string; mode: string }> {
       return portalApi.post('/payments/intent', { invoiceId, amount, currency });
-    },
-    /** Record a completed payment against an invoice */
-    recordPayment(invoiceId: string, amount: number, options?: {
-      currency?: string;
-      paymentMethod?: string;
-      reference?: string;
-      transactionId?: string;
-    }): Promise<{ success: boolean; paymentId: string; status: string }> {
-      return portalApi.post('/payments', {
-        invoiceId,
-        amount,
-        currency: options?.currency || 'USD',
-        paymentMethod: options?.paymentMethod || 'Card',
-        reference: options?.reference,
-        transactionId: options?.transactionId,
-      });
     },
   },
 

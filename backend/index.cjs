@@ -137,7 +137,7 @@ const { verifyToken, requireRole, requirePermission } = require('./middleware/au
 const { injectFinancialYear, addFyDateFilter, requireFyNotClosed } = require('./middleware/financialYearMiddleware.cjs');
 const { validateBody, sanitizeInput, inventorySchemas, salesSchemas, userSchemas, financialSchemas, productionSchemas, documentSchemas, exchangeSchemas, orderSchemas, classSchemas, subjectSchemas, notificationSchemas, accountSchemas, expenseSchemas, incomeSchemas, budgetSchemas, transferSchemas } = require('./middleware/validation.cjs');
 const CurrencyMiddleware = require('./middleware/currencyMiddleware.cjs');
-const { createLimiter, authLimiter, sensitiveLimiter } = require('./services/redisRateLimiter.cjs');
+const { createLimiter, authLimiter, sensitiveLimiter, portalAuthLimiter, portalRefreshLimiter } = require('./services/redisRateLimiter.cjs');
 const authRoutes = require('./routes/auth.cjs');
 const portalAdminRoutes = require('./routes/portalAdmin.cjs');
 app.use(auditContextMiddleware);
@@ -300,11 +300,21 @@ app.use(sanitizeInput);
 app.use('/api/auth', auditAuthMiddleware, authLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 10 }), authRoutes);
 
 // Portal Auth Routes — no JWT needed for login/register.
-// Throttled so the public credential endpoints (login, login-password, activate,
-// forgot/reset-password) can't be brute-forced from a single IP.
+// Refresh is an authenticated session operation (not a credential endpoint)
+// and receives its own higher-limit bucket so normal refresh traffic cannot
+// exhaust the login brute-force protection quota.
 const portalAuthRoutes = require('./routes/portalAuth.cjs');
-const portalAuthLimiter = sensitiveLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 30 });
-app.use('/api/portal/auth', portalAuthLimiter, portalAuthRoutes);
+// Malformed JSON bodies on portal-auth endpoints previously escaped to the
+// global error handler as HTTP 500. Handle body-parser failures at this
+// boundary so portal auth always answers with documented JSON errors.
+app.use('/api/portal/auth', (err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+  next(err);
+});
+app.use('/api/portal/auth/refresh', portalRefreshLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 200 }));
+app.use('/api/portal/auth', portalAuthLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 100 }), portalAuthRoutes);
 
 // Portal admin routes — registered before global verifyToken to avoid Supabase JWT collisions
 app.use('/api/portal/admin', portalAdminRoutes);

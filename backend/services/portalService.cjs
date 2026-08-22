@@ -8,6 +8,7 @@ const portalLifecycleService = require('./portalLifecycleService.cjs');
 const ReferralService = require('./referralService.cjs');
 const referralService = new ReferralService();
 const { customerFilter, withCustomerScope } = require('./portalScope.cjs');
+const customerLedger = require('./customerLedger.cjs');
 
 const TICKET_ATTACHMENTS_DIR = path.join(__dirname, '..', 'storage', 'ticket-attachments');
 
@@ -144,16 +145,20 @@ const portalService = {
       walletRows,
     });
 
-    const unpaidInvoices = invoices.filter((i) => /unpaid|partial|overdue/i.test(String(i.status || '')));
-    const outstandingBalance = unpaidInvoices.reduce(
-      (sum, i) => sum + (Number(i.total_amount || i.total || 0) - Number(i.paid_amount || i.paidAmount || 0)),
-      0,
-    );
+    // Authoritative outstanding balance — computed by the canonical customer
+    // ledger (single definition shared with the ERP). The stored
+    // customers.balance field is a deprecated cache and must never be the
+    // source of financial truth.
+    const [ledgerPayments] = await Promise.all([
+      customerLedger.loadCustomerPayments(customerId),
+    ]);
+    const ledger = customerLedger.buildLedgerFromRecords({ customerId, invoices, payments: ledgerPayments });
+    const outstandingBalance = ledger.outstandingBalance;
 
     return {
       balance: (customer && customer.balance != null) ? customer.balance : 0,
       walletBalance: (customer && customer.walletBalance != null) ? customer.walletBalance : 0,
-      outstandingBalance: Math.max(0, outstandingBalance),
+      outstandingBalance,
       creditLimit: (customer && customer.creditLimit != null) ? customer.creditLimit : 0,
       unpaidInvoiceCount: unpaidCount,
       totalOrders,
@@ -897,80 +902,46 @@ const portalService = {
   },
 
   async getStatements(customerId, startDate, endDate) {
-    const [customer, invoices, payments] = await Promise.all([
+    const [customer, ledger] = await Promise.all([
       getOneById('customers', customerId),
-      getAllFrom('invoices', customerFilter('invoices', customerId)),
-      getAllFrom('customer_payments', customerFilter('customer_payments', customerId)),
+      customerLedger.buildLedger(customerId),
     ]);
 
-    const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-
-    const unpaidInvoices = (Array.isArray(invoices) ? invoices : []).filter((i) => /unpaid|partial|overdue/i.test(String(i.status || '')));
-    const outstandingBalance = unpaidInvoices.reduce(
-      (sum, i) => sum + (toNum(i.total_amount ?? i.total ?? i.totalAmount ?? 0) - toNum(i.paid_amount ?? i.paidAmount ?? 0)),
-      0,
-    );
-
-    const allDebits = (Array.isArray(invoices) ? invoices : []).map((inv) => {
-      const isCreditNote = String(inv.status || '').toLowerCase() === 'credit_note';
-      const amount = toNum(inv.total_amount ?? inv.total ?? inv.totalAmount ?? 0);
-      return {
-        date: inv.created_at || inv.date || null,
-        description: isCreditNote ? `Credit Note ${inv.invoice_number || inv.id}` : `Invoice ${inv.invoice_number || inv.id}`,
-        debit: isCreditNote ? 0 : amount,
-        credit: isCreditNote ? amount : 0,
-        _type: isCreditNote ? 'credit_note' : 'invoice',
-      };
-    });
-
-    const allCredits = (Array.isArray(payments) ? payments : []).map((pay) => ({
-      date: pay.date || pay.created_at || null,
-      description: pay.reference || 'Payment',
-      debit: 0,
-      credit: toNum(pay.amount),
-      _type: 'payment',
-    }));
-
-    const allTransactions = [...allDebits, ...allCredits];
-
-    const beforePeriod = startDate
-      ? allTransactions.filter((t) => t.date && String(t.date) < startDate)
-      : [];
-    let openingBalance = 0;
-    for (const t of beforePeriod) {
-      openingBalance += toNum(t.debit) - toNum(t.credit);
+    // Deterministic windowing over the authoritative ledger. Bounds are real
+    // timestamps (date-only end bounds include the whole day); transactions
+    // before the start fold into the opening balance.
+    const hasStart = Boolean(startDate);
+    const hasEnd = Boolean(endDate);
+    const startT = hasStart ? customerLedger.parseTime(startDate) : null;
+    let endT = hasEnd ? customerLedger.parseTime(endDate) : null;
+    if (endT != null && Number.isFinite(endT) && String(endDate).length <= 10) {
+      endT += 24 * 60 * 60 * 1000 - 1; // inclusive date-only end
     }
 
-    const inPeriod = startDate || endDate
-      ? allTransactions.filter((t) => {
-          if (!t.date) return false;
-          if (startDate && String(t.date) < startDate) return false;
-          if (endDate && String(t.date) > endDate) return false;
-          return true;
-        })
-      : allTransactions;
-
-    inPeriod.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-
-    let running = openingBalance;
-    const mapped = inPeriod.map((t) => {
-      const debit = toNum(t.debit);
-      const credit = toNum(t.credit);
-      running = running + debit - credit;
-      return {
+    let openingBalance = ledger.openingBalance;
+    const mapped = [];
+    for (const t of ledger.transactions) {
+      const ts = customerLedger.parseTime(t.date);
+      const effectiveTs = Number.isFinite(ts) ? ts : 0;
+      if (startT != null && Number.isFinite(startT) && effectiveTs < startT) {
+        openingBalance = customerLedger.round2(openingBalance + t.debit - t.credit);
+        continue;
+      }
+      if (endT != null && Number.isFinite(endT) && effectiveTs > endT) continue;
+      mapped.push({
         date: t.date,
         description: t.description || '',
-        type: t._type || t.type || '',
-        debit,
-        credit,
-        balance: running,
-      };
-    });
+        type: t.type,
+        debit: t.debit,
+        credit: t.credit,
+        balance: t.balance,
+      });
+    }
 
     return {
       opening_balance: openingBalance,
       closing_balance: mapped.length > 0 ? mapped[mapped.length - 1].balance : openingBalance,
-      outstanding_balance: Math.max(0, outstandingBalance),
+      outstanding_balance: ledger.outstandingBalance,
       credit_limit: (customer && customer.creditLimit != null) ? customer.creditLimit : 0,
       transactions: mapped,
     };

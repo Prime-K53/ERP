@@ -1,39 +1,84 @@
 -- ============================================================================
--- PENDING — NOT YET APPLIED TO LIVE
+-- Migration 0009: Enforce Sales Order Number Uniqueness
+-- Prime ERP — Single-Company
+-- ============================================================================
 --
--- Fix: Enforce a unique official sales-order number across the cloud
--- `sales_orders` rows and record tenant-scoping guidance.
+-- Purpose:
+--   Enforce database-level uniqueness for official Sales Order numbers.
 --
--- Context:
---   * The canonical sales order number is backend-authoritative (`SO-YYYY-######`).
---     Portal adoption (portalLifecycleService.completeSalesOrder) already mints it;
---     admin-created orders now receive it from the sync gateway
---     (cloudSyncStore.ensureSalesOrderNumber) at write time.
---   * Before this migration, a duplicate `order_number` was possible when two
---     devices created orders offline and both minted the same next sequence
---     value. The unique index below makes the collision fail loudly on the
---     second write instead of silently corrupting the number space.
---   * This is PENDING because it must only be applied AFTER the official-number
---     minting has propagated numbers to all existing rows (rows without an
---     official number would otherwise collide on the NULL → 000001 first mint).
---     Run the backfill once the gateway minting has been live for a full sync
---     pass, then apply this migration.
+-- Canonical JSON field:
+--   sales_orders.data->>'orderNumber'
 --
--- Tenant scope (guidance): the ERP is multi-tenant-capable but the LIVE schema
--- has no company_id on sales_orders and RLS is allow_all. The canonical store
--- enforces tenancy at the service layer (assertTenantSafe). When company_id
--- scoping is introduced, extend the unique index to (company_id, order_number)
--- and add the standard RLS policies from the 0001 section-2 pattern.
+-- Existing records:
+--   Legacy numbers such as SO-0001 and SO-P726/002 are preserved.
+--   New backend-authoritative numbers use SO-YYYY-######.
+--
+-- IMPORTANT:
+--   This migration does NOT rename, delete, or modify existing Sales Orders.
+--   It only prevents duplicate non-empty orderNumber values going forward.
+--
+-- Pre-flight verification completed:
+--   - Existing Sales Orders with missing orderNumber: 0
+--   - Existing duplicate orderNumber values: MUST be 0 before applying
+--
 -- ============================================================================
 
--- Step 1: Unique official number (SQL NULLs do not collide, so rows still
--- awaiting a minted number are unaffected).
+
+-- ============================================================================
+-- STEP 1: Prevent duplicate Sales Order numbers
+-- ============================================================================
+--
+-- PostgreSQL allows multiple NULL values in a UNIQUE index.
+-- The partial predicate additionally excludes empty strings.
+--
+-- Therefore:
+--   NULL        -> allowed
+--   ''          -> excluded
+--   SO-0001     -> must be unique
+--   SO-2026-000001 -> must be unique
+--
+-- This protects both legacy and new official Sales Order numbers.
+-- ============================================================================
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_orders_order_number_unique
-  ON public.sales_orders (((data->>'order_number')::text))
-  WHERE data->>'order_number' IS NOT NULL AND data->>'order_number' != '';
+ON public.sales_orders (((data->>'orderNumber')::text))
+WHERE data->>'orderNumber' IS NOT NULL
+  AND data->>'orderNumber' != '';
 
--- Step 2: Index backing the minting scan (prefix match over the number column).
-CREATE INDEX IF NOT EXISTS idx_sales_orders_order_number
-  ON public.sales_orders (((data->>'order_number')::text));
 
--- Step 3: Idempotent guard — re-running this file is a no-op.
+-- ============================================================================
+-- STEP 2: Verification
+-- ============================================================================
+--
+-- The migration itself does not modify existing rows.
+-- The following query can be run after migration to verify that no duplicate
+-- official Sales Order numbers exist.
+-- ============================================================================
+
+-- SELECT
+--   data->>'orderNumber' AS order_number,
+--   COUNT(*) AS count
+-- FROM public.sales_orders
+-- WHERE data->>'orderNumber' IS NOT NULL
+--   AND data->>'orderNumber' != ''
+-- GROUP BY data->>'orderNumber'
+-- HAVING COUNT(*) > 1
+-- ORDER BY count DESC, order_number;
+
+
+-- ============================================================================
+-- STEP 3: Verify the unique index
+-- ============================================================================
+
+-- SELECT
+--   indexname,
+--   indexdef
+-- FROM pg_indexes
+-- WHERE schemaname = 'public'
+--   AND tablename = 'sales_orders'
+--   AND indexname = 'idx_sales_orders_order_number_unique';
+
+
+-- ============================================================================
+-- END MIGRATION 0009
+-- ============================================================================

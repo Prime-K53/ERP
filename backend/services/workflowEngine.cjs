@@ -31,7 +31,7 @@ const SALES_ORDER_STATUS = Object.freeze({
 
 const REQUEST_NUMBER_PREFIXES = Object.freeze({
   quotation: 'QTR',
-  order: 'ODR',
+  order: 'SO',
 });
 
 function requestNumberPrefix(requestType) {

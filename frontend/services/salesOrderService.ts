@@ -164,11 +164,13 @@ export const canonicalizeOrder = (raw: any): SalesOrder => {
     createdAt: base.createdAt || base.date || base.orderDate || new Date().toISOString(),
     updatedAt: base.updatedAt || new Date().toISOString(),
     companyId: base.companyId || undefined,
+    version: base.version != null ? Number(base.version) : undefined,
+    serverUpdatedAt: base.serverUpdatedAt || base.updated_at || undefined,
   };
 };
 
 export const isOfficialNumber = (value?: string | null): boolean => {
-  return Boolean(value) && /^(SO-|SO\/)/i.test(String(value));
+  return Boolean(value) && /^(ORD-|SO-|ORD\/|SO\/)/i.test(String(value));
 };
 
 export const applyOfficialNumber = (order: SalesOrder, officialId: string, officialNumber: string): SalesOrder => {
@@ -336,7 +338,27 @@ export const salesOrderService = {
   async update(id: string, patch: Partial<SalesOrder>) {
     const existing = await dbService.get<SalesOrder>('salesOrders', id);
     if (!existing) throw new Error('Not found');
+
+    // Terminal status protection: prevent modifications to Fulfilled/Cancelled/Converted
+    // unless the patch itself is a valid transition (e.g. status change through assertCanTransition).
+    const existingCanonical = canonicalizeStatus(existing.status);
+    const patchStatus = patch.status != null ? canonicalizeStatus(patch.status) : null;
+    const isTerminalModification = isTerminalStatus(existingCanonical) && patchStatus === null;
+    if (isTerminalModification) {
+      throw new Error(`Cannot modify sales order in terminal status: ${existingCanonical}`);
+    }
+
+    // Transition guard: if the patch changes status, validate the transition
+    if (patchStatus != null && patchStatus !== existingCanonical) {
+      assertCanTransition(existingCanonical, patchStatus);
+    }
+
     const updated = canonicalizeOrder({ ...existing, ...patch });
+    // Preserve the version from the existing record so the sync layer can carry
+    // it as the OCC precondition for the cloud write.
+    if (existing.version != null && updated.version == null) {
+      updated.version = existing.version;
+    }
     await dbService.put('salesOrders', updated);
     return updated;
   },
@@ -356,6 +378,13 @@ export const salesOrderService = {
   async recordPayment(orderId: string, payment: SalesOrderPayment) {
     const existing = await dbService.get<SalesOrder>('salesOrders', orderId);
     if (!existing) throw new Error('Order not found');
+
+    // Terminal status protection: cannot record payment on a Cancelled order
+    const existingCanonical = canonicalizeStatus(existing.status);
+    if (existingCanonical === 'Cancelled') {
+      throw new Error('Cannot record payment on a cancelled sales order');
+    }
+
     const payments = [...(existing.payments || []), payment];
     const paidAmount = Number(existing.paidAmount ?? 0) + Number(payment.amountPaid ?? payment.amount ?? 0);
     const updated = canonicalizeOrder({
@@ -363,6 +392,10 @@ export const salesOrderService = {
       payments,
       paidAmount,
     });
+    // Preserve the version from the existing record for OCC.
+    if (existing.version != null && updated.version == null) {
+      updated.version = existing.version;
+    }
     await dbService.put('salesOrders', updated);
     return updated;
   },

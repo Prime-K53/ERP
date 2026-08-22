@@ -12,7 +12,6 @@ import ErrorBanner from './components/ErrorBanner';
 import EmptyState from './components/EmptyState';
 import PortalLoadingSkeleton from './components/PortalLoadingSkeleton';
 import { useToast } from './components/Toast';
-import StripePaymentForm from './StripePaymentForm';
 import { F, MONO, NAVY, TEAL_GRADIENT, EMERALD } from './designTokens';
 import { formatK, MAX_PAGE_SIZE } from './constants';
 
@@ -31,8 +30,6 @@ interface Invoice {
 
 type InvoiceTab = 'unpaid' | 'overdue' | 'paid' | 'all';
 type PayMethod = 'card' | 'ach' | 'credit';
-
-const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
 
 const startOfToday = () => {
   const d = new Date();
@@ -102,15 +99,9 @@ const CustomerInvoices: React.FC = () => {
   const [payTarget, setPayTarget] = useState<Invoice | null>(null);
   const [payMethod, setPayMethod] = useState<PayMethod>('card');
   const [memo, setMemo] = useState('');
-  const [cardNo, setCardNo] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [achRouting, setAchRouting] = useState('');
-  const [achAccount, setAchAccount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [paySuccess, setPaySuccess] = useState(false);
-  const [stripeStep, setStripeStep] = useState<{ clientSecret: string; invoiceDetail: any } | null>(null);
 
   const { loading, error, refresh, clearError } = usePortalData<any>({
     // Fetch the full billing record (All Invoices tab shows every invoice).
@@ -194,11 +185,8 @@ const CustomerInvoices: React.FC = () => {
     setPayTarget(null);
     setPayMethod('card');
     setMemo('');
-    setCardNo(''); setCardExpiry(''); setCardCvv('');
-    setAchRouting(''); setAchAccount('');
     setPayError(null);
     setPaySuccess(false);
-    setStripeStep(null);
   };
 
   const confirmPayment = async () => {
@@ -207,35 +195,21 @@ const CustomerInvoices: React.FC = () => {
     setPayError(null);
     try {
       const due = amountDue(payTarget);
-      if (payMethod === 'card') {
-        const intent = await portalLifecycle.payments.createIntent(payTarget.id, due, 'USD');
-        // Real Stripe flow when configured; otherwise record the payment directly.
-        if (intent.mode === 'stripe' && stripePublicKey) {
-          const detail = await portalLifecycle.invoices.get(payTarget.id);
-          setStripeStep({ clientSecret: intent.clientSecret, invoiceDetail: detail });
-          return;
-        }
-        await portalLifecycle.payments.recordPayment(payTarget.id, due, {
-          paymentMethod: 'Card',
-          reference: memo.trim() || `Card •••• ${cardNo.replace(/\s+/g, '').slice(-4)}`,
-        });
-      } else if (payMethod === 'ach') {
-        await portalLifecycle.payments.recordPayment(payTarget.id, due, {
-          paymentMethod: 'ACH',
-          reference: memo.trim() || `ACH •••• ${achAccount.slice(-4)}`,
-        });
-      } else {
-        await portalLifecycle.payments.recordPayment(payTarget.id, due, {
-          paymentMethod: 'Credit Line',
-          reference: memo.trim() || 'Credit Line / Net-30',
-        });
-      }
+      // Payments follow the approved workflow: submit a PAYMENT REQUEST
+      // (workflow data only — no money moves, no invoice mutation here).
+      // ERP staff verify and post a real customer_payment through the
+      // accounting pipeline; the ledger changes only then.
+      await portalLifecycle.payments.requestPayment(
+        payTarget.id,
+        due,
+        [PAY_METHODS.find(m => m.key === payMethod)?.label, memo.trim()].filter(Boolean).join(' — '),
+      );
       setPaySuccess(true);
-      addToast('success', 'Payment recorded — invoice settled');
+      addToast('success', 'Payment request submitted');
       refresh();
       window.setTimeout(() => resetPaySheet(), 1500);
     } catch (err: any) {
-      setPayError(err.message || 'Payment failed. Please try again.');
+      setPayError(err.message || 'Could not submit the payment request. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -464,17 +438,6 @@ const CustomerInvoices: React.FC = () => {
               <button onClick={resetPaySheet} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, borderRadius: 8 }}><X size={18} /></button>
             </div>
 
-            {stripeStep ? (
-              <StripePaymentForm
-                clientSecret={stripeStep.clientSecret}
-                invoice={stripeStep.invoiceDetail}
-                onSuccess={() => {
-                  addToast('success', 'Payment successful!');
-                  refresh();
-                  window.setTimeout(() => resetPaySheet(), 1200);
-                }}
-                onCancel={() => setStripeStep(null)}
-              />
             ) : (
               <>
                 {/* Method selector */}
@@ -506,76 +469,17 @@ const CustomerInvoices: React.FC = () => {
                   })}
                 </div>
 
-                {/* Dynamic fields */}
-                {payMethod === 'card' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                    <div>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Card Number</label>
-                      <input
-                        value={cardNo}
-                        onChange={(e) => setCardNo(e.target.value.replace(/[^\d\s]/g, '').slice(0, 19))}
-                        placeholder="4242 4242 4242 4242"
-                        inputMode="numeric"
-                        style={{ width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #E9EDF3', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: 'none' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Expiry</label>
-                        <input
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value.replace(/[^\d/]/g, '').slice(0, 5))}
-                          placeholder="MM/YY"
-                          inputMode="numeric"
-                          style={{ width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #E9EDF3', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: 'none' }}
-                        />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>CVV</label>
-                        <input
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                          placeholder="•••"
-                          type="password"
-                          inputMode="numeric"
-                          style={{ width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #E9EDF3', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: 'none' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {payMethod === 'ach' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                    <div>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Routing Number</label>
-                      <input
-                        value={achRouting}
-                        onChange={(e) => setAchRouting(e.target.value.replace(/\D/g, '').slice(0, 9))}
-                        placeholder="9-digit routing number"
-                        inputMode="numeric"
-                        style={{ width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #E9EDF3', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: 'none' }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Account Number</label>
-                      <input
-                        value={achAccount}
-                        onChange={(e) => setAchAccount(e.target.value.replace(/[^\d]/g, '').slice(0, 17))}
-                        placeholder="Account number"
-                        inputMode="numeric"
-                        style={{ width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #E9EDF3', fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: 'none' }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {payMethod === 'credit' && (
-                  <div style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 12, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 11.5, color: '#92400E', lineHeight: 1.5, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                    <span>Settles this invoice against your company credit line / Net-30 account. Available credit will be adjusted immediately.</span>
-                  </div>
-                )}
+                {/* Preferred method — context for the payment request only.
+                    Sensitive details are never collected here: staff verify
+                    the actual bank/card payment before posting it. */}
+                <div style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 12, background: '#F0F9FF', border: '1px solid #BAE6FD', fontSize: 11.5, color: '#075985', lineHeight: 1.5, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>
+                    Submitting a payment request for <b>{formatK(amountDue(payTarget))}</b>. Our team will
+                    verify your {PAY_METHODS.find(m => m.key === payMethod)?.label || 'payment'} and post it to
+                    this invoice once confirmed. The balance updates after verification.
+                  </span>
+                </div>
 
                 {/* Summary */}
                 <div style={{ borderRadius: 12, border: '1px solid #E9EDF3', padding: '12px 14px', marginBottom: 12 }}>
@@ -604,7 +508,7 @@ const CustomerInvoices: React.FC = () => {
                 {payError && <ErrorBanner message={payError} onDismiss={() => setPayError(null)} />}
                 {paySuccess && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
-                    <CheckCircle2 size={16} /> Payment recorded successfully
+                    <CheckCircle2 size={16} /> Payment request submitted — pending verification
                   </div>
                 )}
 
@@ -619,7 +523,7 @@ const CustomerInvoices: React.FC = () => {
                     boxShadow: '0 6px 16px -6px rgba(5,150,105,.55)',
                   }}
                 >
-                  {submitting ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Processing…</> : <>Confirm Payment <ShieldCheck size={15} /></>}
+                  {submitting ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Submitting…</> : <>Submit Payment Request <ShieldCheck size={15} /></>}
                 </button>
               </>
             )}

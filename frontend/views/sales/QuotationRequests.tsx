@@ -3,14 +3,16 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, FileText, RefreshCw, Loader2, MessageSquare,
   PackageCheck, Inbox, History, ChevronDown, ArrowUpRight, History as HistoryIcon,
-  BadgeCheck, Send, Flag, Trash2, HandCoins,
+  BadgeCheck, Send, Flag, Trash2, HandCoins, MoreVertical, Eye, Download, Edit2, Plus,
 } from 'lucide-react';
+import { formatDateTime, formatDate } from '../../utils/formatters';
 import {
   adminLifecycle, subscribeAdminEvents,
   AdminQuotationRequest, AdminQuotation, AdminRequestStatus,
   AdminSalesOrder, AdminDocumentVersion,
 } from '../../services/adminPortalClient';
 import PaymentRequests from './PaymentRequests';
+import { QuotationRequestList } from './components/SalesLists';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -159,12 +161,52 @@ const ChainStrip: React.FC<ChainStripProps> = ({ request, quotation, order, orig
   );
 };
 
+const ActionMenu: React.FC<{
+  items: { label: string; onClick: () => void; icon?: React.ReactNode; danger?: boolean; disabled?: boolean }[];
+  x: number; y: number; onClose: () => void;
+}> = ({ items, x, y, onClose }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'fixed', left: Math.min(x, window.innerWidth - 256), top: Math.min(y, window.innerHeight - 300), zIndex: 70, background: paper, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,.15)', border: `1px solid ${hairline}`, minWidth: 220, overflow: 'hidden' }}>
+      {items.map((item, i) => (
+        <button key={i} onClick={() => { item.onClick(); onClose(); }} disabled={item.disabled} style={{ width: '100%', textAlign: 'left', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: item.danger ? danger : ink, display: 'flex', alignItems: 'center', gap: 8, opacity: item.disabled ? 0.5 : 1 }}>
+          {item.icon} {item.label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const DetailModal: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ open, onClose, title, children }) => {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: paper, borderRadius: 16, width: '100%', maxWidth: 800, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(15,23,42,.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${hairline}` }}>
+          <b style={{ fontSize: 14, color: ink }}>{title}</b>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: inkSoft, fontSize: 16 }}>✕</button>
+        </div>
+        <div style={{ padding: 16, overflowY: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  );
+};
+
 const QuotationRequests: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const initialTab = (location.state as any)?.tab || 'inbox';
   const [tab, setTab] = useState<string>(initialTab);
   const [requests, setRequests] = useState<AdminQuotationRequest[]>([]);
+  const [inboxRequests, setInboxRequests] = useState<AdminQuotationRequest[]>([]);
   const [quotations, setQuotations] = useState<AdminQuotation[]>([]);
   const [orders, setOrders] = useState<AdminSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,11 +218,24 @@ const QuotationRequests: React.FC = () => {
   const [staff, setStaff] = useState<{ id: string; username: string; email: string | null }[]>([]);
   const [staffNameMap, setStaffNameMap] = useState<Record<string, string>>({});
   const [paymentCount, setPaymentCount] = useState(0);
+  const tabMeta: Record<string, { title: string; desc: string }> = {
+    inbox: { title: 'Inbox', desc: 'Review new customer requests, assign staff, and triage submissions.' },
+    quotations: { title: 'Quotations', desc: 'Review official quotations, track versions, signatures, and conversions.' },
+    orders: { title: 'Orders', desc: 'Manage sales orders, track fulfillment status, and advance production milestones.' },
+    payments: { title: 'Payment Requests', desc: 'Manage bank-transfer payment intents linked to requests and orders.' },
+    history: { title: 'History', desc: 'Audit trail of rejected, cancelled, and converted requests.' },
+  };
+  const activeTabMeta = tabMeta[tab] || tabMeta.inbox;
+  const [selectedRequest, setSelectedRequest] = useState<AdminQuotationRequest | null>(null);
+  const [selectedQuotation, setSelectedQuotation] = useState<AdminQuotation | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<AdminSalesOrder | null>(null);
+  const [menuState, setMenuState] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [reqs, quotes, orderList, analyticsData, users, staffList] = await Promise.all([
+      const [reqs, inboxReqs, quotes, orderList, analyticsData, users, staffList] = await Promise.all([
         adminLifecycle.requests.list(),
+        adminLifecycle.requests.inbox().catch(() => []),
         adminLifecycle.quotations.list(),
         adminLifecycle.orders.list().catch(() => []),
         adminLifecycle.analytics.get(),
@@ -188,13 +243,15 @@ const QuotationRequests: React.FC = () => {
         adminLifecycle.staff.list().catch(() => []),
       ]);
       setRequests(reqs || []);
+      setInboxRequests(inboxReqs || []);
       setQuotations(quotes || []);
       setOrders(orderList || []);
       setAnalytics(analyticsData);
       const nameMap: Record<string, string> = {};
       for (const u of (users as any[]) || []) {
-        if (u.customer_id && u.customer_name) {
-          nameMap[u.customer_id] = u.customer_name;
+        if (u.customer_id) {
+          const resolved = u.customer_name || u.full_name || null;
+          if (resolved) nameMap[u.customer_id] = resolved;
         }
       }
       setCustomerNameMap(nameMap);
@@ -239,14 +296,17 @@ const QuotationRequests: React.FC = () => {
     };
   }, [loadAll]);
   const inboxCount = useMemo(
-    () => requests.filter((r) => INBOX_STATUSES.includes(r.status)).length,
-    [requests]
+    () => inboxRequests.length,
+    [inboxRequests]
   );
 
   const activeRequests = useMemo(() => {
+    if (tab === 'inbox') return inboxRequests;
     if (tab === 'history') return requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled' || r.status === 'converted');
+    if (tab === 'quotations') return requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type !== 'order');
+    if (tab === 'orders') return requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type === 'order');
     return requests.filter((r) => INBOX_STATUSES.includes(r.status));
-  }, [requests, tab]);
+  }, [requests, tab, inboxRequests]);
 
   const action = async (key: string, fn: () => Promise<any>) => {
     setBusy(key);
@@ -341,7 +401,7 @@ const QuotationRequests: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '12px 12px 28px', maxWidth: 1100, margin: '0 auto' }} className="md:!px-7 md:!py-7">
+    <div className="p-4 md:p-6 max-w-screen-2xl mx-auto flex flex-col relative w-full text-sm font-normal">
       {/* Accent stripe */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: 4,
@@ -368,10 +428,10 @@ const QuotationRequests: React.FC = () => {
               fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
               fontSize: 22, margin: 0, color: teal[800], letterSpacing: 0.2
             }}>
-              Customer Requests
+              {activeTabMeta.title}
             </h1>
             <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02 }}>
-              Review customer requests — quotations, orders, and bank-transfer payment intentions.
+              {activeTabMeta.desc}
             </p>
           </div>
         </div>
@@ -393,51 +453,316 @@ const QuotationRequests: React.FC = () => {
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        {REQUEST_TABS.map((t) => {
-          const count = t.key === 'inbox' ? inboxCount : t.key === 'quotations' ? quotations.length : t.key === 'orders' ? orders.length : t.key === 'payments' ? paymentCount : requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled' || r.status === 'converted').length;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)} style={chipStyle(tab === t.key)}>
-              <t.icon size={15} /> {t.label}
-              {count > 0 && <span style={{ background: tab === t.key ? 'rgba(255,255,255,.22)' : '#e2e8f0', borderRadius: 999, padding: '1px 8px', fontSize: 11 }}>{count}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === 'inbox' && <RequestInbox requests={activeRequests} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnPrimary={btnPrimary} btnGhost={btnGhost} setExpanded={setExpandedId} expandedId={expandedId} customerNameMap={customerNameMap} staff={staff} staffNameMap={staffNameMap} onGenerateQuote={startQuoteFlow} onGenerateOrder={startOrderFlow} />}
-      {tab === 'payments' && <PaymentRequests embedded onCountChange={setPaymentCount} />}
-      {tab === 'quotations' && <QuotationPanel quotations={quotations} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnPrimary={btnPrimary} btnGhost={btnGhost} customerNameMap={customerNameMap} />}
-      {tab === 'orders' && <OrdersPanel orders={orders} busy={busy} onAction={action} cardStyle={cardStyle} inputStyle={inputStyle} btnGhost={btnGhost} />}
-      {tab === 'history' && (
-        <div style={cardStyle}>
-          {activeRequests.length === 0 ? (
-            <p style={{ padding: 40, textAlign: 'center', fontSize: 13, color: inkSoft }}>No rejected, cancelled or converted requests.</p>
-          ) : (
-            activeRequests.map((r) => (
-              <div key={r.id} style={{ padding: 16, borderBottom: `1px solid ${hairline}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <b style={{ fontSize: 13.5, color: ink }}>{r.request_number}</b>
-                  <span style={{ fontSize: 12, color: inkSoft, marginLeft: 10 }}>{customerNameMap[r.customer_id] || r.customer_name || 'Unknown Customer'}</span>
-                  <span style={{ fontSize: 12, color: inkSoft, marginLeft: 10 }}>{new Date(r.created_at).toLocaleDateString()}</span>
-                  {r.review_note && <p style={{ fontSize: 12, color: inkSoft, margin: '4px 0 0' }}>Reason: {r.review_note}</p>}
-                  {r.status === 'converted' && r.quotation_number && (
-                    <p style={{ fontSize: 12, color: teal[700], margin: '4px 0 0' }}>
-                      Official quotation: <b>{r.quotation_number}</b>
-                    </p>
-                  )}
-                  {r.status === 'converted' && r.sales_order_number && (
-                    <p style={{ fontSize: 12, color: teal[700], margin: '4px 0 0' }}>
-                      Official sales order: <b>{r.sales_order_number}</b>
-                    </p>
-                  )}
-                </div>
-                <StatusPill meta={requestStatusMeta} status={r.status} />
-              </div>
-            ))
-          )}
+      {!(location.state as any)?.tab && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          {REQUEST_TABS.map((t) => {
+            const count = t.key === 'inbox' ? inboxCount
+              : t.key === 'quotations' ? requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type !== 'order').length
+              : t.key === 'orders' ? requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type === 'order').length
+              : t.key === 'payments' ? paymentCount
+              : requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled' || r.status === 'converted').length;
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)} style={chipStyle(tab === t.key)}>
+                <t.icon size={15} /> {t.label}
+                {count > 0 && <span style={{ background: tab === t.key ? 'rgba(255,255,255,.22)' : '#e2e8f0', borderRadius: 999, padding: '1px 8px', fontSize: 11 }}>{count}</span>}
+              </button>
+            );
+          })}
         </div>
       )}
+
+      {tab === 'inbox' && (
+        <QuotationRequestList
+          data={activeRequests}
+          viewMode="List"
+          customerNameMap={customerNameMap}
+          onView={(r) => setSelectedRequest(r)}
+          onEdit={(r) => setSelectedRequest(r)}
+          onDelete={(id) => {
+            if (window.confirm('Delete this request?')) {
+              action(`delete_${id}`, () => adminLifecycle.requests.remove(id));
+            }
+          }}
+          onAction={(r, act) => {
+            if (act === 'generate_quote') {
+              startQuoteFlow(r);
+            } else if (act === 'generate_order') {
+              startOrderFlow(r);
+            } else if (act === 'reject') {
+              const reason = window.prompt('Reject reason:');
+              if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason));
+            } else if (act === 'view_quotation') {
+              const q = quotations.find(q => q.id === r.quotation_id);
+              if (q) setSelectedQuotation(q);
+            } else if (act === 'view_order') {
+              const o = orders.find(o => o.id === r.sales_order_id);
+              if (o) setSelectedOrder(o);
+            }
+          }}
+        />
+      )}
+      {tab === 'payments' && <PaymentRequests embedded onCountChange={setPaymentCount} />}
+      {(tab === 'quotations' || tab === 'orders') && (
+        <QuotationRequestList
+          data={activeRequests}
+          viewMode="List"
+          customerNameMap={customerNameMap}
+          onView={(r) => setSelectedRequest(r)}
+          onEdit={(r) => setSelectedRequest(r)}
+          onDelete={(id) => {
+            if (window.confirm('Delete this request?')) {
+              action(`delete_${id}`, () => adminLifecycle.requests.remove(id));
+            }
+          }}
+          onAction={(r, act) => {
+            if (act === 'generate_quote') {
+              startQuoteFlow(r);
+            } else if (act === 'generate_order') {
+              startOrderFlow(r);
+            } else if (act === 'reject') {
+              const reason = window.prompt('Reject reason:');
+              if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason));
+            } else if (act === 'view_quotation') {
+              const q = quotations.find(q => q.id === r.quotation_id);
+              if (q) setSelectedQuotation(q);
+            } else if (act === 'view_order') {
+              const o = orders.find(o => o.id === r.sales_order_id);
+              if (o) setSelectedOrder(o);
+            }
+          }}
+        />
+      )}
+      {tab === 'history' && (
+        <div style={{ background: paper, borderRadius: 14, border: `1px solid ${hairline}`, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: teal[50] }}>
+                <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Request No.</th>
+                <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Customer</th>
+                <th style={{ textAlign: 'left', padding: '10px 14px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Date</th>
+                <th style={{ textAlign: 'center', padding: '10px 14px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeRequests.length === 0 ? (
+                <tr><td colSpan={4} style={{ padding: 40, textAlign: 'center', color: inkSoft }}>No rejected, cancelled or converted requests.</td></tr>
+              ) : activeRequests.map((r) => (
+                <tr key={r.id} style={{ borderTop: `1px solid ${hairline}` }}>
+                  <td style={{ padding: '10px 14px', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{r.request_number}</td>
+                  <td style={{ padding: '10px 14px' }}>{customerNameMap[r.customer_id] || r.customer_name || 'Unknown Customer'}</td>
+                  <td style={{ padding: '10px 14px' }}>{formatDate(r.created_at)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}><StatusPill meta={requestStatusMeta} status={r.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {menuState && menuState.type === 'request' && (
+        <ActionMenu
+          items={[
+            { label: 'View Detail', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) setSelectedRequest(r); }, icon: <Eye size={14} /> },
+            { label: 'Generate Quotation', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) startQuoteFlow(r); }, icon: <FileCheck size={14} /> },
+            { label: 'Generate Order', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) startOrderFlow(r); }, icon: <PackageCheck size={14} /> },
+            { label: 'Reject', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) { const reason = window.prompt('Reject reason:'); if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason)); } }, icon: <XCircle size={14} />, danger: true },
+            { label: 'Delete', onClick: () => { if (window.confirm('Delete this request?')) action(`delete_${menuState.id}`, () => adminLifecycle.requests.remove(menuState.id)); }, icon: <Trash2 size={14} />, danger: true },
+          ]}
+          x={menuState.x}
+          y={menuState.y}
+          onClose={() => setMenuState(null)}
+        />
+      )}
+      {menuState && menuState.type === 'quotation' && (
+        <ActionMenu
+          items={[
+            { label: 'View Detail', onClick: () => { const q = quotations.find(q => q.id === menuState.id); if (q) setSelectedQuotation(q); }, icon: <Eye size={14} /> },
+            { label: 'Preview PDF', onClick: () => { /* preview */ }, icon: <Download size={14} /> },
+            { label: 'Download PDF', onClick: () => { /* download */ }, icon: <Download size={14} /> },
+            { label: 'Edit', onClick: () => { /* edit */ }, icon: <Edit2 size={14} /> },
+            { label: 'Convert to Order', onClick: () => { const q = quotations.find(q => q.id === menuState.id); if (q) action(`convert_${q.id}`, () => adminLifecycle.quotations.convertToOrder(q.id, {})); }, icon: <ArrowUpRight size={14} /> },
+          ]}
+          x={menuState.x}
+          y={menuState.y}
+          onClose={() => setMenuState(null)}
+        />
+      )}
+      {menuState && menuState.type === 'order' && (
+        <ActionMenu
+          items={[
+            { label: 'View Detail', onClick: () => { const o = orders.find(o => o.id === menuState.id); if (o) setSelectedOrder(o); }, icon: <Eye size={14} /> },
+            { label: 'Preview', onClick: () => { /* preview */ }, icon: <Download size={14} /> },
+            { label: 'Edit', onClick: () => { /* edit */ }, icon: <Edit2 size={14} /> },
+            { label: 'Cancel Order', onClick: () => { if (window.confirm('Cancel this order?')) action(`cancel_${menuState.id}`, () => adminLifecycle.orders.updateStatus(menuState.id, { status: 'Cancelled' })); }, icon: <XCircle size={14} />, danger: true },
+          ]}
+          x={menuState.x}
+          y={menuState.y}
+          onClose={() => setMenuState(null)}
+        />
+      )}
+
+      <DetailModal open={!!selectedRequest} onClose={() => setSelectedRequest(null)} title={selectedRequest ? `Request ${selectedRequest.request_number}` : ''}>
+        {selectedRequest && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <StatusPill meta={requestStatusMeta} status={selectedRequest.status} />
+              <span style={{ fontSize: 12, color: inkSoft }}>{customerNameMap[selectedRequest.customer_id] || selectedRequest.customer_name || 'Unknown Customer'} • {formatDate(selectedRequest.created_at)} • {selectedRequest.request_type || 'quotation'}</span>
+            </div>
+            <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: teal[50] }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Item</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Qty</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Unit Price</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedRequest.items || []).map((item, idx) => (
+                    <tr key={idx} style={{ borderTop: `1px solid ${hairline}` }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: ink }}>{item.name}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{item.quantity}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.unitPrice).toFixed(2)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.lineTotal ?? item.quantity * item.unitPrice).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <span style={{ fontSize: 13, color: inkSoft }}>Subtotal <b style={{ color: ink, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(selectedRequest.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</b></span>
+            </div>
+            {selectedRequest.notes && (
+              <div style={{ background: '#f8fafc', border: `1px solid ${hairline}`, borderRadius: 10, padding: 10, marginBottom: 14, fontSize: 12.5, color: inkSoft }}>
+                <b>Notes:</b> {selectedRequest.notes}
+              </div>
+            )}
+            {selectedRequest.review_note && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 10, marginBottom: 14, fontSize: 12.5, color: '#b91c1c' }}>
+                <b>Reason:</b> {selectedRequest.review_note}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {selectedRequest.status !== 'converted' && selectedRequest.status !== 'ready_for_conversion' && (
+                <button onClick={() => { startQuoteFlow(selectedRequest); setSelectedRequest(null); }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: 12 }}><Plus size={14} /> Generate Quotation</button>
+              )}
+              {selectedRequest.status === 'ready_for_conversion' && selectedRequest.request_type === 'order' && (
+                <button onClick={() => { startOrderFlow(selectedRequest); setSelectedRequest(null); }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: 12 }}><PackageCheck size={14} /> Generate Order</button>
+              )}
+              {selectedRequest.status !== 'converted' && selectedRequest.status !== 'rejected' && (
+                <button onClick={() => { const reason = window.prompt('Reject reason:'); if (reason) { action(`reject_${selectedRequest.id}`, () => adminLifecycle.requests.reject(selectedRequest.id, reason)); setSelectedRequest(null); } }} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: danger, borderColor: '#fecaca' }}><XCircle size={14} /> Reject</button>
+              )}
+              <button onClick={() => { if (window.confirm('Delete this request?')) { action(`delete_${selectedRequest.id}`, () => adminLifecycle.requests.remove(selectedRequest.id)); setSelectedRequest(null); } }} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: danger }}><Trash2 size={14} /> Delete</button>
+            </div>
+          </div>
+        )}
+      </DetailModal>
+
+      <DetailModal open={!!selectedQuotation} onClose={() => setSelectedQuotation(null)} title={selectedQuotation ? `Quotation ${selectedQuotation.quotation_number}` : ''}>
+        {selectedQuotation && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <StatusPill meta={quotationStatusMeta} status={selectedQuotation.status} />
+              {Number(selectedQuotation.version || 1) > 1 && (
+                <span style={{ fontSize: 11, fontWeight: 800, color: teal[700], background: teal[50], borderRadius: 6, padding: '2px 8px', fontFamily: "'JetBrains Mono', monospace" }}>
+                  V{selectedQuotation.version}
+                </span>
+              )}
+              <span style={{ fontSize: 12, color: inkSoft }}>{customerNameMap[selectedQuotation.customer_id] || selectedQuotation.customer_name} • {formatDate(selectedQuotation.created_at)}</span>
+            </div>
+            <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: teal[50] }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Item</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Qty</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Unit Price</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedQuotation.items || []).map((item, idx) => (
+                    <tr key={idx} style={{ borderTop: `1px solid ${hairline}` }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: ink }}>{item.name}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{item.quantity}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.unitPrice).toFixed(2)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.lineTotal ?? item.quantity * item.unitPrice).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, marginBottom: 14, fontSize: 13 }}>
+              <span style={{ color: inkSoft }}>Subtotal <b style={{ color: ink, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(selectedQuotation.subtotal).toFixed(2)}</b></span>
+              {Number(selectedQuotation.discount) > 0 && <span style={{ color: inkSoft }}>Discount <b style={{ color: ink, fontFamily: "'JetBrains Mono', monospace" }}>-K {Number(selectedQuotation.discount).toFixed(2)}</b></span>}
+              {Number(selectedQuotation.delivery_fee) > 0 && <span style={{ color: inkSoft }}>Delivery <b style={{ color: ink, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(selectedQuotation.delivery_fee).toFixed(2)}</b></span>}
+              <span style={{ color: ink, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace" }}>Total K {Number(selectedQuotation.total).toFixed(2)}</span>
+            </div>
+            {selectedQuotation.revision_note && (
+              <p style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#6d28d9', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, marginBottom: 14 }}>
+                <b>Customer change request:</b> {selectedQuotation.revision_note}
+              </p>
+            )}
+            {selectedQuotation.rejection_reason && selectedQuotation.status === 'rejected' && (
+              <p style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, marginBottom: 14 }}>
+                <b>Rejected:</b> {selectedQuotation.rejection_reason}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {selectedQuotation.status === 'accepted' && (
+                <button onClick={() => { action(`convert_${selectedQuotation.id}`, () => adminLifecycle.quotations.convertToOrder(selectedQuotation.id, {})); setSelectedQuotation(null); }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: 12 }}><ArrowUpRight size={14} /> Convert to Order</button>
+              )}
+              <button onClick={() => setSelectedQuotation(null)} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12 }}>Close</button>
+            </div>
+          </div>
+        )}
+      </DetailModal>
+
+      <DetailModal open={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={selectedOrder ? `Order ${selectedOrder.order_number || 'Unnumbered'}` : ''}>
+        {selectedOrder && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <StatusPill meta={{}} status={selectedOrder.status} />
+              <span style={{ fontSize: 12, color: inkSoft }}>{selectedOrder.customer_name || 'Unknown Customer'} • {formatDate(selectedOrder.orderDate)}</span>
+            </div>
+            <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: teal[50] }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Item</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Qty</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Unit Price</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedOrder.items || []).map((item, idx) => (
+                    <tr key={idx} style={{ borderTop: `1px solid ${hairline}` }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: ink }}>{item.name || item.productName || 'Item'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{item.quantity || item.totalQuantity || 0}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.unitPrice || item.price || 0).toFixed(2)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(item.lineTotal ?? (item.quantity || item.totalQuantity || 0) * (item.unitPrice || item.price || 0)).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <span style={{ fontSize: 13, color: inkSoft }}>Total <b style={{ color: ink, fontFamily: "'JetBrains Mono', monospace" }}>K {Number(selectedOrder.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</b></span>
+            </div>
+            {selectedOrder.deliveryDate && (
+              <p style={{ fontSize: 12.5, color: inkSoft, marginBottom: 14 }}><b>Delivery:</b> {formatDate(selectedOrder.deliveryDate)}</p>
+            )}
+            {selectedOrder.source_request_number && (
+              <p style={{ fontSize: 12.5, color: inkSoft, marginBottom: 14 }}><b>From request:</b> {selectedOrder.source_request_number}</p>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => setSelectedOrder(null)} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12 }}>Close</button>
+            </div>
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 };
@@ -536,7 +861,7 @@ const RequestInbox: React.FC<PanelProps> = ({ requests, busy, onAction, cardStyl
                     )}
                   </div>
                   <p style={{ fontSize: 12.5, color: inkSoft, margin: '3px 0 0' }}>
-                    {customerNameMap[r.customer_id] || r.customer_name || 'Unknown Customer'} • {new Date(r.created_at).toLocaleDateString()} • {r.request_type || 'quotation'}
+                    {customerNameMap[r.customer_id] || r.customer_name || 'Unknown Customer'} • {formatDate(r.created_at)} • {r.request_type || 'quotation'}
                     {assignedName ? ` • Assigned: ${assignedName}` : ''}
                     {r.review_note ? ` • Reason: ${r.review_note}` : ''}
                   </p>
@@ -793,8 +1118,8 @@ const RequestInbox: React.FC<PanelProps> = ({ requests, busy, onAction, cardStyl
                   >
                     {busy === `quote_${r.id}` || busy === `order_${r.id}` ? <Loader2 size={14} className="animate-spin" /> : r.request_type === 'order' ? <PackageCheck size={14} /> : <FileText size={14} />}
                     {r.request_type === 'order'
-                      ? (r.status === 'ready_for_conversion' ? 'Open Sales Order Editor' : 'Generate Sales Order')
-                      : (r.status === 'ready_for_conversion' ? 'Open Quotation Editor' : 'Generate Quotation')}
+                      ? (r.status === 'ready_for_conversion' ? 'Open Sales Order Editor' : 'Convert to Official Order')
+                      : (r.status === 'ready_for_conversion' ? 'Open Quotation Editor' : 'Convert to Official Quotation')}
                   </button>
                 </div>
 
@@ -887,8 +1212,8 @@ const QuotationPanel: React.FC<QuotePanelProps> = ({ quotations, busy, onAction,
                     )}
                   </div>
                   <p style={{ fontSize: 12.5, color: inkSoft, margin: '3px 0 0' }}>
-                    {customerNameMap[q.customer_id] || q.customer_name || 'Unknown Customer'} • {new Date(q.created_at).toLocaleDateString()}
-                    {q.valid_until ? ` • valid until ${new Date(q.valid_until).toLocaleDateString()}` : ''}
+                    {customerNameMap[q.customer_id] || q.customer_name || 'Unknown Customer'} • {formatDate(q.created_at)}
+                    {q.valid_until ? ` • valid until ${formatDate(q.valid_until)}` : ''}
                     {q.order_id ? ' • converted to order' : ''}
                   </p>
                 </div>
@@ -919,13 +1244,13 @@ const QuotationPanel: React.FC<QuotePanelProps> = ({ quotations, busy, onAction,
                   )}
                   {q.status === 'expired' && (
                     <span style={{ fontSize: 12, color: inkSoft, fontWeight: 600 }}>
-                      Expired {q.expired_at ? `on ${new Date(q.expired_at).toLocaleDateString()}` : ''} — no customer decision was recorded.
+                      Expired {q.expired_at ? `on ${formatDate(q.expired_at)}` : ''} — no customer decision was recorded.
                     </span>
                   )}
                   {q.status === 'accepted' && q.accepted_by && (
                     <span style={{ fontSize: 12, color: teal[700], fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <BadgeCheck size={14} /> Accepted by {q.accepted_by}
-                      {q.accepted_at ? ` on ${new Date(q.accepted_at).toLocaleDateString()}` : ''}
+                      {q.accepted_at ? ` on ${formatDate(q.accepted_at)}` : ''}
                       {q.accepted_by_email ? ` (${q.accepted_by_email})` : ''}
                     </span>
                   )}
@@ -935,7 +1260,7 @@ const QuotationPanel: React.FC<QuotePanelProps> = ({ quotations, busy, onAction,
                     {qSignatures.map((s, i) => (
                       <span key={s.id || i} style={{ display: 'inline-block', marginRight: 14 }}>
                         <b style={{ color: ink }}>{s.signer_name || 'Customer'}</b> — {s.decision}
-                        {s.note ? `: "${s.note}"` : ''} on {new Date(s.created_at).toLocaleString()}
+                        {s.note ? `: "${s.note}"` : ''} on {formatDateTime(s.created_at)}
                       </span>
                     ))}
                   </div>
@@ -1170,7 +1495,7 @@ const AdminDiscussion: React.FC<AdminDiscussionProps> = ({ docType, docId, custo
                   {isCustomer ? 'Customer' : (c.author_name || 'Staff')}
                   {!isCustomer && c.visibility === 'internal' && ' • Internal'}
                   {!isCustomer && c.visibility === 'customer' && ' • Visible to customer'}
-                  {' • '}{new Date(c.created_at).toLocaleString()}
+                  {' • '}{formatDateTime(c.created_at)}
                 </p>
               </div>
             );
@@ -1261,8 +1586,8 @@ const OrdersPanel: React.FC<OrdersPanelProps> = ({ orders, busy, onAction, cardS
                     <StatusPill meta={{}} status={o.status} />
                   </div>
                   <p style={{ fontSize: 12.5, color: inkSoft, margin: '3px 0 0' }}>
-                    {o.customer_name || 'Unknown Customer'} • {new Date(o.orderDate).toLocaleDateString()}
-                    {o.deliveryDate ? ` • delivery ${new Date(o.deliveryDate).toLocaleDateString()}` : ''}
+                    {o.customer_name || 'Unknown Customer'} • {formatDate(o.orderDate)}
+                    {o.deliveryDate ? ` • delivery ${formatDate(o.deliveryDate)}` : ''}
                     {o.source_request_number ? ` • from request ${o.source_request_number}` : ''}
                   </p>
                 </div>
@@ -1381,7 +1706,7 @@ const VersionHistoryOverlay: React.FC<VersionOverlayProps> = ({ open, onClose, v
                           {v.reason || `Version ${v.version}`} {isCurrent && <span style={{ color: teal[600], fontSize: 10.5 }}> • current</span>}
                         </p>
                         <p style={{ fontSize: 11, color: inkSoft, margin: '2px 0 0' }}>
-                          {new Date(v.created_at).toLocaleString()}
+                          {formatDateTime(v.created_at)}
                           {v.created_by_name ? ` by ${v.created_by_name}` : ''}
                           {' • '}K {Number(v.snapshot.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </p>
@@ -1413,7 +1738,7 @@ const VersionHistoryOverlay: React.FC<VersionOverlayProps> = ({ open, onClose, v
                       </table>
                       {v.snapshot.validUntil && (
                         <p style={{ fontSize: 11.5, color: inkSoft, margin: '8px 2px 0' }}>
-                          Valid until: <b style={{ color: ink }}>{new Date(v.snapshot.validUntil).toLocaleDateString()}</b>
+                          Valid until: <b style={{ color: ink }}>{formatDate(v.snapshot.validUntil)}</b>
                           {v.snapshot.paymentTerms ? ` • Terms: ${v.snapshot.paymentTerms}` : ''}
                         </p>
                       )}

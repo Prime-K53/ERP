@@ -14,6 +14,15 @@
   /* Desktop: main content area */
 }
 
+.order-form-footer {
+  position: relative;
+  z-index: 50;
+}
+
+.order-form-scroll {
+  position: relative;
+}
+
 @media (max-width: 768px) {
   .order-form-grid {
     grid-template-columns: 1fr !important;

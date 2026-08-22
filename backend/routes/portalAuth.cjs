@@ -16,9 +16,12 @@ function issuePendingTwoFactor(user) {
 
 router.post('/login', async (req, res) => {
   try {
-    const { customer_id, full_name, two_factor_code } = req.body;
+    const { customer_id, full_name, two_factor_code } = req.body || {};
     if (!customer_id || !full_name) {
       return res.status(400).json({ error: 'Customer ID and full name are required' });
+    }
+    if (typeof customer_id !== 'string' || typeof full_name !== 'string') {
+      return res.status(401).json({ error: 'Invalid credentials', message: 'Customer ID and full name do not match our records' });
     }
     const user = await portalAuthService.loginWithCustomerId(customer_id, full_name);
     if (!user) {
@@ -64,9 +67,12 @@ router.post('/login', async (req, res) => {
 
 router.post('/login-password', async (req, res) => {
   try {
-    const { email, password, two_factor_code } = req.body;
+    const { email, password, two_factor_code } = req.body || {};
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(401).json({ error: 'Invalid credentials', message: 'Email and password do not match our records' });
     }
     const user = await portalAuthService.authenticatePortalUser(email, password);
     if (!user) {
@@ -113,9 +119,12 @@ router.post('/login-password', async (req, res) => {
 
 router.post('/refresh', async (req, res) => {
   try {
-    const { refresh_token } = req.body;
+    const { refresh_token } = req.body || {};
     if (!refresh_token) {
       return res.status(400).json({ error: 'Refresh token is required' });
+    }
+    if (typeof refresh_token !== 'string') {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
     const session = await portalAuthService.findSessionByRefreshToken(refresh_token);
     if (!session) {

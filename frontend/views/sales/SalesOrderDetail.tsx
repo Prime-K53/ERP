@@ -1,43 +1,41 @@
 import React from 'react';
-import { useSales } from '../../context/SalesContext';
+import { useSalesOrderStore } from '../../stores/salesOrderStore';
 import { useFinanceStore } from '../../stores/financeStore';
-import { useSalesStore } from '../../stores/salesStore';
+import { salesOrderService } from '../../services/salesOrderService';
+import { toast } from '../../components/Toast';
 
 const SalesOrderDetail: React.FC<{ id?: string }> = ({ id }) => {
-  const { salesOrders } = useSales() as { salesOrders: any[] };
+  const { salesOrders, updateSalesOrder, fetchSalesOrders } = useSalesOrderStore();
   const { addInvoice } = useFinanceStore();
-  const { updateSalesOrder, fetchSalesData } = useSalesStore();
   const order = (salesOrders || []).find((o: any) => o.id === id);
 
   if (!order) return <div>Select an order to view details</div>;
 
   const convert = async () => {
-    const invoice = {
-      customerId: order.customerId,
-      customerName: order.customerName || '',
-      date: new Date().toISOString(),
-      dueDate: order.deliveryDate || null,
-      lines: (order.items || []).map((it: any) => ({ itemId: it.product_id || it.id, description: it.product_name || it.description || '', quantity: it.quantity, unitPrice: it.unit_price || it.unitPrice || 0, total: it.line_total || (it.quantity * (it.unit_price || it.unitPrice || 0)) })),
-      totalAmount: order.total || 0,
-      status: 'Unpaid',
-      sourceOrderId: order.id
-    };
-
     try {
-      await addInvoice(invoice);
-      alert('Converted to invoice');
+      // Idempotency: if already invoiced, no-op
+      if (order.invoiceId || order.invoiceStatus === 'Invoiced') {
+        toast.info('This order has already been converted to an invoice');
+        return;
+      }
+      const invoice = salesOrderService.buildInvoiceFromOrder(order);
+      const invoiceId = await addInvoice(invoice);
+      await updateSalesOrder({ ...order, ...salesOrderService.markInvoiced(order, invoiceId, invoice.invoiceNumber) });
+      await fetchSalesOrders(true);
+      toast.success('Converted to invoice');
     } catch (err: any) {
-      alert('Failed to convert: ' + (err?.message || err));
+      toast.error('Failed to convert: ' + (err?.message || err));
     }
   };
 
   const setStatus = async (status: string) => {
     try {
+      salesOrderService.assertCanTransition(order.status, status);
       await updateSalesOrder({ ...order, status });
-      await fetchSalesData();
-      alert('Order status updated to ' + status);
+      await fetchSalesOrders(true);
+      toast.success('Order status updated to ' + status);
     } catch (err: any) {
-      alert('Failed to update status: ' + (err?.message || err));
+      toast.error('Failed to update status: ' + (err?.message || err));
     }
   };
 
@@ -47,15 +45,15 @@ const SalesOrderDetail: React.FC<{ id?: string }> = ({ id }) => {
       <div className="space-y-2 text-sm">
         <p><span className="font-medium text-gray-500">Customer:</span> {order.customerId || '-'}</p>
         <p><span className="font-medium text-gray-500">Status:</span> {order.status}</p>
-        <p><span className="font-medium text-gray-500">Total:</span> {order.total}</p>
+        <p><span className="font-medium text-gray-500">Total:</span> {order.total ?? order.totalAmount}</p>
       </div>
       <div className="mt-3">
         <h4 className="font-semibold text-sm mb-2">Items</h4>
         <ul className="space-y-1 text-sm">
           {(order.items || []).map((it: any) => (
             <li key={it.id} className="flex justify-between">
-              <span className="truncate mr-2">{it.product_name || it.product_name || it.id}</span>
-              <span className="flex-shrink-0">{it.quantity} x {it.unit_price}</span>
+              <span className="truncate mr-2">{it.productName || it.description || it.id}</span>
+              <span className="flex-shrink-0">{it.quantity} x {it.unitPrice}</span>
             </li>
           ))}
         </ul>

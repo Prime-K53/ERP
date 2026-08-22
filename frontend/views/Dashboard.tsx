@@ -1149,15 +1149,25 @@ const DashboardContent: React.FC = () => {
              <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 30, color: '#0b3e39', letterSpacing: '0.2px', lineHeight: 1.2, fontWeight: 400 }}>
                {format(new Date(), isMobile ? 'EEE, MMM d' : 'EEEE, MMMM d, yyyy')}
              </div>
-             <div style={{ fontSize: 13, color: '#5c6567', fontWeight: 500 }}>Here's what's happening with your business today.</div>
+              <div style={{ fontSize: 13, color: '#5c6567', fontWeight: 500 }}>Here's what's happening with your business today.</div>
+            </div>
+           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+             {requestAnalytics && (() => {
+               const reqs = requestAnalytics.requests || {};
+               const pendingReview = (reqs.submitted || 0) + (reqs.assigned || 0) + (reqs.under_review || 0) + (reqs.waiting_for_customer || 0) + (reqs.ready_for_conversion || 0);
+               if (pendingReview === 0) return null;
+               return (
+                 <button onClick={() => navigate('/sales-flow/requests')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease', whiteSpace: 'nowrap' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                   <Inbox size={14} /> Needs Attention: {pendingReview} request{pendingReview !== 1 ? 's' : ''} awaiting review <ArrowRight size={14} />
+                 </button>
+               );
+             })()}
+             <button onClick={() => navigate('/reports')} style={{
+               background: 'linear-gradient(160deg, #3fa294, #0f544c)', color: '#fff', padding: '10px 20px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s ease', boxShadow: '0 1px 2px rgba(11,62,57,.15)', whiteSpace: 'nowrap',
+             }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(11,62,57,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,62,57,.15)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+               {isMobile ? 'Reports' : 'View Detailed Reports'}
+             </button>
            </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => navigate('/reports')} style={{
-              background: 'linear-gradient(160deg, #3fa294, #0f544c)', color: '#fff', padding: '10px 20px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s ease', boxShadow: '0 1px 2px rgba(11,62,57,.15)', whiteSpace: 'nowrap',
-            }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(11,62,57,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,62,57,.15)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
-              {isMobile ? 'Reports' : 'View Detailed Reports'}
-            </button>
-          </div>
         </div>
 
         <div style={{

@@ -243,6 +243,16 @@ router.get('/requests', async (req, res) => {
   }
 });
 
+router.get('/requests/inbox', async (req, res) => {
+  try {
+    const data = await portalLifecycleService.getInboxRequests();
+    res.json(data);
+  } catch (err) {
+    console.error('[PortalAdmin] Inbox requests error:', err);
+    res.status(500).json({ error: 'Failed to load inbox requests' });
+  }
+});
+
 router.get('/requests/:id', async (req, res) => {
   try {
     const data = await portalLifecycleService.adminGetRequest(req.params.id);

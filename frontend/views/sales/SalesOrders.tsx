@@ -6,7 +6,6 @@ import { OrderPrefillPayload } from '../../services/adminPortalClient';
 import { salesOrderService } from '../../services/salesOrderService';
 import { toast } from '../../components/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { generateNextId } from '../../utils/helpers';
 import SalesOrderForm from './SalesOrderForm';
 
 const teal = {
@@ -130,7 +129,7 @@ const SalesOrders: React.FC = () => {
     // record is then updated with the official number + request linkage so the
     // admin list never shows an "Unnumbered order" and ODR-… stays traceable.
     if (pendingOrderRequest) {
-      const orderId = o.id || generateNextId('SO', salesOrders);
+      const orderId = o.id || salesOrderService.generateProvisionalOrderId(salesOrders, 'SO');
       const orderToSave = { ...o, id: orderId };
       const result = await store.adoptQuotationRequest({
         id: pendingOrderRequest.requestId,
@@ -161,6 +160,7 @@ const SalesOrders: React.FC = () => {
       const prefill: any = {
         id: '',
         customerId: p.customer_id || '',
+        customerName: p.customer_name || '',
         items: (p.items || []).map((it: any, i: number) => ({
           id: `item-${Date.now()}-${i}`,
           productId: it.productId || '',
@@ -176,7 +176,8 @@ const SalesOrders: React.FC = () => {
         total: p.subtotal || 0,
         orderDate: new Date().toISOString(),
         deliveryDate: p.deliveryDate || null,
-        status: 'Draft'
+        status: 'Draft',
+        referenceDoc: p.requestNumber || '',
       };
       setEditing(prefill);
       setPendingOrderRequest({ requestId: p.id, requestNumber: p.requestNumber });
@@ -187,6 +188,11 @@ const SalesOrders: React.FC = () => {
 
   const handleConvertToInvoice = async (order: any) => {
     try {
+      // Idempotency: if already invoiced, return existing invoice ID
+      if (order.invoiceId || order.invoiceStatus === 'Invoiced') {
+        toast.info('This order has already been converted to an invoice');
+        return;
+      }
       const invoice = salesOrderService.buildInvoiceFromOrder(order);
       const invoiceId = await addInvoice(invoice);
       await store.updateSalesOrder({ ...order, ...salesOrderService.markInvoiced(order, invoiceId, invoice.invoiceNumber) });
