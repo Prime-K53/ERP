@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, FileText, RefreshCw, Loader2, MessageSquare,
   PackageCheck, Inbox, History, ChevronDown, ArrowUpRight, History as HistoryIcon,
   BadgeCheck, Send, Flag, Trash2, HandCoins, MoreVertical, Eye, Download, Edit2, Plus,
-  Clock, Wallet, Ban,
+  Clock, Wallet, Ban, X, FileCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { formatDateTime, formatDate } from '../../utils/formatters';
@@ -14,6 +14,7 @@ import {
   AdminSalesOrder, AdminDocumentVersion,
 } from '../../services/adminPortalClient';
 import PaymentRequests, { PaymentRequestStats } from './PaymentRequests';
+import { markAlertsReadForActionUrl } from '../../services/systemAlertService';
 import { QuotationRequestList } from './components/SalesLists';
 
 const teal = {
@@ -166,7 +167,8 @@ const ChainStrip: React.FC<ChainStripProps> = ({ request, quotation, order, orig
 const ActionMenu: React.FC<{
   items: { label: string; onClick: () => void; icon?: React.ReactNode; danger?: boolean; disabled?: boolean }[];
   x: number; y: number; onClose: () => void;
-}> = ({ items, x, y, onClose }) => {
+  title?: string;
+}> = ({ items, x, y, onClose, title = 'Actions' }) => {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -177,26 +179,137 @@ const ActionMenu: React.FC<{
   }, [onClose]);
 
   return (
-    <div ref={ref} style={{ position: 'fixed', left: Math.min(x, window.innerWidth - 256), top: Math.min(y, window.innerHeight - 300), zIndex: 70, background: paper, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,.15)', border: `1px solid ${hairline}`, minWidth: 220, overflow: 'hidden' }}>
+    <div ref={ref} style={{
+      position: 'fixed', left: Math.min(x, window.innerWidth - 256), top: Math.min(y, window.innerHeight - 320),
+      zIndex: 70, background: paper, borderRadius: 10,
+      boxShadow: '0 16px 36px -12px rgba(0,0,0,.28)', border: `1.4px solid ${hairline}`,
+      minWidth: 224, overflow: 'hidden',
+    }}>
+      {/* Accent stripe */}
+      <div style={{
+        height: 4,
+        background: `linear-gradient(90deg, ${teal[600]}, ${teal[400]} 40%, ${amber[500]} 100%)`,
+      }} />
+      <div style={{
+        padding: '9px 14px', background: teal[50], borderBottom: `1px solid ${hairline}`,
+        fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.06,
+      }}>
+        {title}
+      </div>
       {items.map((item, i) => (
-        <button key={i} onClick={() => { item.onClick(); onClose(); }} disabled={item.disabled} style={{ width: '100%', textAlign: 'left', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: item.danger ? danger : ink, display: 'flex', alignItems: 'center', gap: 8, opacity: item.disabled ? 0.5 : 1 }}>
-          {item.icon} {item.label}
+        <button
+          key={i}
+          onClick={() => { item.onClick(); onClose(); }}
+          disabled={item.disabled}
+          onMouseEnter={e => {
+            if (item.disabled) return;
+            e.currentTarget.style.background = item.danger ? '#fef2f2' : teal[50];
+          }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            width: '100%', textAlign: 'left', padding: '10px 14px',
+            border: 'none', borderTop: i > 0 ? `1px solid ${hairline}` : 'none',
+            cursor: item.disabled ? 'default' : 'pointer',
+            fontSize: 13, color: item.danger ? danger : ink,
+            opacity: item.disabled ? 0.5 : 1,
+            background: 'transparent', transition: 'background .1s ease',
+          }}
+        >
+          <span style={{ display: 'inline-flex', color: item.danger ? danger : teal[600] }}>{item.icon}</span>
+          {item.label}
         </button>
       ))}
     </div>
   );
 };
 
-const DetailModal: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ open, onClose, title, children }) => {
+/* Shared chrome tokens mirroring the Clients "Add Customer" modal */
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  background: 'rgba(15,23,42,.6)', padding: '40px 20px',
+  fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
+};
+
+const modalPanelStyle: React.CSSProperties = {
+  width: '100%', background: paper, borderRadius: 14,
+  boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
+  overflow: 'hidden', position: 'relative',
+  display: 'flex', flexDirection: 'column',
+};
+
+const ModalAccentStripe: React.FC = () => (
+  <div style={{
+    position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+    background: `linear-gradient(90deg, ${teal[600]}, ${teal[400]} 40%, ${amber[500]} 100%)`,
+    zIndex: 1,
+  }} />
+);
+
+const ModalCloseButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button onClick={onClick} aria-label="Close" style={{
+    width: 32, height: 32, borderRadius: 8,
+    border: `1px solid ${hairline}`, background: paper, color: inkSoft,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', transition: 'all .15s ease',
+  }}
+    onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[700]; e.currentTarget.style.borderColor = teal[200]; }}
+    onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
+  >
+    <X size={15} />
+  </button>
+);
+
+/** Modal header in the Add-Customer style: gradient icon tile + serif title + subtitle. */
+const ModalHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle?: string; onClose: () => void }> = ({ icon, title, subtitle, onClose }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    gap: 14, padding: '20px 24px 16px', borderBottom: `1px solid ${hairline}`, background: paper,
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 4px 10px -3px rgba(15,84,76,.6)',
+      }}>
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{
+          fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
+          fontSize: 21, margin: 0, color: teal[800], letterSpacing: 0.2,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{title}</h1>
+        {subtitle && (
+          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02 }}>{subtitle}</p>
+        )}
+      </div>
+    </div>
+    <ModalCloseButton onClick={onClose} />
+  </div>
+);
+
+const DetailModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ open, onClose, title, subtitle, icon, children }) => {
   if (!open) return null;
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: paper, borderRadius: 16, width: '100%', maxWidth: 800, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(15,23,42,.3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${hairline}` }}>
-          <b style={{ fontSize: 14, color: ink }}>{title}</b>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: inkSoft, fontSize: 16 }}>✕</button>
-        </div>
-        <div style={{ padding: 16, overflowY: 'auto' }}>{children}</div>
+    <div onClick={onClose} style={{ ...modalOverlayStyle, zIndex: 80 }}>
+      <div onClick={e => e.stopPropagation()} style={{ ...modalPanelStyle, maxWidth: 800, maxHeight: '85vh' }}>
+        <ModalAccentStripe />
+        <ModalHeader
+          icon={icon ?? <FileText size={19} color="#fff" />}
+          title={title}
+          subtitle={subtitle}
+          onClose={onClose}
+        />
+        <div style={{ padding: '20px 24px', overflowY: 'auto' }}>{children}</div>
       </div>
     </div>
   );
@@ -225,6 +338,88 @@ const KpiCards: React.FC<{ items: KpiItem[] }> = ({ items }) => {
           </div>
         </div>
       ))}
+    </div>
+  );
+};
+
+/** Styled reject dialog — replaces window.prompt, in the Add-Customer modal language. */
+const RejectModal: React.FC<{
+  open: boolean;
+  requestNumber?: string;
+  reason: string;
+  onReasonChange: (v: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  busy?: boolean;
+}> = ({ open, requestNumber, reason, onReasonChange, onClose, onSubmit, busy }) => {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ ...modalOverlayStyle, zIndex: 90 }}>
+      <div onClick={e => e.stopPropagation()} style={{ ...modalPanelStyle, maxWidth: 440 }}>
+        <ModalAccentStripe />
+        <ModalHeader
+          icon={<XCircle size={19} color="#fff" />}
+          title="Reject Request"
+          subtitle={requestNumber ? `${requestNumber} will be returned to the customer with your reason.` : undefined}
+          onClose={onClose}
+        />
+        <div style={{ padding: '18px 24px 6px', overflowY: 'auto' }}>
+          <label style={labelStyle}>
+            Rejection Reason <span style={{ color: danger, fontWeight: 700 }}>*</span>
+          </label>
+          <textarea
+            autoFocus
+            rows={4}
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            placeholder="e.g. Missing specifications — please attach artwork files and resubmit."
+            style={{
+              width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13.5,
+              color: ink, background: paper, resize: 'none', minHeight: 88, lineHeight: 1.5,
+              border: `1.4px solid ${hairline}`, borderRadius: 9,
+              padding: '9px 12px', outline: 'none',
+              transition: 'border-color .15s ease, box-shadow .15s ease',
+            }}
+          />
+          <p style={{ margin: '8px 0 0', fontSize: 11, color: inkSoft, lineHeight: 1.5 }}>
+            The customer is notified immediately and can revise and resubmit this request.
+          </p>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
+          padding: '16px 24px', marginTop: 12, borderTop: `1px solid ${hairline}`, background: paper,
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,
+              padding: '9px 18px', borderRadius: 9, cursor: 'pointer',
+              background: paper, border: `1.4px solid ${hairline}`, color: inkSoft,
+              display: 'flex', alignItems: 'center', gap: 7, transition: 'all .15s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[800]; e.currentTarget.style.borderColor = teal[200]; }}
+            onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={busy || !reason.trim()}
+            style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,
+              padding: '9px 18px', borderRadius: 9, cursor: busy || !reason.trim() ? 'not-allowed' : 'pointer',
+              border: '1.4px solid transparent', opacity: busy || !reason.trim() ? 0.55 : 1,
+              background: `linear-gradient(155deg, ${danger}, #8f3a32)`,
+              color: '#fff', display: 'flex', alignItems: 'center', gap: 7,
+              boxShadow: '0 6px 16px -6px rgba(181,73,63,.55)', transition: 'all .15s ease',
+            }}
+            onMouseEnter={e => { if (!busy && reason.trim()) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 20px -6px rgba(181,73,63,.65)'; } }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 16px -6px rgba(181,73,63,.55)'; }}
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} Reject Request
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -261,7 +456,21 @@ const QuotationRequests: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<AdminQuotationRequest | null>(null);
   const [selectedQuotation, setSelectedQuotation] = useState<AdminQuotation | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<AdminSalesOrder | null>(null);
-  const [menuState, setMenuState] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [menuState, setMenuState] = useState<{ id: string; type: 'request' | 'quotation' | 'order'; x: number; y: number } | null>(null);
+  const [rejectState, setRejectState] = useState<{ id: string; number?: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const openRejectDialog = (id: string, number?: string) => {
+    setRejectReason('');
+    setRejectState({ id, number });
+  };
+
+  const submitReject = () => {
+    if (!rejectState || !rejectReason.trim()) return;
+    const { id } = rejectState;
+    setRejectState(null);
+    action(`reject_${id}`, () => adminLifecycle.requests.reject(id, rejectReason.trim()));
+  };
 
   const loadAll = useCallback(async () => {
     try {
@@ -302,6 +511,10 @@ const QuotationRequests: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Opening the hub acknowledges its notifications so badges clear here,
+    // on the hub cards, and on the dashboard/topbar bell.
+    adminLifecycle.requests.markInboxRead().catch(() => {});
+    markAlertsReadForActionUrl('/sales-flow/requests').catch(() => {});
     loadAll();
   }, [loadAll]);
 
@@ -570,8 +783,7 @@ const QuotationRequests: React.FC = () => {
             } else if (act === 'generate_order') {
               startOrderFlow(r);
             } else if (act === 'reject') {
-              const reason = window.prompt('Reject reason:');
-              if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason));
+              openRejectDialog(r.id, r.request_number);
             } else if (act === 'view_quotation') {
               const q = quotations.find(q => q.id === r.quotation_id);
               if (q) setSelectedQuotation(q);
@@ -601,8 +813,7 @@ const QuotationRequests: React.FC = () => {
             } else if (act === 'generate_order') {
               startOrderFlow(r);
             } else if (act === 'reject') {
-              const reason = window.prompt('Reject reason:');
-              if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason));
+              openRejectDialog(r.id, r.request_number);
             } else if (act === 'view_quotation') {
               const q = quotations.find(q => q.id === r.quotation_id);
               if (q) setSelectedQuotation(q);
@@ -646,9 +857,10 @@ const QuotationRequests: React.FC = () => {
             { label: 'View Detail', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) setSelectedRequest(r); }, icon: <Eye size={14} /> },
             { label: 'Generate Quotation', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) startQuoteFlow(r); }, icon: <FileCheck size={14} /> },
             { label: 'Generate Order', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) startOrderFlow(r); }, icon: <PackageCheck size={14} /> },
-            { label: 'Reject', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) { const reason = window.prompt('Reject reason:'); if (reason) action(`reject_${r.id}`, () => adminLifecycle.requests.reject(r.id, reason)); } }, icon: <XCircle size={14} />, danger: true },
+            { label: 'Reject', onClick: () => { const r = requests.find(r => r.id === menuState.id); if (r) openRejectDialog(r.id, r.request_number); }, icon: <XCircle size={14} />, danger: true },
             { label: 'Delete', onClick: () => { if (window.confirm('Delete this request?')) action(`delete_${menuState.id}`, () => adminLifecycle.requests.remove(menuState.id)); }, icon: <Trash2 size={14} />, danger: true },
           ]}
+          title="Request Actions"
           x={menuState.x}
           y={menuState.y}
           onClose={() => setMenuState(null)}
@@ -663,6 +875,7 @@ const QuotationRequests: React.FC = () => {
             { label: 'Edit', onClick: () => { /* edit */ }, icon: <Edit2 size={14} /> },
             { label: 'Convert to Order', onClick: () => { const q = quotations.find(q => q.id === menuState.id); if (q) action(`convert_${q.id}`, () => adminLifecycle.quotations.convertToOrder(q.id, {})); }, icon: <ArrowUpRight size={14} /> },
           ]}
+          title="Quotation Actions"
           x={menuState.x}
           y={menuState.y}
           onClose={() => setMenuState(null)}
@@ -676,13 +889,20 @@ const QuotationRequests: React.FC = () => {
             { label: 'Edit', onClick: () => { /* edit */ }, icon: <Edit2 size={14} /> },
             { label: 'Cancel Order', onClick: () => { if (window.confirm('Cancel this order?')) action(`cancel_${menuState.id}`, () => adminLifecycle.orders.updateStatus(menuState.id, { status: 'Cancelled' })); }, icon: <XCircle size={14} />, danger: true },
           ]}
+          title="Order Actions"
           x={menuState.x}
           y={menuState.y}
           onClose={() => setMenuState(null)}
         />
       )}
 
-      <DetailModal open={!!selectedRequest} onClose={() => setSelectedRequest(null)} title={selectedRequest ? `Request ${selectedRequest.request_number}` : ''}>
+      <DetailModal
+        open={!!selectedRequest}
+        onClose={() => setSelectedRequest(null)}
+        title={selectedRequest ? `Request ${selectedRequest.request_number}` : ''}
+        subtitle="Sales request pipeline — review, quote, and convert"
+        icon={<MessageSquare size={19} color="#fff" />}
+      >
         {selectedRequest && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -732,7 +952,7 @@ const QuotationRequests: React.FC = () => {
                 <button onClick={() => { startOrderFlow(selectedRequest); setSelectedRequest(null); }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: 12 }}><PackageCheck size={14} /> Generate Order</button>
               )}
               {selectedRequest.status !== 'converted' && selectedRequest.status !== 'rejected' && (
-                <button onClick={() => { const reason = window.prompt('Reject reason:'); if (reason) { action(`reject_${selectedRequest.id}`, () => adminLifecycle.requests.reject(selectedRequest.id, reason)); setSelectedRequest(null); } }} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: danger, borderColor: '#fecaca' }}><XCircle size={14} /> Reject</button>
+                <button onClick={() => { openRejectDialog(selectedRequest.id, selectedRequest.request_number); }} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: danger, borderColor: '#fecaca' }}><XCircle size={14} /> Reject</button>
               )}
               <button onClick={() => { if (window.confirm('Delete this request?')) { action(`delete_${selectedRequest.id}`, () => adminLifecycle.requests.remove(selectedRequest.id)); setSelectedRequest(null); } }} style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: danger }}><Trash2 size={14} /> Delete</button>
             </div>
@@ -740,7 +960,13 @@ const QuotationRequests: React.FC = () => {
         )}
       </DetailModal>
 
-      <DetailModal open={!!selectedQuotation} onClose={() => setSelectedQuotation(null)} title={selectedQuotation ? `Quotation ${selectedQuotation.quotation_number}` : ''}>
+      <DetailModal
+        open={!!selectedQuotation}
+        onClose={() => setSelectedQuotation(null)}
+        title={selectedQuotation ? `Quotation ${selectedQuotation.quotation_number}` : ''}
+        subtitle="Official quotation — versions, signatures, and conversions"
+        icon={<FileText size={19} color="#fff" />}
+      >
         {selectedQuotation && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -800,7 +1026,13 @@ const QuotationRequests: React.FC = () => {
         )}
       </DetailModal>
 
-      <DetailModal open={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={selectedOrder ? `Order ${selectedOrder.order_number || 'Unnumbered'}` : ''}>
+      <DetailModal
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        title={selectedOrder ? `Order ${selectedOrder.order_number || 'Unnumbered'}` : ''}
+        subtitle="Official sales order — fulfillment and production tracking"
+        icon={<PackageCheck size={19} color="#fff" />}
+      >
         {selectedOrder && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -844,6 +1076,16 @@ const QuotationRequests: React.FC = () => {
           </div>
         )}
       </DetailModal>
+
+      <RejectModal
+        open={!!rejectState}
+        requestNumber={rejectState?.number}
+        reason={rejectReason}
+        onReasonChange={setRejectReason}
+        onClose={() => setRejectState(null)}
+        onSubmit={submitReject}
+        busy={busy ? true : false}
+      />
     </div>
   );
 };

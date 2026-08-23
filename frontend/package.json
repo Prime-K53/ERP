@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:doc-renderer": "node scripts/build-official-document-renderer.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.1.6",

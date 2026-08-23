@@ -6,6 +6,7 @@ import QuotationRequests from './QuotationRequests';
 import { adminLifecycle } from '../../services/adminPortalClient';
 import { getJsonRequestHeaders } from '../../services/requestHeaders';
 import { API_BASE_URL } from '../../config/api.js';
+import { markAlertsReadForActionUrl } from '../../services/systemAlertService';
 
 const QuotationRequestsHub: React.FC = () => {
   const location = useLocation();
@@ -22,6 +23,13 @@ const QuotationRequestsHub: React.FC = () => {
     let cancelled = false;
     const load = async () => {
       try {
+        // Opening the hub acknowledges its notifications: request-pipeline
+        // admin notifications are marked read server-side and the matching
+        // bell alerts locally, so this badge (and the dashboard/topbar dot)
+        // disappear.
+        await adminLifecycle.requests.markInboxRead().catch(() => {});
+        await markAlertsReadForActionUrl('/sales-flow/requests').catch(() => {});
+
         const [reqs, inboxReqs, quotes, orderList, paymentReqs] = await Promise.all([
           adminLifecycle.requests.list(),
           adminLifecycle.requests.inbox().catch(() => []),

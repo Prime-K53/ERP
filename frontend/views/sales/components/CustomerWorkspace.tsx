@@ -82,7 +82,7 @@ const selectStyle: React.CSSProperties = {
 
 const sectionLabelStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
-  margin: '30px 0 16px', paddingLeft: 12,
+  margin: '28px 0 14px', paddingLeft: 10,
   borderLeft: `3px solid ${teal[500]}`
 };
 
@@ -133,20 +133,20 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
     style.innerHTML = `
       .white-card {
         background: #FFFFFF;
-        border: 1px solid rgba(16,24,40,0.07);
-        border-radius: 14px;
-        box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 12px 30px -16px rgba(16,24,40,0.18);
-        transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+        border: 1px solid #E8E5DF;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        transition: box-shadow .18s ease, border-color .18s ease;
       }
       .white-card:hover {
-        box-shadow: 0 2px 4px rgba(16,24,40,0.05), 0 18px 40px -18px rgba(16,24,40,0.22);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       }
       .settings-section-header {
-        padding: 20px 28px;
-        border-bottom: 1px solid rgba(16,24,40,0.06);
-        background: linear-gradient(180deg, #fbfaf7 0%, #ffffff 100%);
-        border-top-left-radius: 14px;
-        border-top-right-radius: 14px;
+        padding: 16px 24px;
+        border-bottom: 1px solid #E8E5DF;
+        background: #FAFAF8;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
       }
       .customer-workspace input:not([type=checkbox]):not([type=radio]):not([type=range]),
       .customer-workspace textarea,
@@ -170,11 +170,8 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
         clip: rect(0, 0, 0, 0);
         white-space: nowrap;
         border-width: 0;
-      }
-      .toggle-track {
-        width: 44px;
-        height: 24px;
-        background: #d3ece9;
+      }      .toggle-track {
+        width: 40px; height: 22px; background: #d1d5db;
         border-radius: 9999px;
         position: relative;
         transition: background 0.2s ease;
@@ -186,13 +183,12 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
         position: absolute;
         top: 2px;
         left: 2px;
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         background: #ffffff;
         border-radius: 50%;
-        border: 1px solid #D4D7DC;
         transition: transform 0.2s ease;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
       .toggle-input:checked + .toggle-track {
         background: #1f8577;
@@ -517,71 +513,72 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
       <div style={{
         position: 'relative',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '15px 28px',
-        borderBottom: '1px solid rgba(11,62,57,0.4)',
-        background: 'linear-gradient(120deg, #0b3e39 0%, #146b60 52%, #1f8577 100%)',
-        boxShadow: '0 6px 20px -10px rgba(11,62,57,0.6)'
+        padding: '14px 28px',
+        borderBottom: '1px solid rgba(11,62,57,0.25)',
+        background: 'linear-gradient(135deg, #0b3e39 0%, #146b60 50%, #1a8a76 100%)',
+        boxShadow: '0 4px 16px -8px rgba(11,62,57,0.45)',
+        zIndex: 20,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={onBack}
-            style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(155deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.28)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .15s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25)', flexShrink: 0 }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(155deg, rgba(255,255,255,0.32), rgba(255,255,255,0.12))'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(155deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))'; }}
+            style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .18s ease', flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={17} />
           </button>
           <div style={{
-            width: 42, height: 42, borderRadius: 12,
-            background: 'linear-gradient(155deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))',
-            border: '1px solid rgba(255,255,255,0.28)',
+            width: 40, height: 40, borderRadius: 11,
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))',
+            border: '1px solid rgba(255,255,255,0.2)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25)', flexShrink: 0
+            flexShrink: 0
           }}>
-            <User size={20} color="#fff" />
+            <User size={18} color="#fff" />
           </div>
           <div>
             <h1 style={{
-              fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
-              fontSize: 19, margin: 0, color: '#ffffff', letterSpacing: 0.3
+              fontFamily: "'Inter',-apple-system,sans-serif", fontWeight: 700,
+              fontSize: 18, margin: 0, color: '#ffffff', letterSpacing: '-0.01em', lineHeight: 1.2
             }}>
               {customer.name}
             </h1>
-            <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.78)', letterSpacing: 0.02 }}>
-              {activeGroupTitle} &mdash; Customer ID: {customer.id}
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.65)', fontFamily: "'Inter',sans-serif", fontWeight: 500 }}>
+              {activeGroupTitle} &middot; ID: {customer.id}
             </p>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             onClick={() => onEdit(customer)}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, background: '#ffffff', color: '#0f544c', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all .15s ease', border: 'none', boxShadow: '0 8px 18px -8px rgba(0,0,0,0.45)' }}
-            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 12px 24px -10px rgba(0,0,0,0.5)'; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 8px 18px -8px rgba(0,0,0,0.45)'; }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, background: '#ffffff', color: '#0f544c', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', transition: 'all .18s ease', border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'; }}
           >
-            <Edit2 size={16} /> Edit Profile
+            <Edit2 size={14} /> Edit
           </button>
           <button
             onClick={toggleCreditHold}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all .15s ease', border: 'none', ...(customer.creditHold ? { background: '#c0495f', color: '#fff' } : { background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)' }) }}
-            onMouseEnter={e => { if (!customer.creditHold) { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; } }}
-            onMouseLeave={e => { if (!customer.creditHold) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, fontWeight: 600, fontSize: 12.5, cursor: 'pointer', transition: 'all .18s ease', border: 'none', ...(customer.creditHold ? { background: '#c0495f', color: '#fff' } : { background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }) }}
+            onMouseEnter={e => { if (!customer.creditHold) { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; } }}
+            onMouseLeave={e => { if (!customer.creditHold) { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; } }}
           >
-            <ShieldAlert size={16} />
-            {customer.creditHold ? 'Release Hold' : 'Place on Hold'}
+            <ShieldAlert size={14} />
+            {customer.creditHold ? 'Release Hold' : 'Hold'}
           </button>
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setIsTransactionMenuOpen(!isTransactionMenuOpen)}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, background: '#ffffff', color: '#0f544c', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all .15s ease', border: 'none', boxShadow: '0 8px 18px -8px rgba(0,0,0,0.45)' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 12px 24px -10px rgba(0,0,0,0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 8px 18px -8px rgba(0,0,0,0.45)'; }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, background: '#ffffff', color: '#0f544c', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', transition: 'all .18s ease', border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'; }}
             >
-              <Plus size={16} />
-              New Transaction
+              <Plus size={14} />
+              New
             </button>
             {isTransactionMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, width: 192, background: '#FEFDFB', borderRadius: 12, boxShadow: '0 20px 50px -12px rgba(0,0,0,.3), 0 0 0 1px rgba(0,0,0,.04)', padding: '6px 0', zIndex: 30 }}>
+              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, width: 188, background: '#fff', borderRadius: 10, boxShadow: '0 12px 40px -8px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06)', padding: '4px 0', zIndex: 30 }}>
                 <button
                   onClick={() => {
                     navigate('/sales-flow/invoices', {
@@ -593,11 +590,11 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                     });
                     setIsTransactionMenuOpen(false);
                   }}
-                  style={{ width: '100%', textAlign: 'left', padding: '9px 16px', fontSize: 13, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#eef7f6'}
+                  style={{ width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F5F4F0'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <FileText size={15} style={{ color: '#5c6567', flexShrink: 0 }} />
+                  <FileText size={14} style={{ color: '#5c6567', flexShrink: 0 }} />
                   New Invoice
                 </button>
                 <button
@@ -611,11 +608,11 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                     });
                     setIsTransactionMenuOpen(false);
                   }}
-                  style={{ width: '100%', textAlign: 'left', padding: '9px 16px', fontSize: 13, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#eef7f6'}
+                  style={{ width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F5F4F0'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <DollarSign size={15} style={{ color: '#5c6567', flexShrink: 0 }} />
+                  <DollarSign size={14} style={{ color: '#5c6567', flexShrink: 0 }} />
                   New Payment
                 </button>
                 <button
@@ -630,11 +627,11 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                     });
                     setIsTransactionMenuOpen(false);
                   }}
-                  style={{ width: '100%', textAlign: 'left', padding: '9px 16px', fontSize: 13, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#eef7f6'}
+                  style={{ width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: '#5c6567', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F5F4F0'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <FileSearch size={15} style={{ color: '#5c6567', flexShrink: 0 }} />
+                  <FileSearch size={14} style={{ color: '#5c6567', flexShrink: 0 }} />
                   New Quotation
                 </button>
               </div>
@@ -644,34 +641,36 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Premium Sidebar */}
+        {/* Sidebar */}
         <div style={{
-          width: 286, flexShrink: 0,
-          background: '#FFFFFF',
-          borderRight: '1px solid rgba(16,24,40,0.07)',
+          width: 260, flexShrink: 0,
+          background: '#FAFAF8',
+          borderRight: '1px solid #E8E5DF',
           display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto'
         }}>
-          <div style={{
-            color: '#8b938f', fontSize: 11, letterSpacing: '1px',
-            textTransform: 'uppercase', fontWeight: 700, padding: '20px 18px 10px'
-          }}>
-            Customer Sections
-          </div>
-          <div style={{ padding: '0 12px 16px' }}>
-            <div style={{ padding: '0 6px 12px' }}>
+          <div style={{ padding: '16px 14px 8px' }}>
+            <div style={{
+              color: '#9ca3af', fontSize: 10, letterSpacing: '0.08em',
+              textTransform: 'uppercase', fontWeight: 700, padding: '0 6px 10px'
+            }}>
+              Sections
+            </div>
+            <div style={{ padding: '0 0 10px' }}>
               <input
                 type="text"
-                placeholder="Search sections..."
+                placeholder="Search..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', background: '#F7F6F2', border: '1px solid rgba(16,24,40,0.07)', borderRadius: 8, fontSize: 12, color: '#23282A', outline: 'none', fontFamily: "'Inter','DM Sans',sans-serif" }}
+                style={{ width: '100%', padding: '7px 11px', background: '#fff', border: '1px solid #E8E5DF', borderRadius: 8, fontSize: 12, color: '#23282A', outline: 'none', fontFamily: "'Inter',sans-serif" }}
               />
             </div>
+          </div>
+          <div style={{ padding: '0 10px 16px', flex: 1 }}>
             {filteredGroups.map(group => (
-              <div key={group.title} style={{ marginBottom: 18 }}>
+              <div key={group.title} style={{ marginBottom: 14 }}>
                 <div style={{
-                  color: '#9aa19c', fontSize: 10, letterSpacing: '0.9px',
-                  textTransform: 'uppercase', fontWeight: 700, padding: '4px 6px 9px'
+                  color: '#9ca3af', fontSize: 9.5, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', fontWeight: 700, padding: '4px 8px 6px'
                 }}>{group.title}</div>
                 {group.items.map(item => {
                   const isActive = activeTab === item.id;
@@ -680,43 +679,31 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '11px 13px', borderRadius: 11, width: '100%',
-                        background: isActive ? `linear-gradient(135deg, ${teal[500]}, ${teal[700]})` : '#FFFFFF',
-                        border: isActive ? '1px solid transparent' : '1px solid rgba(16,24,40,0.06)',
-                        boxShadow: isActive ? `0 10px 22px -10px rgba(15,84,76,0.55)` : '0 1px 2px rgba(16,24,40,0.04)',
-                        cursor: 'pointer', marginBottom: 8,
-                        transition: 'all .15s ease', position: 'relative',
-                        textAlign: 'left',
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '9px 10px', borderRadius: 9, width: '100%',
+                        background: isActive ? '#0f544c' : 'transparent',
+                        border: 'none',
+                        cursor: 'pointer', marginBottom: 3,
+                        transition: 'all .15s ease', textAlign: 'left',
                       }}
                       onMouseEnter={e => {
-                        if (!isActive) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px -8px rgba(16,24,40,0.18)'; }
+                        if (!isActive) { e.currentTarget.style.background = '#eef7f6'; }
                       }}
                       onMouseLeave={e => {
-                        if (!isActive) { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }
+                        if (!isActive) { e.currentTarget.style.background = 'transparent'; }
                       }}
                     >
                       <div style={{
-                        width: 34, height: 34, borderRadius: 9,
-                        background: isActive ? 'rgba(255,255,255,0.18)' : '#eef7f6',
+                        width: 30, height: 30, borderRadius: 8,
+                        background: isActive ? 'rgba(255,255,255,0.15)' : '#eef7f6',
                         color: isActive ? '#fff' : teal[600],
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
                       }}>
-                        <item.icon size={16} />
+                        <item.icon size={14} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: isActive ? '#fff' : '#23282A' }}>{item.label}</div>
-                        <div style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.82)' : '#5c6567', marginTop: 1, lineHeight: 1.3 }}>{item.desc}</div>
-                      </div>
-                      <div style={{
-                        marginLeft: 'auto', padding: '4px 9px', borderRadius: 6,
-                        background: isActive ? 'rgba(255,255,255,0.2)' : '#eef7f6',
-                        color: isActive ? '#fff' : teal[600],
-                        fontSize: 10, fontWeight: 600,
-                        display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0
-                      }}>
-                        Open
-                        <ChevronRight size={10} />
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? '#fff' : '#23282A', lineHeight: 1.3 }}>{item.label}</div>
+                        <div style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.7)' : '#9ca3af', marginTop: 1, lineHeight: 1.2 }}>{item.desc}</div>
                       </div>
                     </button>
                   );
@@ -727,8 +714,8 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
         </div>
 
         {/* Content Area */}
-        <div style={{ flex: 1, overflowY: 'auto', background: 'linear-gradient(180deg, #F7F6F2 0%, #F2F1EB 100%)' }}>
-          <div style={{ maxWidth: '920px' }} className="p-4 md:p-6 lg:p-7">
+        <div style={{ flex: 1, overflowY: 'auto', background: '#F5F4F0' }}>
+          <div style={{ maxWidth: '920px', padding: '20px 24px' }}>
           {activeTab === 'Overview' && (
             <div style={{ display: 'flex', gap: 24 }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -742,14 +729,14 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                   ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
-                      <div key={i} className="white-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                        <div style={{ padding: 8, background: `${kpi.color}15`, borderRadius: 8, color: kpi.color, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Icon size={20} />
+                      <div key={i} className="white-card" style={{ padding: '16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{ padding: 8, background: `${kpi.color}10`, borderRadius: 10, color: kpi.color, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon size={18} />
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.05, lineHeight: 1, marginBottom: 4 }}>{kpi.label}</p>
-                          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ink, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>{currency}{kpi.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                          <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: inkSoft, marginTop: 4 }}>{kpi.sub}</p>
+                          <p style={{ margin: 0, fontSize: 10.5, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.04, lineHeight: 1, marginBottom: 5 }}>{kpi.label}</p>
+                          <p style={{ margin: 0, fontSize: 19, fontWeight: 700, color: ink, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{currency}{kpi.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                          <p style={{ margin: 0, fontSize: 10.5, fontWeight: 500, color: inkSoft, marginTop: 4 }}>{kpi.sub}</p>
                         </div>
                       </div>
                     );
@@ -757,7 +744,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                 </div>
 
                 <div style={sectionLabelStyle}><span style={{fontSize: 13, fontWeight: 700, color: teal[800]}}>Contact Information</span></div>
-                <div className="white-card grid grid-cols-1 md:grid-cols-2" style={{ padding: '24px', gap: 24 }}>
+                <div className="white-card grid grid-cols-1 md:grid-cols-2" style={{ padding: '20px', gap: 20 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {[
                       { icon: Mail, label: 'Email Address', value: customer.email || 'N/A' },
@@ -809,14 +796,14 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
 
               <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 24, flexShrink: 0 }}>
                 <div style={sectionLabelStyle}><span style={{fontSize: 13, fontWeight: 700, color: teal[800]}}>Financial Health</span></div>
-                <div className="white-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="white-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                   {[
                     { label: 'Avg. Payment Days', value: `${customer.avgPaymentDays || 12} Days` },
                     { label: 'Profitability Score', value: `${customer.profitabilityScore || 85}%`, bar: customer.profitabilityScore || 85 },
                     { label: 'Risk Profile', value: 'Low Risk', badge: true },
                   ].map((item, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: inkSoft }}>{item.label}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 500, color: inkSoft }}>{item.label}</span>
                       {'bar' in item ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 80, background: teal[100], height: 6, borderRadius: 4, overflow: 'hidden' }}>
@@ -834,7 +821,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                 </div>
 
                 <div style={sectionLabelStyle}><span style={{fontSize: 13, fontWeight: 700, color: teal[800]}}>Recent Activity</span></div>
-                <div className="white-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="white-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {customerLogs.slice(0, 5).map(log => (
                     <div key={log.id} style={{ display: 'flex', gap: 10 }}>
                       <div style={{ marginTop: 4, width: 8, height: 8, borderRadius: '50%', background: teal[500], flexShrink: 0 }} />
@@ -1044,13 +1031,13 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
           {activeTab === 'Documents' && (
             <div className="space-y-6">
               <div style={sectionLabelStyle}><span style={{fontSize: 13, fontWeight: 700, color: teal[800]}}>Uploaded Documents</span></div>
-              <div className="white-card" style={{ padding: '32px 24px', textAlign: 'center' }}>
-                <div style={{ width: 64, height: 64, background: teal[50], color: inkSoft, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <Paperclip size={32} />
+              <div className="white-card" style={{ padding: '28px 24px', textAlign: 'center' }}>
+                <div style={{ width: 56, height: 56, background: teal[50], color: inkSoft, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                  <Paperclip size={26} />
                 </div>
-                <h3 style={{ margin: 0, fontWeight: 700, color: ink, fontSize: 18, marginBottom: 8 }}>No Documents Uploaded</h3>
-                <p style={{ margin: 0, color: inkSoft, marginBottom: 24, maxWidth: 320, marginLeft: 'auto', marginRight: 'auto' }}>Upload contracts, purchase orders, or ID documents for this customer.</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <h3 style={{ margin: 0, fontWeight: 700, color: ink, fontSize: 16, marginBottom: 6 }}>No Documents Uploaded</h3>
+                <p style={{ margin: 0, color: inkSoft, marginBottom: 20, maxWidth: 300, marginLeft: 'auto', marginRight: 'auto', fontSize: 13 }}>Upload contracts, purchase orders, or ID documents for this customer.</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                   <button
                     onClick={() => {
                       setIsUploading(true);
@@ -1060,7 +1047,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                       }, 2000);
                     }}
                     disabled={isUploading}
-                    style={{ padding: '10px 20px', background: `linear-gradient(135deg, ${teal[500]}, ${teal[700]})`, color: '#fff', borderRadius: 9, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all .15s ease', boxShadow: `0 4px 12px -4px ${teal[400]}`, opacity: isUploading ? 0.5 : 1 }}
+                    style={{ padding: '9px 18px', background: `linear-gradient(135deg, ${teal[500]}, ${teal[700]})`, color: '#fff', borderRadius: 8, fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all .15s ease', boxShadow: '0 2px 8px rgba(15,84,76,0.3)', opacity: isUploading ? 0.5 : 1, fontSize: 12.5 }}
                   >
                     {isUploading ? 'Uploading...' : 'Upload Document'}
                   </button>
@@ -1069,9 +1056,9 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                       const url = prompt('Enter folder URL (Google Drive, Dropbox, etc.):');
                       if (url) alert(`Folder linked: ${url}`);
                     }}
-                    style={{ padding: '10px 20px', background: paper, border: `1.4px solid ${hairline}`, color: inkSoft, borderRadius: 9, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[700]; e.currentTarget.style.borderColor = teal[200]; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
+                    style={{ padding: '9px 18px', background: '#fff', border: '1px solid #E8E5DF', color: inkSoft, borderRadius: 8, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease', fontSize: 12.5 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#F5F4F0'; e.currentTarget.style.color = teal[700]; e.currentTarget.style.borderColor = teal[200]; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = '#E8E5DF'; }}
                   >
                     Link Shared Folder
                   </button>
@@ -1652,8 +1639,8 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
 
       {/* Account Activity Modal */}
       {viewingAccountId && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: paper, borderRadius: 14, boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35)', width: '100%', maxWidth: 960, maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', border: `1px solid ${hairline}` }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 25px 60px -12px rgba(0,0,0,.4)', width: '100%', maxWidth: 920, maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid #E8E5DF' }}>
             <div style={{ padding: '16px 24px', borderBottom: `1px solid ${hairline}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: teal[50] }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1757,50 +1744,44 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
 
       {/* Statement Preview Modal */}
       {isStatementModalOpen && statementPdfUrl && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: paper, borderRadius: 14, boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35)', width: '100%', maxWidth: 1200, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${hairline}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: teal[50] }}>
-              <h3 style={{ margin: 0, fontWeight: 700, color: ink, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FileText size={20} style={{ color: teal[600] }} />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 25px 60px -12px rgba(0,0,0,.4)', width: '100%', maxWidth: 1100, height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E8E5DF' }}>
+            <div style={{ padding: '14px 22px', borderBottom: '1px solid #E8E5DF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFAF8' }}>
+              <h3 style={{ margin: 0, fontWeight: 700, color: ink, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}>
+                <FileText size={17} style={{ color: teal[600] }} />
                 Statement Preview
               </h3>
               <button
                 onClick={() => setIsStatementModalOpen(false)}
-                style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${hairline}`, background: paper, color: inkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .15s ease' }}
-                onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[700]; e.currentTarget.style.borderColor = teal[200]; }}
-                onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
-                title="Close Preview"
+                style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #E8E5DF', background: '#fff', color: inkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .15s ease' }}
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             </div>
 
-            <div className="flex-1" style={{ background: teal[50], padding: 16, overflow: 'hidden' }}>
+            <div className="flex-1" style={{ background: '#F5F4F0', padding: 14, overflow: 'hidden' }}>
               <iframe
                 src={statementPdfUrl}
-                className="w-full h-full rounded-lg shadow-sm border border-slate-300 bg-white"
+                className="w-full h-full rounded-lg shadow-sm bg-white"
+                style={{ border: '1px solid #E8E5DF' }}
                 title="Statement Preview"
               />
             </div>
 
-            <div style={{ padding: '14px 24px', borderTop: `1px solid ${hairline}`, background: paper, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+            <div style={{ padding: '12px 22px', borderTop: '1px solid #E8E5DF', background: '#FAFAF8', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button
                 onClick={() => setIsStatementModalOpen(false)}
-                style={{ padding: '9px 18px', background: paper, border: `1.4px solid ${hairline}`, color: inkSoft, borderRadius: 9, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease', fontSize: 13 }}
-                onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[700]; e.currentTarget.style.borderColor = teal[200]; }}
-                onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
+                style={{ padding: '8px 16px', background: '#fff', border: '1px solid #E8E5DF', color: inkSoft, borderRadius: 8, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease', fontSize: 12.5 }}
               >
                 Close
               </button>
               <a
                 href={statementPdfUrl}
                 download={`Statement_${customer.name}_${format(new Date(), 'yyyy-MM-dd')}.pdf`}
-                style={{ padding: '9px 18px', background: `linear-gradient(135deg, ${teal[500]}, ${teal[700]})`, color: '#fff', borderRadius: 9, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 12px -4px ${teal[400]}`, transition: 'all .15s ease', fontSize: 13 }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = '0.9' }}
-                onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                style={{ padding: '8px 16px', background: `linear-gradient(135deg, ${teal[500]}, ${teal[700]})`, color: '#fff', borderRadius: 8, fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(15,84,76,0.3)', transition: 'all .15s ease', fontSize: 12.5 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <Download size={18} />
+                <Download size={15} />
                 Download PDF
               </a>
             </div>

@@ -1,20 +1,15 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { logger } from '../services/logger';
 import { useAuth } from '../context/AuthContext';
-import { 
-  User as UserIcon, Mail, Shield, Key, Clock, Activity, History, ArrowLeft, Save, Eye, EyeOff, 
-  CheckCircle2, AlertCircle, Camera, Edit2, X, Check, Globe, Phone, Briefcase, Trash2, 
+import {
+  User as UserIcon, Mail, Shield, Key, Clock, Activity, History, ArrowLeft, Save, Eye, EyeOff,
+  CheckCircle2, AlertCircle, Camera, Edit2, X, Check, Globe, Phone, Briefcase, Trash2,
   ChevronRight, Upload, Loader2, Image as ImageIcon
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Dialog from '../components/Dialog';
 import { cloudDb } from '../services/cloudDb';
 import './profile.css';
-
-const teal={50:'#eef7f6',100:'#d3ece9',200:'#a6d9d3',300:'#72c0b7',400:'#3fa294',500:'#1f8577',600:'#146b60',700:'#0f544c',800:'#0b3e39',900:'#082e2a'};
-const amber={100:'#fbead0',300:'#eec27a',500:'#d99a3f',600:'#b97e2b'};
-const paper='#FEFDFB',ink='#23282A',inkSoft='#5c6567',hairline='#e4ddd1',danger='#b5493f';
 
 const TIMEZONES = [
   { label: 'UTC (GMT)', value: 'UTC' },
@@ -57,7 +52,7 @@ const Profile: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
-  
+
   // UI state
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -101,9 +96,9 @@ const Profile: React.FC = () => {
 
   const validateName = (name: string) => {
     if (name.length < 2 || name.length > 50) return 'Name must be between 2 and 50 characters';
-    if (/[!@#$%^&*(),.?":{}|<>]/.test(name)) return 'Special characters are not allowed';
-    const duplicate = allUsers.find(u => 
-      (u.fullName?.toLowerCase() === name.toLowerCase() || u.name?.toLowerCase() === name.toLowerCase()) && 
+    if (/[!@#$%^&*(),.?\":{}|<>]/.test(name)) return 'Special characters are not allowed';
+    const duplicate = allUsers.find(u =>
+      (u.fullName?.toLowerCase() === name.toLowerCase() || u.name?.toLowerCase() === name.toLowerCase()) &&
       u.id !== user?.id
     );
     if (duplicate) return 'This name is already in use within the organization';
@@ -142,29 +137,27 @@ const Profile: React.FC = () => {
 
     setUploading(true);
     try {
-      // Basic image compression/resizing using Canvas
       const img = new Image();
       img.src = tempImage;
       await new Promise((resolve) => { img.onload = resolve; });
 
       const canvas = document.createElement('canvas');
-      const size = Math.min(img.width, img.height, 400); // Max 400px
+      const size = Math.min(img.width, img.height, 400);
       canvas.width = size;
       canvas.height = size;
-      
+
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Center crop
         const sourceSize = Math.min(img.width, img.height);
         const sourceX = (img.width - sourceSize) / 2;
         const sourceY = (img.height - sourceSize) / 2;
-        
+
         ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
-        
+
         const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setProfileData(prev => ({ ...prev, profilePhoto: compressedDataUrl }));
       }
-      
+
       setShowCropModal(false);
       setTempImage(null);
       notify('Photo updated locally. Save changes to sync with cloud.', 'info');
@@ -186,8 +179,7 @@ const Profile: React.FC = () => {
       };
 
       await manageUser(updatedUser as Record<string, unknown>);
-      
-      // If cloud mode is enabled, sync with profiles table in background
+
       if (cloudDb.isConfigured()) {
         cloudDb.upsertProfile({
           ...updatedUser,
@@ -249,163 +241,145 @@ const Profile: React.FC = () => {
   const role = user?.role || 'User';
   const username = user?.username || '';
 
+  // Password strength segments
+  const strengthScore = !newPassword ? 0
+    : passwordValidation.errors.length >= 3 ? 1
+    : passwordValidation.errors.length >= 2 ? 2
+    : passwordValidation.errors.length >= 1 ? 3
+    : 4;
+  const strengthClass = strengthScore <= 1 ? 'active' : strengthScore <= 2 ? 'medium' : 'strong';
+
   return (
-    <div style={{ height: '100%', overflowY: 'auto' }}>
-      <div style={{ maxWidth: '1024px', marginLeft: 'auto', padding: '16px', marginTop: '24px' }}>
+    <div className="pf-page">
+      <div className="pf-container">
         {/* Header */}
-        <div className="pf-header-row">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="pf-header">
+          <div className="pf-header-left">
             <button onClick={() => navigate(-1)} className="pf-back-btn" title="Go back">
-              <ArrowLeft size={20} />
+              <ArrowLeft size={18} />
             </button>
-            <div>
-              <h1 className="pf-title">Account Settings</h1>
-              <p className="pf-subtitle">Manage your personal information and preferences</p>
+            <div className="pf-header-text">
+              <h1>Account Settings</h1>
+              <p>Manage your personal information and preferences</p>
             </div>
           </div>
 
           {hasChanges && (
-            <button
-              onClick={() => setShowSummaryModal(true)}
-              className="pf-btn-primary"
-            >
-              <Save size={16} />
-              Save All Changes
+            <button onClick={() => setShowSummaryModal(true)} className="pf-save-btn">
+              <Save size={15} />
+              Save Changes
             </button>
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1,1fr)', gap: '24px' }}>
-          {/* Left Column - Profile Card */}
-          <div style={{ marginTop: '24px' }}>
-            <div className="pf-card">
-              <div style={{ height: '96px' }} />
-              <div style={{ paddingLeft: '20px', paddingBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', paddingRight: '20px' }}>
-                {/* Profile Photo */}
-                <div style={{ position: 'relative' }}>
-                  <div style={{ width: '96px', height: '96px', borderRadius: '9999px', borderWidth: '4px', border: '1.4px solid #e4ddd1', background: '#eef7f6', boxShadow: '0 20px 25px -5px rgba(0,0,0,.1)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5c6567' }}>
-                    {profileData.profilePhoto ? (
-                      <img src={profileData.profilePhoto} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ fontSize: '30px', fontWeight: 600, color: '#1f8577' }}>{initials}</span>
-                    )}
-                  </div>
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ position: 'absolute', top: 0, background: 'rgba(0,0,0,.4)', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.0, transition: 'opacity .15s ease', right: 0, bottom: 0, left: 0 }}
-                    title="Change photo"
-                  >
-                    <Camera size={24} />
-                  </button>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    style={{ display: 'hidden' }} 
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handlePhotoUpload}
-                  />
-                </div>
-
-                {/* Name & Role */}
-                <div style={{ marginTop: '16px', width: '100%' }}>
-                  {isEditingName ? (
-                    <div style={{ marginTop: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          autoFocus
-                          value={profileData.fullName}
-                          onChange={e => setProfileData(prev => ({ ...prev, fullName: e.target.value }))}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleNameSave();
-                            if (e.key === 'Escape') { setIsEditingName(false); setNameError(null); setProfileData(prev => ({ ...prev, fullName: originalData.fullName })); }
-                          }}
-                          onBlur={() => {
-                            if (!validateName(profileData.fullName)) {
-                              setIsEditingName(false);
-                              setNameError(null);
-                            }
-                          }}
-                          className={`pf-input text-center ${nameError ? 'border-rose-500' : 'border-indigo-500'}`}
-                        />
-                        <button onClick={handleNameSave} style={{ color: '#1f8577' }}><Check size={18} /></button>
-                        <button onClick={() => { setIsEditingName(false); setNameError(null); setProfileData(prev => ({ ...prev, fullName: originalData.fullName })); }} style={{ color: '#b5493f' }}><X size={18} /></button>
-                      </div>
-                      {nameError && <p style={{ color: '#b5493f', fontWeight: 500 }}>{nameError}</p>}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                      <h2 className="pf-name">{displayName}</h2>
-                      {(user?.isSuperAdmin || user?.role === 'Admin') && (
-                        <button 
-                          onClick={() => setIsEditingName(true)}
-                          style={{ opacity: 0.0 }}
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <p className="pf-username">@{username}</p>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-                  <span className="pf-badge">{role}</span>
-                </div>
-
-                {/* Photo Actions */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '8px', width: '100%', marginTop: '20px', paddingTop: '20px', borderStyle: 'solid', borderColor: '#e4ddd1' }}>
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '8px', borderRadius: '12px', transition: 'color .15s ease,background .15s ease,border-color .15s ease', color: '#5c6567' }}
-                  >
-                    <Upload size={16} style={{ color: '#1f8577' }} />
-                    <span style={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '-.025em' }}>Upload</span>
-                  </button>
-                  <button 
-                    onClick={() => setProfileData(prev => ({ ...prev, profilePhoto: '' }))}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '8px', borderRadius: '12px', transition: 'color .15s ease,background .15s ease,border-color .15s ease', color: '#5c6567' }}
-                  >
-                    <Trash2 size={16} style={{ color: '#b5493f' }} />
-                    <span style={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '-.025em' }}>Remove</span>
-                  </button>
-                </div>
+        {/* Hero Banner */}
+        <div className="pf-hero">
+          <div className="pf-hero-content">
+            {/* Avatar */}
+            <div className="pf-avatar-wrapper">
+              <div className="pf-avatar">
+                {profileData.profilePhoto ? (
+                  <img src={profileData.profilePhoto} alt={displayName} />
+                ) : (
+                  <span className="pf-avatar-initials">{initials}</span>
+                )}
               </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="pf-avatar-edit"
+                title="Change photo"
+              >
+                <Camera size={15} />
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handlePhotoUpload}
+              />
             </div>
 
-            {/* Quick Stats */}
-            <div className="pf-stats-card">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <span className="pf-stats-label">Activity Summary</span>
-                <Activity size={16} style={{ color: '#3fa294' }} />
-              </div>
-              <div style={{ marginTop: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 400, color: '#5c6567' }}>Total Actions</span>
-                  <span className="pf-stats-value">{stats.total}</span>
+            {/* Name & Identity */}
+            <div className="pf-hero-name-group">
+              {isEditingName ? (
+                <div className="pf-name-edit-row">
+                  <input
+                    autoFocus
+                    value={profileData.fullName}
+                    onChange={e => setProfileData(prev => ({ ...prev, fullName: e.target.value }))}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleNameSave();
+                      if (e.key === 'Escape') { setIsEditingName(false); setNameError(null); setProfileData(prev => ({ ...prev, fullName: originalData.fullName })); }
+                    }}
+                    className="pf-name-edit-input"
+                    placeholder="Your name"
+                  />
+                  <button onClick={handleNameSave} className="pf-name-edit-action save" title="Save"><Check size={16} /></button>
+                  <button onClick={() => { setIsEditingName(false); setNameError(null); setProfileData(prev => ({ ...prev, fullName: originalData.fullName })); }} className="pf-name-edit-action cancel" title="Cancel"><X size={16} /></button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 400, color: '#5c6567' }}>Today</span>
-                  <span style={{ color: '#3fa294' }}>{stats.today}</span>
+              ) : (
+                <div className="pf-name-row">
+                  <h2 className="pf-hero-name">{displayName}</h2>
+                  {(user?.isSuperAdmin || user?.role === 'Admin') && (
+                    <button onClick={() => setIsEditingName(true)} className="pf-name-edit-btn" title="Edit name">
+                      <Edit2 size={13} />
+                    </button>
+                  )}
                 </div>
-                <div style={{ paddingTop: '16px', borderStyle: 'solid', border: '1.4px solid #e4ddd1' }}>
-                  <span style={{ display: 'block', marginBottom: '4px' }}>Last Action</span>
-                  <p style={{ fontWeight: 500, overflow: 'hidden', color: '#a6d9d3', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stats.lastAction}</p>
-                </div>
-              </div>
+              )}
+              {nameError && <p className="pf-name-error">{nameError}</p>}
+              <p className="pf-hero-username">@{username}</p>
+            </div>
+
+            {/* Role Badge */}
+            <span className="pf-hero-role">
+              <Shield size={11} />
+              {role}
+            </span>
+
+            {/* Photo Actions */}
+            <div className="pf-photo-actions">
+              <button onClick={() => fileInputRef.current?.click()} className="pf-photo-action-btn">
+                <Upload size={12} /> Upload
+              </button>
+              <button onClick={() => setProfileData(prev => ({ ...prev, profilePhoto: '' }))} className="pf-photo-action-btn danger">
+                <Trash2 size={12} /> Remove
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* Right Column - Forms */}
-          <div style={{ marginTop: '24px' }}>
-            {/* General Information */}
-            <div className="pf-card">
-              <div className="pf-card-header">
-                <UserIcon size={16} style={{ color: '#1f8577' }} />
-                <h3 className="pf-section-title">Personal Details</h3>
+        {/* Stats Row */}
+        <div className="pf-stats-row" style={{ marginBottom: 24 }}>
+          <div className="pf-stat-item">
+            <div className="pf-stat-value">{stats.total}</div>
+            <div className="pf-stat-label">Total Actions</div>
+          </div>
+          <div className="pf-stat-item">
+            <div className="pf-stat-value" style={{ color: '#1a6b5a' }}>{stats.today}</div>
+            <div className="pf-stat-label">Today</div>
+          </div>
+          <div className="pf-stat-item">
+            <div className="pf-stat-value" style={{ fontSize: 14, fontWeight: 500, color: '#6b7280', lineHeight: 1.4 }}>{stats.lastAction}</div>
+            <div className="pf-stat-label">Last Action</div>
+          </div>
+        </div>
+
+        {/* Two-Column Grid */}
+        <div className="pf-grid">
+          {/* Personal Details */}
+          <div className="pf-card">
+            <div className="pf-card-header">
+              <div className="pf-card-icon teal">
+                <UserIcon size={16} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1,1fr)', gap: '20px' }}>
-                <div className="pf-input-group">
-                  <label className="pf-label"><Mail size={12} /> Work Email</label>
+              <span className="pf-card-title">Personal Details</span>
+            </div>
+            <div className="pf-card-body">
+              <div className="pf-form-row">
+                <div className="pf-field">
+                  <label className="pf-label"><Mail size={11} /> Work Email</label>
                   <input
                     type="email"
                     value={profileData.email}
@@ -414,8 +388,8 @@ const Profile: React.FC = () => {
                     placeholder="email@organization.com"
                   />
                 </div>
-                <div className="pf-input-group">
-                  <label className="pf-label"><Phone size={12} /> Contact Phone</label>
+                <div className="pf-field">
+                  <label className="pf-label"><Phone size={11} /> Contact Phone</label>
                   <input
                     type="tel"
                     value={profileData.phone}
@@ -424,8 +398,10 @@ const Profile: React.FC = () => {
                     placeholder="+1 (555) 000-0000"
                   />
                 </div>
-                <div className="pf-input-group">
-                  <label className="pf-label"><Briefcase size={12} /> Job Title</label>
+              </div>
+              <div className="pf-form-row" style={{ marginTop: 16 }}>
+                <div className="pf-field">
+                  <label className="pf-label"><Briefcase size={11} /> Job Title</label>
                   <input
                     value={profileData.jobTitle}
                     onChange={e => setProfileData(prev => ({ ...prev, jobTitle: e.target.value }))}
@@ -433,8 +409,8 @@ const Profile: React.FC = () => {
                     placeholder="Financial Controller"
                   />
                 </div>
-                <div className="pf-input-group">
-                  <label className="pf-label"><Globe size={12} /> Timezone</label>
+                <div className="pf-field">
+                  <label className="pf-label"><Globe size={11} /> Timezone</label>
                   <select
                     value={profileData.timezone}
                     onChange={e => setProfileData(prev => ({ ...prev, timezone: e.target.value }))}
@@ -447,180 +423,173 @@ const Profile: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Password Management */}
-            <div className="pf-card">
-              <div className="pf-card-header">
-                <Key size={16} style={{ color: '#1f8577' }} />
-                <h3 className="pf-section-title">Security</h3>
+          {/* Security */}
+          <div className="pf-card">
+            <div className="pf-card-header">
+              <div className="pf-card-icon indigo">
+                <Key size={16} />
               </div>
-              <div style={{ marginTop: '16px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1,1fr)', gap: '16px' }}>
-                  <div className="pf-input-group">
-                    <label className="pf-label">New Password</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type={showPasswords ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={e => setNewPassword(e.target.value)}
-                        style={{ paddingRight: '40px' }}
-                        placeholder="Enter new password"
-                      />
-                      <button onClick={() => setShowPasswords(!showPasswords)} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', color: '#5c6567' }}>
-                        {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="pf-input-group">
-                    <label className="pf-label">Confirm Password</label>
-                    <input
-                      type={showPasswords ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      className="pf-input"
-                      placeholder="Repeat password"
-                    />
-                  </div>
-                </div>
-
-                {newPassword && (
-                  <div style={{ padding: '12px', borderRadius: '12px', border: '1.4px solid #e4ddd1' }}>
-                    {!passwordValidation.valid ? (
-                      <p style={{ color: '#b5493f', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <AlertCircle size={14} /> {passwordValidation.errors[0]}
-                      </p>
-                    ) : (
-                      <p style={{ color: '#1f8577', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <CheckCircle2 size={14} /> Password complexity requirements met
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
-                  <button
-                    onClick={handleChangePassword}
-                    disabled={saving || !newPassword || !confirmPassword || !!passwordValidation.errors?.length}
-                    style={{ background: '#0b3e39' }}
-                  >
-                    {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Shield size={16} />}
-                    Update Security
+              <span className="pf-card-title">Security</span>
+            </div>
+            <div className="pf-card-body">
+              <div className="pf-field" style={{ marginBottom: 14 }}>
+                <label className="pf-label">New Password</label>
+                <div className="pf-password-input-wrap">
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="pf-input"
+                    placeholder="Enter new password"
+                  />
+                  <button onClick={() => setShowPasswords(!showPasswords)} className="pf-password-toggle" type="button">
+                    {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="pf-card">
-              <div className="pf-card-header">
-                <History size={16} style={{ color: '#1f8577' }} />
-                <h3 className="pf-section-title">Recent Logs</h3>
-              </div>
-              <div style={{ overflowY: 'auto' }}>
-                {userLogs.length === 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '48px', color: '#5c6567', paddingBottom: '48px' }}>
-                    <Activity size={32} style={{ marginBottom: '8px', opacity: 0.3 }} />
-                    <p style={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.1em' }}>No activity history</p>
-                  </div>
-                ) : (
-                  <div style={{ borderColor: '#e4ddd1' }}>
-                    {userLogs.slice(0, 10).map((log: any) => (
-                      <div key={log.id} className="pf-log-item">
-                        <div className="pf-log-icon">
-                          <Activity size={14} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p className="pf-log-action">{log.action}</p>
-                          <p className="pf-log-date">{new Date(log.date).toLocaleString()}</p>
-                        </div>
-                        <ChevronRight size={14} style={{ color: '#5c6567' }} />
-                      </div>
+                {newPassword && (
+                  <div className="pf-strength-bar">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className={`pf-strength-segment ${i <= strengthScore ? strengthClass : ''}`} />
                     ))}
                   </div>
                 )}
               </div>
+              <div className="pf-field">
+                <label className="pf-label">Confirm Password</label>
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className="pf-input"
+                  placeholder="Repeat password"
+                />
+              </div>
+
+              {newPassword && (
+                <div className={`pf-password-hint ${passwordValidation.valid ? 'success' : 'error'}`}>
+                  {passwordValidation.valid ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  {passwordValidation.valid ? 'Password meets requirements' : passwordValidation.errors[0]}
+                </div>
+              )}
+
+              <div className="pf-clearfix" style={{ marginTop: 14 }}>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={saving || !newPassword || !confirmPassword || !!passwordValidation.errors?.length}
+                  className="pf-update-btn"
+                >
+                  {saving ? <Loader2 size={15} className="pf-spin" /> : <Shield size={15} />}
+                  Update Password
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Activity — Full Width */}
+          <div className="pf-card pf-col-full">
+            <div className="pf-card-header">
+              <div className="pf-card-icon amber">
+                <History size={16} />
+              </div>
+              <span className="pf-card-title">Recent Activity</span>
+              {userLogs.length > 0 && (
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>
+                  {userLogs.length} entries
+                </span>
+              )}
+            </div>
+            <div className="pf-card-body" style={{ padding: '8px 20px' }}>
+              {userLogs.length === 0 ? (
+                <div className="pf-log-empty">
+                  <div className="pf-log-empty-icon">
+                    <Activity size={22} />
+                  </div>
+                  <p>No activity history</p>
+                </div>
+              ) : (
+                <div className="pf-log-list">
+                  {userLogs.slice(0, 15).map((log: any, idx: number) => (
+                    <div key={log.id} className="pf-log-item">
+                      <div className="pf-log-dot" />
+                      <div className="pf-log-content">
+                        <p className="pf-log-action">{log.action}</p>
+                        <p className="pf-log-date">{new Date(log.date).toLocaleString()}</p>
+                      </div>
+                      <ChevronRight size={14} style={{ color: '#d1d5db', marginTop: 4, flexShrink: 0 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Summary Modal */}
-      <Dialog 
-        open={showSummaryModal} 
+      <Dialog
+        open={showSummaryModal}
         onClose={() => setShowSummaryModal(false)}
-        title="Review Profile Changes"
+        title="Review Changes"
       >
-        <div style={{ marginTop: '24px' }}>
-          <p style={{ fontSize: '13px', color: '#5c6567' }}>You are about to save the following updates to your profile:</p>
-          <div style={{ marginTop: '12px', padding: '16px', borderRadius: '16px', border: '1.4px solid #e4ddd1' }}>
+        <div className="pf-modal-summary">
+          <p className="pf-modal-desc">
+            You are about to save the following updates to your profile:
+          </p>
+          <div className="pf-change-list">
             {changedFields.map(field => (
               <div key={field} className="pf-change-item">
-                <div style={{ width: '6px', height: '6px', borderRadius: '9999px', background: '#eef7f6' }} />
-                <span style={{ fontWeight: 600 }}>{field}</span>
-                <span style={{ fontWeight: 400 }}>was modified</span>
+                <div className="pf-change-dot" />
+                <span className="pf-change-field">{field}</span>
+                <span className="pf-change-status">was modified</span>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '12px', paddingTop: '8px' }}>
-            <button
-              onClick={() => setShowSummaryModal(false)}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
+          <div className="pf-modal-actions">
+            <button onClick={() => setShowSummaryModal(false)} className="pf-modal-btn secondary">
               Cancel
             </button>
-            <button
-              onClick={handleBatchSave}
-              disabled={saving}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
-              {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={16} />}
+            <button onClick={handleBatchSave} disabled={saving} className="pf-modal-btn primary">
+              {saving ? <Loader2 size={15} className="pf-spin" /> : <Check size={15} />}
               Confirm & Save
             </button>
           </div>
         </div>
       </Dialog>
 
-      {/* Cropping Modal Placeholder */}
-      <Dialog 
-        open={showCropModal} 
+      {/* Crop Modal */}
+      <Dialog
+        open={showCropModal}
         onClose={() => setShowCropModal(false)}
         title="Adjust Profile Photo"
       >
-        <div style={{ marginTop: '24px' }}>
-          <div style={{ aspectRatio: '1/1', width: '100%', background: '#eef7f6', borderRadius: '16px', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ padding: 20 }}>
+          <div className="pf-crop-preview">
             {tempImage && (
-              <img src={tempImage} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              <img src={tempImage} alt="Preview" />
             )}
-            <div style={{ position: 'absolute', top: 0, borderWidth: '2px', borderStyle: 'dashed', borderColor: 'rgba(255,255,255,.5)', margin: '32px', borderRadius: '9999px', pointerEvents: 'none', right: 0, bottom: 0, left: 0 }} />
+            <div className="pf-crop-overlay" />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
-             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontWeight: 900, color: '#5c6567', textTransform: 'uppercase', letterSpacing: '.1em' }}>Predefined</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {PREDEFINED_AVATARS.map((url, i) => (
-                    <button 
-                      key={i} 
-                      onClick={() => { setTempImage(url); }}
-                      style={{ width: '40px', height: '40px', borderRadius: '9999px', borderWidth: '2px', borderColor: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.05)', transition: 'transform .15s ease', overflow: 'hidden' }}
-                    >
-                      <img src={url} alt={`Avatar ${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </button>
-                  ))}
-                </div>
-             </div>
+
+          <div className="pf-avatar-presets">
+            {PREDEFINED_AVATARS.map((url, i) => (
+              <button
+                key={i}
+                onClick={() => setTempImage(url)}
+                className="pf-avatar-preset"
+              >
+                <img src={url} alt={`Avatar ${i}`} />
+              </button>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => setShowCropModal(false)}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
+
+          <div className="pf-modal-actions" style={{ marginTop: 18 }}>
+            <button onClick={() => setShowCropModal(false)} className="pf-modal-btn secondary">
               Cancel
             </button>
-            <button
-              onClick={handleCropSave}
-              style={{ flex: 1, justifyContent: 'center' }}
-            >
-              <ImageIcon size={16} />
+            <button onClick={handleCropSave} className="pf-modal-btn primary">
+              <ImageIcon size={15} />
               Set Photo
             </button>
           </div>
@@ -629,6 +598,5 @@ const Profile: React.FC = () => {
     </div>
   );
 };
-
 
 export default Profile;

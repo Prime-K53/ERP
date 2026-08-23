@@ -290,27 +290,39 @@ const portalService = {
     catalogItems.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
     const productIds = catalogItems.map((i) => i.id).filter(Boolean);
-    let allVariants = [];
+    const { collectProductVariants } = require('./catalogVariants.cjs');
+    let tableVariantsByParent = new Map();
     if (productIds.length > 0) {
-      allVariants = await getAllFrom('product_variants');
-      allVariants = allVariants.filter(
-        (v) => v.active !== false && productIds.includes(v.productId || v.product_id),
-      );
+      // The authoritative variant data lives EMBEDDED in each product doc;
+      // the product_variants table is merged when populated. Without this
+      // merge a multi-variant product reaches the portal as a single price.
+      try {
+        const allVariants = await getAllFrom('product_variants');
+        for (const v of allVariants || []) {
+          if (v.active === false) continue;
+          const pid = v.productId || v.product_id;
+          if (!pid || !productIds.includes(pid)) continue;
+          if (!tableVariantsByParent.has(pid)) tableVariantsByParent.set(pid, []);
+          tableVariantsByParent.get(pid).push(v);
+        }
+      } catch (err) {
+        console.warn('[Portal] product_variants read failed (continuing with embedded variants):', err?.message || err);
+      }
     }
 
     return catalogItems.map((item) => {
-      const variants = allVariants
-        .filter((v) => (v.productId || v.product_id) === item.id)
+      const variants = collectProductVariants(item, tableVariantsByParent.get(item.id))
+        .filter((v) => v.active)
         .map((v) => ({
           id: v.id,
-          productId: v.productId || v.product_id,
-          name: v.name || item.name,
-          sku: v.sku || null,
-          attributes: v.attributes || null,
-          sellingPrice: Number(v.sellingPrice ?? v.selling_price ?? v.price ?? 0),
-          costPrice: Number(v.costPrice ?? v.cost_price ?? v.cost ?? 0),
-          stock: Number(v.stock ?? 0),
-          active: v.active !== false,
+          productId: v.productId,
+          name: v.name,
+          sku: v.sku,
+          attributes: v.attributes,
+          sellingPrice: v.sellingPrice,
+          costPrice: v.costPrice,
+          stock: v.stock,
+          active: v.active,
         }));
 
       return {
@@ -945,6 +957,77 @@ const portalService = {
       outstanding_balance: ledger.outstandingBalance,
       credit_limit: (customer && customer.creditLimit != null) ? customer.creditLimit : 0,
       transactions: mapped,
+    };
+  },
+
+  /**
+   * Map a raw payment record (from getPaymentById) into the PrimeDocument
+   * RECEIPT data contract. This is a pure mapping — no DB writes.
+   */
+  mapPaymentToReceiptData(payment, customer) {
+    const allocations = payment.allocations || [];
+    const validAllocations = allocations.filter((a) => a && a.invoice_id && Number(a.amount || 0) > 0);
+    const appliedInvoices = validAllocations.map((a) => a.invoice_number || a.invoice_id);
+    const appliedOrders = validAllocations.map((a) => a.order_number || a.order_id).filter(Boolean);
+    const invoiceTotal = validAllocations.reduce((sum, a) => (
+      a.missing_invoice ? sum : sum + Number(a.total_amount || 0)
+    ), 0);
+    const totalAllocated = validAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    const amountReceived = Number(payment.amount || 0);
+
+    let paymentStatus = 'PAID';
+    if (totalAllocated < amountReceived) paymentStatus = 'OVERPAID';
+    else if (totalAllocated < invoiceTotal) paymentStatus = 'PARTIALLY PAID';
+
+    return {
+      receiptNumber: payment.reference || payment.id?.slice(0, 8) || 'N/A',
+      date: payment.date ? new Date(payment.date).toLocaleDateString() : new Date().toLocaleDateString(),
+      customerName: customer?.name || payment.customerName || payment.customer_name || 'Customer',
+      amountReceived,
+      amountApplied: totalAllocated,
+      changeGiven: 0,
+      walletDeposit: 0,
+      paymentMethod: payment.method || payment.payment_method || 'Unknown',
+      appliedInvoices,
+      appliedOrders,
+      invoiceTotal,
+      paymentStatus,
+      balanceDue: Math.max(0, invoiceTotal - totalAllocated),
+      overpaymentAmount: Math.max(0, amountReceived - totalAllocated),
+      narrative: `Payment of ${amountReceived} received via ${payment.method || payment.payment_method || 'N/A'}. ${validAllocations.length} invoice(s) allocated.`,
+      currentBalance: Math.max(0, invoiceTotal - totalAllocated),
+      calculationVersion: 1,
+    };
+  },
+
+  /**
+   * Build the PrimeDocument ACCOUNT_STATEMENT data contract from the
+   * authoritative ledger. Pure mapping — no DB writes.
+   */
+  buildStatementData(customerId, customer, statementsData) {
+    const transactions = (statementsData.transactions || []).map((t) => ({
+      date: t.date,
+      reference: t.description || '',
+      memo: '',
+      debit: Number(t.debit || 0),
+      credit: Number(t.credit || 0),
+      runningBalance: Number(t.balance || 0),
+    }));
+
+    const totalInvoiced = transactions.reduce((sum, t) => sum + t.debit, 0);
+    const totalReceived = transactions.reduce((sum, t) => sum + t.credit, 0);
+
+    return {
+      date: new Date().toLocaleDateString(),
+      customerName: customer?.name || 'Customer',
+      startDate: statementsData.startDate || 'N/A',
+      endDate: statementsData.endDate || 'N/A',
+      currency: 'K',
+      openingBalance: Number(statementsData.opening_balance || 0),
+      transactions,
+      totalInvoiced,
+      totalReceived,
+      finalBalance: Number(statementsData.closing_balance || 0),
     };
   },
 

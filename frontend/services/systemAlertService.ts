@@ -47,3 +47,28 @@ export const publishSystemAlert = async (input: SystemAlertInput) => {
 
   return alert;
 };
+
+/**
+ * Mark unread bell alerts for a destination as read (e.g. opening the
+ * Quotation Requests hub clears its dashboard/topbar notification dot).
+ * Broadcasts the update event so every open surface refreshes.
+ */
+export const markAlertsReadForActionUrl = async (actionUrlPrefix: string): Promise<number> => {
+  try {
+    const alerts = await dbService.getAll<any>('alerts');
+    const targets = (alerts || []).filter(
+      (a: any) => a && !a.read && typeof a.actionUrl === 'string' && a.actionUrl.startsWith(actionUrlPrefix)
+    );
+    for (const a of targets) {
+      await dbService.put('alerts', { ...a, read: true, readAt: new Date().toISOString() });
+    }
+    if (targets.length > 0 && typeof window !== 'undefined') {
+      const detail = { id: `hub-read-${Date.now()}`, date: new Date().toISOString() };
+      await dbService.saveSetting(NOTIFICATION_SYNC_KEY, detail);
+      window.dispatchEvent(new CustomEvent(NOTIFICATION_UPDATE_EVENT, { detail }));
+    }
+    return targets.length;
+  } catch {
+    return 0;
+  }
+};

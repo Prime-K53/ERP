@@ -504,6 +504,8 @@ function calculatePromotion({
       lineTotal: netLineTotal,
       promotionId: applied?.promotionId || null,
       promotionCode: applied?.promotionCode || null,
+      // Selected variant identity survives promotion evaluation.
+      ...(line.variantId || line.variant_id ? { variantId: String(line.variantId || line.variant_id) } : {}),
       category: line.category || null,
       priceSource: line.priceSource || 'master',
     };
@@ -537,23 +539,32 @@ function calculatePromotion({
 
 /**
  * Resolve authoritative unit prices for client-submitted line items.
- * Browser prices are never trusted; catalogMap is keyed by product id and
- * provides { sellingPrice } (the ERP master price).
+ * Browser prices are never trusted; catalogMap is keyed by product id AND by
+ * deterministic variant id (see services/catalogVariants.cjs), each providing
+ * { sellingPrice } from ERP master data. A line that carries a variantId is
+ * priced from THAT variant's master price — never flattened to the parent.
  */
 function resolveAuthoritativePrices(items, catalogMap = {}) {
   if (!Array.isArray(items)) return [];
   return items.map((item) => {
     const productId = item.productId || item.product_id || item.id || null;
-    const product = productId ? catalogMap[String(productId)] : null;
-    // Security: a productId that is NOT in the ERP catalog is never priced
-    // from the browser — price at 0 and flag it so the order is obviously
-    // anomalous and rejected/flagged by sales. Browser prices are only kept
-    // for genuine custom line items (no productId at all), which the ERP
-    // sales team confirms before issuing a quotation.
-    let price;
+    const variantId = item.variantId || item.variant_id || null;
+    // Security: neither productId nor variantId in the ERP catalog is ever
+    // priced from the browser — price at 0 and flag it so the order is
+    // obviously anomalous and rejected/flagged by sales. Browser prices are
+    // only kept for genuine custom line items (no productId at all), which
+    // the ERP sales team confirms before issuing a quotation.
+    let entry = null;
     let priceSource = 'master';
-    if (product) {
-      price = Number(product.sellingPrice ?? product.selling_price ?? product.price ?? 0) || 0;
+    if (variantId && catalogMap[String(variantId)]) {
+      entry = catalogMap[String(variantId)];
+      priceSource = 'master_variant';
+    } else if (productId) {
+      entry = catalogMap[String(productId)] || null;
+    }
+    let price;
+    if (entry) {
+      price = Number(entry.sellingPrice ?? entry.selling_price ?? entry.price ?? 0) || 0;
     } else if (productId) {
       price = 0;
       priceSource = 'unknown_product';
@@ -565,11 +576,14 @@ function resolveAuthoritativePrices(items, catalogMap = {}) {
     const priceRounded = round2(price);
     return {
       productId,
-      name: String(item.name || item.description || product?.name || 'Item'),
+      // Preserve the selected variant identity end-to-end (request -> sales
+      // order) alongside its authoritatively resolved price.
+      ...(variantId ? { variantId: String(variantId) } : {}),
+      name: String(item.name || item.description || entry?.name || 'Item'),
       quantity,
       unitPrice: priceRounded,
       lineTotal: round2(priceRounded * quantity),
-      category: item.category || product?.category || product?.type || null,
+      category: item.category || entry?.category || entry?.type || null,
       priceSource,
     };
   }).filter((l) => l.name && l.quantity > 0);

@@ -253,6 +253,18 @@ router.get('/requests/inbox', async (req, res) => {
   }
 });
 
+// Opening the Quotation Requests command hub clears its notification badge:
+// request-pipeline admin notifications are marked read (scoped to hub links).
+router.post('/requests/inbox/read-all', async (req, res) => {
+  try {
+    const result = await portalLifecycleService.markRequestNotificationsRead();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[PortalAdmin] Mark inbox read error:', err);
+    res.status(500).json({ error: 'Failed to mark inbox notifications as read' });
+  }
+});
+
 router.get('/requests/:id', async (req, res) => {
   try {
     const data = await portalLifecycleService.adminGetRequest(req.params.id);

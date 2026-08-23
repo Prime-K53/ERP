@@ -1648,43 +1648,44 @@ export const QuotationRequestList: React.FC<ListProps<AdminQuotationRequest> & {
         return (
             <div
                 ref={menuRef}
-                className="fixed w-64 bg-[#FEFDFB]/95 backdrop-blur-xl rounded-xl shadow-2xl border border-[#e4ddd1] z-[70] animate-in fade-in zoom-in-95 duration-100 flex flex-col py-1 text-left overflow-y-auto custom-scrollbar"
-                style={{ top: y, left: x, maxHeight: '90vh' }}
+                className="fixed w-64 bg-[#FEFDFB]/95 backdrop-blur-xl shadow-2xl border border-[#e4ddd1] z-[70] animate-in fade-in zoom-in-95 duration-100 flex flex-col text-left overflow-y-auto custom-scrollbar"
+                style={{ top: y, left: x, maxHeight: '90vh', borderRadius: 10, borderWidth: '1.4px', borderColor: '#e4ddd1', boxShadow: '0 16px 36px -12px rgba(0,0,0,.28)' }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="px-4 py-2 border-b border-[#e4ddd1] text-[10px] font-bold text-[#5c6567] uppercase tracking-tight bg-[#eef7f6] rounded-t-xl shrink-0">Request Actions</div>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #146b60, #3fa294 40%, #d99a3f 100%)' }} />
+                <div className="px-4 py-2 text-[10px] font-bold text-[#5c6567] uppercase tracking-tight bg-[#eef7f6] shrink-0" style={{ borderBottom: '1px solid #e4ddd1' }}>Request Actions</div>
                 <div className="overflow-y-auto custom-scrollbar flex-1">
-                    <button onClick={() => { setOpenMenuId(null); props.onView(r); }} className="w-full px-4 py-2 text-xs font-medium text-[#23282A] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
-                        <FileText size={14} /> View Detail
+                    <button onClick={() => { setOpenMenuId(null); props.onView(r); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#23282A] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
+                        <FileText size={14} style={{ color: '#146b60' }} /> View Detail
                     </button>
                     {r.status !== 'converted' && r.request_type !== 'order' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_quote'); }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_quote'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
                             <FileCheck size={14} /> Generate Quotation
                         </button>
                     )}
                     {r.status === 'ready_for_conversion' && r.request_type === 'order' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_order'); }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_order'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
                             <Truck size={14} /> Generate Sales Order
                         </button>
                     )}
                     {r.status !== 'converted' && r.status !== 'rejected' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'reject'); }} className="w-full px-4 py-2 text-xs font-medium text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'reject'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#b5493f] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
                             <XCircle size={14} /> Reject Request
                         </button>
                     )}
                     <div className="my-1 border-t border-[#e4ddd1]"></div>
                     {r.quotation_number && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_quotation'); }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_quotation'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
                             <ArrowUpRight size={14} /> View Quotation {r.quotation_number}
                         </button>
                     )}
                     {r.sales_order_number && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_order'); }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] hover:bg-[#eef7f6] flex items-center gap-3 transition-colors">
+                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_order'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
                             <ArrowUpRight size={14} /> View Order {r.sales_order_number}
                         </button>
                     )}
                     <div className="my-1 border-t border-[#e4ddd1]"></div>
-                    <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'delete'); }} className="w-full px-4 py-2 text-xs text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                    <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'delete'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs text-[#b5493f] flex items-center gap-3 transition-colors">
                         <Trash2 size={14} /> Delete
                     </button>
                 </div>

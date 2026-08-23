@@ -22,6 +22,7 @@ import { currencyService } from '../../services/currencyService';
 import { CustomerSearch } from '../../components/CustomerSearch';
 import { ConfirmDialog, ConfirmDialogType } from '../../components/ConfirmDialog';
 import { getFloatingMenuStyle } from '../../utils/actionMenu';
+import { buildLedgerFromRecords } from '../../services/customerLedger';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -185,6 +186,28 @@ export const Clients: React.FC = () => {
 
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
 
+  /**
+   * Running balance per customer = stored Opening Balance (customer.balance)
+   * + transactional deltas (invoices debit / payments credit), computed by the
+   * canonical ledger service (services/customerLedger.ts) so the list column
+   * matches statements and the customer workspace.
+   */
+  const runningBalanceByCustomer = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of customers) {
+      const custInvoices = (invoices || []).filter((inv: any) => inv.customerId === c.id || inv.customerName === c.name);
+      const custPayments = (customerPayments || []).filter((p: any) => p.customerId === c.id || p.customerName === c.name);
+      const { closingBalance } = buildLedgerFromRecords({
+        customerId: c.id,
+        invoices: custInvoices as any[],
+        payments: custPayments as any[],
+        openingBalance: Number(c.balance || 0),
+      });
+      map.set(c.id, closingBalance);
+    }
+    return map;
+  }, [customers, invoices, customerPayments]);
+
   const filteredCustomers = useMemo(() => {
     // Exclude locally soft-deleted clients. Deletes are local-first: the row is
     // kept (flagged with deletedAt) until the tombstone propagates to the cloud
@@ -202,7 +225,7 @@ export const Clients: React.FC = () => {
       const matchesPipelineStage = pipelineStageFilter === 'All Stages' || (c as Customer & Record<string, unknown>).pipelineStage === pipelineStageFilter;
 
       let matchesBalance = true;
-      const balance = c.balance || 0;
+      const balance = runningBalanceByCustomer.get(c.id) ?? Number(c.balance || 0);
       if (balanceRange === 'Over $1,000') matchesBalance = balance > 1000;
       else if (balanceRange === 'Over $5,000') matchesBalance = balance > 5000;
       else if (balanceRange === 'Over $10,000') matchesBalance = balance > 10000;
@@ -234,7 +257,7 @@ export const Clients: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesMetric && matchesSegment && matchesBalance && matchesPipelineStage;
     });
-  }, [customers, searchQuery, filterStatus, selectedMetric, invoices, customerPayments, balanceRange, customerSegment, pipelineStageFilter]);
+  }, [customers, searchQuery, filterStatus, selectedMetric, invoices, customerPayments, balanceRange, customerSegment, pipelineStageFilter, runningBalanceByCustomer]);
 
   const { currentItems, currentPage, maxPage, totalItems, next, prev, first, last, setItemsPerPage, itemsPerPage } = usePagination(filteredCustomers, 25);
 
@@ -242,7 +265,7 @@ export const Clients: React.FC = () => {
     const today = new Date();
     const thirtyDaysAgo = subDays(today, 30);
 
-    const totalBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+    const totalBalance = customers.reduce((sum, c) => sum + (runningBalanceByCustomer.get(c.id) ?? Number(c.balance || 0)), 0);
 
     const overdueBalance = invoices
       .filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled' && isAfter(today, parseISO(inv.dueDate)))
@@ -265,7 +288,7 @@ export const Clients: React.FC = () => {
       paidLast30Days,
       activeCount
     };
-  }, [customers, invoices, customerPayments]);
+  }, [customers, invoices, customerPayments, runningBalanceByCustomer]);
 
   const handleEdit = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -647,7 +670,8 @@ export const Clients: React.FC = () => {
                   const isChecked = selectedIds.includes(customer.id);
                   const pal = avatarPaletteFor(customer.name || customer.id);
                   const lastTx = getLastTransaction(customer.id);
-                  const owing = (customer.balance || 0) > 0.5;
+                  const openBalance = runningBalanceByCustomer.get(customer.id) ?? Number(customer.balance || 0);
+                  const owing = openBalance > 0.5;
                   return (
                     <React.Fragment key={customer.id}>
                       <tr className={isChecked ? 'selected-row' : ''} onClick={(e) => { e.stopPropagation(); setSelectedCardCustomer(customer); }}
@@ -729,7 +753,7 @@ export const Clients: React.FC = () => {
                         <td data-label="Balance" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: owing ? danger : '#15803d' }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: owing ? danger : '#22c55e', flexShrink: 0 }} />
-                            {owing ? fmtMoney(customer.balance) : 'Paid'}
+                            {owing ? fmtMoney(openBalance) : 'Paid'}
                           </span>
                         </td>
                         <td data-label="Actions" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -772,7 +796,7 @@ export const Clients: React.FC = () => {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {customer.subAccounts.map((sub) => (
+                                  {customer.subAccounts.map((sub: any) => (
                                     <tr key={sub.id} style={{ borderBottom: `1px solid ${hairline}` }}>
                                       <td style={{ padding: '10px 16px', fontWeight: 600, color: ink }}>{sub.name}</td>
                                       <td style={{ padding: '10px 16px', textAlign: 'right', color: '#111827', fontWeight: 600, fontFamily: "'Inter', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
