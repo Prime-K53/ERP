@@ -12,6 +12,7 @@ import Pagination from '../../../components/Pagination';
 import { OfflineImage } from '../../../components/OfflineImage';
 import { mapToInvoiceData } from '../../../utils/pdfMapper';
 import { resolveTransactionPricingSummary } from '../../../utils/pricingBreakdown';
+import { formatDate } from '../../../utils/formatters';
 import { Edit2, Trash2, Star, List, LayoutGrid, CheckCircle, Check, Clock, User, Calendar, Box, Eye, Send, Copy, Plus, Phone, ChevronRight, FileText, FileCheck, Briefcase, Mail, MessageCircle, Repeat, XCircle, Archive, History as HistoryIcon, Users, RefreshCw, ArrowUp, ArrowDown, Link as LinkIcon, Paperclip, CalendarClock, AlertTriangle, Download, Truck, MoreVertical, Play, Pause, Package, Globe, DollarSign, TrendingUp, Zap, Target, Share2, ExternalLink, PlayCircle, Coins, Wallet, ShoppingBag, Printer, Search, X, ArrowUpRight, MessageSquare } from 'lucide-react';
 import { TableEmptyState } from '../../../components/EmptyState';
 
@@ -1717,7 +1718,7 @@ export const QuotationRequestList: React.FC<ListProps<AdminQuotationRequest> & {
                                     <p className="text-xs text-[#5c6567] mb-2 truncate">{props.customerNameMap?.[item.customer_id] || item.customer_name || 'Unknown Customer'}</p>
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-[#23282A] font-mono">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        <span className="text-[10px] text-[#5c6567]">{new Date(item.created_at).toLocaleDateString()}</span>
+                                        <span className="text-[10px] text-[#5c6567]">{formatDate(item.created_at)}</span>
                                     </div>
                                 </div>
                             );
@@ -1766,10 +1767,10 @@ export const QuotationRequestList: React.FC<ListProps<AdminQuotationRequest> & {
                                             onClick={() => props.onView(r)} onContextMenu={(e) => handleContextMenu(e, r.id)}
                                             onMouseEnter={(e) => onMouseEnter(r.id, e)} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
                                             <td className="table-body-cell text-left font-mono text-slate-500 font-bold truncate">{r.request_number}</td>
-                                            <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{new Date(r.created_at).toLocaleDateString()}</td>
+                                            <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{formatDate(r.created_at)}</td>
                                             <td className="table-body-cell text-left font-medium text-slate-900 truncate">
                                                 {props.customerNameMap?.[r.customer_id] || r.customer_name || 'Unknown Customer'}
-                                                <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">K {subtotal.toLocaleString()} · {new Date(r.created_at).toLocaleDateString()}</span>
+                                                <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">K {subtotal.toLocaleString()} · {formatDate(r.created_at)}</span>
                                             </td>
                                             <td className="table-body-cell text-left text-xs capitalize hidden md:table-cell">{r.request_type || 'quotation'}</td>
                                             <td className="table-body-cell text-right font-medium finance-nums truncate hidden sm:table-cell">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>

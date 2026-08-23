@@ -70,6 +70,7 @@ interface SalesState {
   addCustomerPayment: (payment: CustomerPayment) => Promise<void>;
   updateCustomerPayment: (payment: CustomerPayment) => Promise<void>;
   deleteCustomerPayment: (id: string) => Promise<void>;
+  permanentlyDeleteCustomerPayment: (id: string) => Promise<void>;
 
   addShipment: (shipment: Shipment, deliveryNotePatch?: Partial<DeliveryNote>) => Promise<void>;
   updateShipment: (shipment: Shipment, deliveryNotePatch?: Partial<DeliveryNote>) => Promise<void>;
@@ -289,6 +290,16 @@ addCustomerPayment: async (payment) => {
       set(state => ({ customerPayments: state.customerPayments.filter(p => p.id !== id) }));
       try {
         await api.sales.deleteCustomerPayment(id);
+      } catch (error) {
+        set({ customerPayments: prev });
+        throw error;
+      }
+  },
+  permanentlyDeleteCustomerPayment: async (id) => {
+      const prev = get().customerPayments;
+      set(state => ({ customerPayments: state.customerPayments.filter(p => p.id !== id) }));
+      try {
+        await api.sales.permanentlyDeleteCustomerPayment(id);
       } catch (error) {
         set({ customerPayments: prev });
         throw error;

@@ -286,6 +286,8 @@ function normalizeItems(items) {
     if (item.netUnitPrice !== undefined) base.netUnitPrice = round2(item.netUnitPrice);
     if (item.promotionId) base.promotionId = item.promotionId;
     if (item.promotionCode) base.promotionCode = item.promotionCode;
+    // Preserve captured pricing evidence (material cost snapshot) verbatim.
+    if (item.pricingBreakdown) base.pricingBreakdown = item.pricingBreakdown;
     return base;
   }).filter((item) => item.name && item.quantity > 0);
 }
@@ -319,10 +321,77 @@ async function getCatalogPriceMap() {
     map[item.id] = {
       name: item.name || item.productName || null,
       sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? item.price ?? 0) || 0,
+      // Authoritative unit cost resolved with the SAME alias policy the ERP
+      // uses everywhere else (frontend resolveStoredCost): smartPricing
+      // baseCost first, then the stored cost spellings.
+      costPrice: resolveCatalogUnitCost(item),
       category: item.category || item.type || null,
     };
   }
   return map;
+}
+
+// Mirrors frontend/utils/pricing.ts resolveStoredCost — one source of truth
+// for what "the material cost of a catalog product" means.
+function resolveCatalogUnitCost(item) {
+  return round2(
+    Number(
+      item?.smartPricingSnapshot?.baseCost
+      ?? item?.cost_price
+      ?? item?.cost_per_unit
+      ?? item?.cost
+      ?? item?.costPrice
+      ?? 0
+    ) || 0
+  );
+}
+
+/**
+ * Canonical line-level pricing-evidence snapshot for a portal-originated line.
+ * Same schema the ERP Internal Pricing Breakdown renderer persists/reads
+ * (frontend buildPricingBreakdownSnapshot). Portal lines carry no market
+ * adjustments and no rounding at submission, so per the established pricing
+ * policy profit margin = selling price − material cost − adjustments −
+ * rounding. This records EVIDENCE captured from ERP master data; it never
+ * derives cost from a total.
+ */
+function buildLinePricingBreakdown(sellingPrice, costPrice) {
+  const selling = round2(sellingPrice);
+  const cost = round2(costPrice);
+  return {
+    baseMaterialCost: cost,
+    costPrice: cost,
+    sellingPrice: selling,
+    adjustmentTotal: 0,
+    adjustmentLines: [],
+    profitMarginAmount: round2(selling - cost),
+    roundingDifference: 0,
+    wasRounded: false,
+  };
+}
+
+// Order-level aggregates over line pricing evidence (same semantics as the
+// frontend summarizePricingBreakdown: quantity-scaled per line).
+function summarizePortalPricing(items) {
+  let materialTotal = 0;
+  let adjustmentTotal = 0;
+  let profitMarginTotal = 0;
+  let roundingTotal = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    const b = item && item.pricingBreakdown;
+    if (!b) continue;
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    materialTotal += round2(b.baseMaterialCost ?? b.costPrice ?? 0) * qty;
+    adjustmentTotal += round2(b.adjustmentTotal ?? 0) * qty;
+    profitMarginTotal += round2(b.profitMarginAmount ?? ((Number(b.sellingPrice) || 0) - (Number(b.costPrice) || 0))) * qty;
+    roundingTotal += round2(b.roundingDifference ?? 0) * qty;
+  }
+  return {
+    materialTotal: round2(materialTotal),
+    adjustmentTotal: round2(adjustmentTotal),
+    profitMarginTotal: round2(profitMarginTotal),
+    roundingTotal: round2(roundingTotal),
+  };
 }
 
 function stripPromotionLineFields(item) {
@@ -379,23 +448,34 @@ async function runOrderPromotion({ customerId, items, promotionCode }) {
 
   // Line items keep the ERP master price PLUS explicit discount fields so the
   // ERP always sees WHY the price differs — never a silently changed master.
-  const storedItems = calculation.lines.map((l) => ({
-    productId: l.productId,
-    name: l.name,
-    quantity: l.quantity,
-    unitPrice: l.originalUnitPrice,
-    originalUnitPrice: l.originalUnitPrice,
-    discountPercent: l.discountPercent,
-    discountAmount: l.discountAmount,
-    netUnitPrice: l.netUnitPrice,
-    lineTotal: round2(l.originalUnitPrice * l.quantity),
-    promotionId: l.promotionId,
-    promotionCode: l.promotionCode,
-    // Price source audit flag: 'master' | 'unknown_product' | 'custom_line'.
-    // A line priced at 0 with source 'unknown_product' must be reviewed by
-    // sales before a quotation is issued.
-    priceSource: l.priceSource || 'master',
-  }));
+  const storedItems = calculation.lines.map((l) => {
+    const line = {
+      productId: l.productId,
+      name: l.name,
+      quantity: l.quantity,
+      unitPrice: l.originalUnitPrice,
+      originalUnitPrice: l.originalUnitPrice,
+      discountPercent: l.discountPercent,
+      discountAmount: l.discountAmount,
+      netUnitPrice: l.netUnitPrice,
+      lineTotal: round2(l.originalUnitPrice * l.quantity),
+      promotionId: l.promotionId,
+      promotionCode: l.promotionCode,
+      // Price source audit flag: 'master' | 'unknown_product' | 'custom_line'.
+      // A line priced at 0 with source 'unknown_product' must be reviewed by
+      // sales before a quotation is issued.
+      priceSource: l.priceSource || 'master',
+    };
+    // Pricing-evidence capture: master-priced lines record the authoritative
+    // material cost alongside the authoritative selling price so the pricing
+    // breakdown survives request → order → invoice. Unknown/custom lines get
+    // NO fabricated evidence.
+    const catalogEntry = catalogMap[l.productId];
+    if (line.priceSource === 'master' && catalogEntry) {
+      line.pricingBreakdown = buildLinePricingBreakdown(l.originalUnitPrice, catalogEntry.costPrice);
+    }
+    return line;
+  });
 
   return {
     subtotal,
@@ -1618,8 +1698,27 @@ const portalLifecycleService = {
     // an erpOrderId a fresh canonical record is created as before.
     const orderId = erpOrderId || genId('so');
     const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'ORD');
+
+    // Pricing-evidence preservation. Lines priced at submission already carry
+    // their pricingBreakdown; any master-priced line still missing one (e.g.
+    // requests created before evidence capture existed) is backfilled from the
+    // SAME authoritative catalog — never from the order total, never invented.
+    // Unknown/custom lines receive no fabricated evidence.
+    let catalogMap = null;
+    try { catalogMap = await getCatalogPriceMap(); } catch { catalogMap = null; }
+    const persistedItems = normalizedItems.map((item) => {
+      if (item.pricingBreakdown || !item.productId || !catalogMap) return item;
+      const catalogEntry = catalogMap[item.productId];
+      if (!catalogEntry) return item;
+      return {
+        ...item,
+        pricingBreakdown: buildLinePricingBreakdown(item.unitPrice, catalogEntry.costPrice),
+      };
+    });
+    const pricingTotals = summarizePortalPricing(persistedItems);
+
     const itemsJson = JSON.stringify(
-      normalizedItems.map((item) => ({
+      persistedItems.map((item) => ({
         id: item.productId || genId('itm'),
         productId: item.productId || null,
         description: item.name,
@@ -1632,6 +1731,15 @@ const portalLifecycleService = {
         netUnitPrice: item.netUnitPrice !== undefined ? item.netUnitPrice : item.unitPrice,
         promotionId: item.promotionId || null,
         promotionCode: item.promotionCode || null,
+        // Captured pricing evidence (material cost snapshot) + flat cost
+        // mirrors so every downstream reader (order → invoice conversion)
+        // sees the same authoritative cost.
+        ...(item.pricingBreakdown ? {
+          pricingBreakdown: item.pricingBreakdown,
+          cost: item.pricingBreakdown.costPrice,
+          cost_price: item.pricingBreakdown.costPrice,
+          costPrice: item.pricingBreakdown.costPrice,
+        } : {}),
       }))
     );
     const now = nowIso();
@@ -1676,6 +1784,13 @@ const portalLifecycleService = {
         discount_total: discount,
         promotion_applied: promotion ? 1 : 0,
         subtotal_before_discount: subtotal,
+        // Order-level pricing evidence aggregates (metadata only — these are
+        // NOT accounting amounts; total/subtotal above are untouched).
+        materialTotal: pricingTotals.materialTotal,
+        adjustmentTotal: pricingTotals.adjustmentTotal,
+        profitMarginTotal: pricingTotals.profitMarginTotal,
+        roundingTotal: pricingTotals.roundingTotal,
+        roundingDifference: pricingTotals.roundingTotal,
         version: erpExisting ? erpExisting.version : undefined,
       };
       const savedOrder = await repo.upsert('sales_orders', orderRecord);

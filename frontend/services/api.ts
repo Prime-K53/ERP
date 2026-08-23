@@ -285,6 +285,10 @@ export const api = {
       checkAuth(['Admin'], 'Sales.DeleteCustomerPayment');
       return transactionService.voidCustomerPayment(id, 'User requested deletion');
     }, 'Sales.DeleteCustomerPayment'),
+    permanentlyDeleteCustomerPayment: (id: string) => handle(() => {
+      checkAuth(['Admin'], 'Sales.PermanentlyDeleteCustomerPayment');
+      return transactionService.purgeVoidedCustomerPayment(id);
+    }, 'Sales.PermanentlyDeleteCustomerPayment'),
 
     getShipments: () => handle(() => dbService.getAll<Shipment>('shipments'), 'Sales.GetShipments'),
     saveShipment: (s: Shipment) => handle(() => {

@@ -108,7 +108,7 @@ const CustomerPaymentHoverCard: React.FC<{
                     )}
                     <div className="flex justify-between items-center text-[10px]">
                         <span className="text-[#5c6567] font-bold uppercase tracking-tight">Amount</span>
-                        <span className="text-[#1f8577] font-bold finance-nums">{currency}{payment.amount.toLocaleString()}</span>
+                        <span className="text-[#1f8577] font-bold finance-nums">{currency}{(payment.amount || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center text-[10px]">
                         <span className="text-[#5c6567] font-bold uppercase tracking-tight">Method</span>
@@ -160,7 +160,7 @@ const SupplierPaymentHoverCard: React.FC<{
                     </div>
                     <div className="flex justify-between items-center text-[10px]">
                         <span className="text-[#5c6567] font-bold uppercase tracking-tight">Amount</span>
-                        <span className="text-[#1f8577] font-bold finance-nums">{currency}{payment.amount.toLocaleString()}</span>
+                        <span className="text-[#1f8577] font-bold finance-nums">{currency}{(payment.amount || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center text-[10px]">
                         <span className="text-[#5c6567] font-bold uppercase tracking-tight">Method</span>
@@ -222,7 +222,7 @@ const SupplierDetailPanel: React.FC<SupplierDetailPanelProps> = ({ payment, onCl
                 <div className="flex items-center justify-between p-6 bg-[#FEFDFB] rounded-2xl border border-[#e4ddd1] shadow-sm">
                     <div>
                         <label className="block text-[10px] font-bold text-[#5c6567] uppercase tracking-tight mb-1">Total Amount Paid</label>
-                        <p className="text-3xl font-black text-[#23282A] finance-nums">{currency}{payment.amount.toLocaleString()}</p>
+                        <p className="text-3xl font-black text-[#23282A] finance-nums">{currency}{(payment.amount || 0).toLocaleString()}</p>
                     </div>
                     <div className="text-right">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-bold border ${payment.status === 'Cleared' ? 'bg-[#eef7f6] text-[#0f544c] border-[#d3ece9]' :
@@ -283,7 +283,7 @@ const SupplierDetailPanel: React.FC<SupplierDetailPanelProps> = ({ payment, onCl
                                 {(payment.allocations || []).map((a, i) => (
                                     <tr key={i} className="hover:bg-[#eef7f6]/50 transition-colors">
                                         <td className="table-body-cell font-medium text-[#1f8577]">#{a.purchaseId}</td>
-                                        <td className="table-body-cell text-right font-bold finance-nums">{currency}{a.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td className="table-body-cell text-right font-bold finance-nums">{currency}{(a.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     </tr>
                                 ))}
                                 {(!payment.allocations || payment.allocations.length === 0) && (
@@ -307,10 +307,11 @@ const CustomerPaymentDetailPanel: React.FC<{
     payment: CustomerPayment | null;
     onClose: () => void;
     onDelete: (id: string) => void;
+    onPurge: (id: string) => void;
     onEdit: (payment: CustomerPayment) => void;
     onPreview: (payment: CustomerPayment) => void;
     onStatement: (customerId: string, customerName: string) => void;
-}> = ({ payment, onClose, onDelete, onEdit, onPreview, onStatement }) => {
+}> = ({ payment, onClose, onDelete, onPurge, onEdit, onPreview, onStatement }) => {
     const { companyConfig, notify } = useAuth();
     const { ledger, accounts } = useFinance();
     const navigate = useNavigate();
@@ -381,7 +382,7 @@ const CustomerPaymentDetailPanel: React.FC<{
                             <div>
                                 <p className="text-[10px] font-bold text-[#5c6567] uppercase tracking-tight mb-1">Total Amount</p>
                                 <p className="text-[24px] font-bold text-[#23282A] finance-nums">
-                                    {currency}{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    {currency}{(payment.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </p>
                             </div>
                             <div className="text-right">
@@ -456,7 +457,7 @@ const CustomerPaymentDetailPanel: React.FC<{
                                                 <td className="table-body-cell">
                                                     <span className="text-[9px] font-bold text-[#1f8577] bg-[#eef7f6] px-1.5 py-0.5 rounded uppercase">Invoice</span>
                                                 </td>
-                                                <td className="table-body-cell text-right font-bold finance-nums">{currency}{a.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                <td className="table-body-cell text-right font-bold finance-nums">{currency}{(a.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                             </tr>
                                         ))}
                                         {((payment as any).orderAllocations || []).map((a: any, i: number) => (
@@ -465,7 +466,7 @@ const CustomerPaymentDetailPanel: React.FC<{
                                                 <td className="table-body-cell">
                                                     <span className="text-[9px] font-bold text-[#b97e2b] bg-[#fbead0] px-1.5 py-0.5 rounded uppercase">Order</span>
                                                 </td>
-                                                <td className="table-body-cell text-right font-bold finance-nums">{currency}{a.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                <td className="table-body-cell text-right font-bold finance-nums">{currency}{(a.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                             </tr>
                                         ))}
                                         {(!payment.allocations || payment.allocations.length === 0) && (!(payment as any).orderAllocations || (payment as any).orderAllocations.length === 0) && (
@@ -509,7 +510,7 @@ const CustomerPaymentDetailPanel: React.FC<{
                                     <div key={entry.id} className="p-4 bg-[#FEFDFB] border border-[#e4ddd1] rounded-2xl shadow-sm hover:border-[#a6d9d3] transition-all group">
                                     <div className="flex justify-between items-start mb-3">
                                         <div className="text-[11px] font-bold text-[#23282A] group-hover:text-[#0f544c] transition-colors">{entry.description}</div>
-                                        <div className="text-[10px] font-black text-[#23282A]">{currency}{entry.amount.toLocaleString()}</div>
+                                        <div className="text-[10px] font-black text-[#23282A]">{currency}{(entry.amount || 0).toLocaleString()}</div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-[#eef7f6]/50 p-2 rounded-xl border border-[#e4ddd1]">
@@ -561,12 +562,26 @@ const CustomerPaymentDetailPanel: React.FC<{
                 >
                     <Edit2 size={14} /> Edit Details
                 </button>
-                <button
-                    onClick={() => { onDelete(payment.id); onClose(); }}
-                    className="w-full bg-[#FEFDFB] border border-[#e4ddd1] text-[#b5493f] px-3 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#fef2f2] transition-all active:scale-95 shadow-sm"
-                >
-                    <Trash2 size={14} /> Void Payment
-                </button>
+                {String(payment.status || '').toLowerCase() === 'voided' ? (
+                    <button
+                        onClick={() => {
+                            if (confirm("Permanently delete this voided payment?\n\nThis removes the record completely and cannot be undone.")) {
+                                onPurge(payment.id);
+                                onClose();
+                            }
+                        }}
+                        className="w-full bg-[#FEFDFB] border border-[#b5493f] text-[#b5493f] px-3 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#fef2f2] transition-all active:scale-95 shadow-sm"
+                    >
+                        <Trash2 size={14} /> Delete Permanently
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => { onDelete(payment.id); onClose(); }}
+                        className="w-full bg-[#FEFDFB] border border-[#e4ddd1] text-[#b5493f] px-3 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#fef2f2] transition-all active:scale-95 shadow-sm"
+                    >
+                        <Trash2 size={14} /> Void Payment
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -575,7 +590,7 @@ const CustomerPaymentDetailPanel: React.FC<{
 const Payments: React.FC = () => {
     const { refreshAllData } = useData();
     const { companyConfig, notify, user, allUsers } = useAuth();
-    const { customerPayments, addCustomerPayment, updateCustomerPayment, deleteCustomerPayment, customers, sales, addCustomer, updateCustomer } = useSales();
+    const { customerPayments, addCustomerPayment, updateCustomerPayment, deleteCustomerPayment, permanentlyDeleteCustomerPayment, customers, sales, addCustomer, updateCustomer } = useSales();
     const { invoices, updateInvoice } = useFinance();
     const { orders, recordPayment: recordOrderPayment, updateOrderStatus } = useOrders();
     const { suppliers } = useProcurement();
@@ -1301,9 +1316,15 @@ const Payments: React.FC = () => {
                     <Mail size={14} /> Email Remittance
                 </button>
                 <div className="h-px bg-[#e4ddd1] my-1"></div>
-                <button onClick={() => { if (confirm("Void this payment?")) { deleteCustomerPayment(payment.id); notify("Payment voided.", "info"); } setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-medium text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
-                    <Trash2 size={14} /> Void Payment
-                </button>
+                {String(payment.status || '').toLowerCase() === 'voided' ? (
+                    <button onClick={() => { if (confirm("Permanently delete this voided payment?\n\nThis removes the record completely and cannot be undone.")) { permanentlyDeleteCustomerPayment(payment.id).then(() => notify("Voided payment deleted permanently.", "info")).catch(() => {}); } setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-medium text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                        <Trash2 size={14} /> Delete Permanently
+                    </button>
+                ) : (
+                    <button onClick={() => { if (confirm("Void this payment?")) { deleteCustomerPayment(payment.id); notify("Payment voided.", "info"); } setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-medium text-[#b5493f] hover:bg-[#fef2f2] flex items-center gap-3 transition-colors">
+                        <Trash2 size={14} /> Void Payment
+                    </button>
+                )}
             </div>
         );
     };
@@ -1662,7 +1683,7 @@ const Payments: React.FC = () => {
                                                                     <span style={{ fontSize:9, fontWeight:700, color:'#1f8577', background:'#eef7f6', padding:'2px 6px', borderRadius:3, textTransform:'uppercase' }}>Invoice</span>
                                                                  </td>
                                                                  <td style={{ padding:'7px 12px', color:'#5c6567', fontSize:12 }}>{new Date(inv.date).toLocaleDateString()}</td>
-                                                                 <td style={{ padding:'7px 12px', textAlign:'right', color:'#5c6567', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{inv.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                 <td style={{ padding:'7px 12px', textAlign:'right', color:'#5c6567', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                                  <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600, color:'#d99a3f', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{due.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                                  <td style={{ padding:'7px 12px', textAlign:'right' }}>
                                                                      <input
@@ -1695,7 +1716,7 @@ const Payments: React.FC = () => {
                                                                     <span style={{ fontSize:9, fontWeight:700, color:'#b97e2b', background:'#fbead0', padding:'2px 6px', borderRadius:3, textTransform:'uppercase' }}>Order</span>
                                                                  </td>
                                                                  <td style={{ padding:'7px 12px', color:'#5c6567', fontSize:12 }}>{new Date(order.orderDate || order.date).toLocaleDateString()}</td>
-                                                                 <td style={{ padding:'7px 12px', textAlign:'right', color:'#5c6567', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{order.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                 <td style={{ padding:'7px 12px', textAlign:'right', color:'#5c6567', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{(order.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                                  <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600, color:'#d99a3f', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>{currency}{due.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                                  <td style={{ padding:'7px 12px', textAlign:'right' }}>
                                                                      <input
@@ -1896,7 +1917,7 @@ const Payments: React.FC = () => {
                                                         {payment.status}
                                                     </span>
                                                 </td>
-                                                <td className="table-body-cell text-right font-bold text-[#23282A] finance-nums">{currency}{payment.amount.toLocaleString()}</td>
+                                                <td className="table-body-cell text-right font-bold text-[#23282A] finance-nums">{currency}{(payment.amount || 0).toLocaleString()}</td>
                                                 <td className="table-body-cell text-right">
                                                     <button
                                                         onClick={(e) => {
@@ -2185,6 +2206,14 @@ const Payments: React.FC = () => {
                     if (confirm("Are you sure you want to void this payment? This action cannot be undone.")) {
                         deleteCustomerPayment(id);
                         notify("Payment voided successfully.", "info");
+                        setSelectedPayment(null);
+                    }
+                }}
+                onPurge={(id) => {
+                    if (confirm("Permanently delete this voided payment?\n\nThis removes the record completely and cannot be undone.")) {
+                        permanentlyDeleteCustomerPayment(id)
+                            .then(() => notify("Voided payment deleted permanently.", "info"))
+                            .catch(() => {});
                         setSelectedPayment(null);
                     }
                 }}

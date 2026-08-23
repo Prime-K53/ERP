@@ -4,14 +4,16 @@ import {
   CheckCircle2, XCircle, FileText, RefreshCw, Loader2, MessageSquare,
   PackageCheck, Inbox, History, ChevronDown, ArrowUpRight, History as HistoryIcon,
   BadgeCheck, Send, Flag, Trash2, HandCoins, MoreVertical, Eye, Download, Edit2, Plus,
+  Clock, Wallet, Ban,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { formatDateTime, formatDate } from '../../utils/formatters';
 import {
   adminLifecycle, subscribeAdminEvents,
   AdminQuotationRequest, AdminQuotation, AdminRequestStatus,
   AdminSalesOrder, AdminDocumentVersion,
 } from '../../services/adminPortalClient';
-import PaymentRequests from './PaymentRequests';
+import PaymentRequests, { PaymentRequestStats } from './PaymentRequests';
 import { QuotationRequestList } from './components/SalesLists';
 
 const teal = {
@@ -200,9 +202,38 @@ const DetailModal: React.FC<{ open: boolean; onClose: () => void; title: string;
   );
 };
 
+/* ─── KPI strip (mirrors the Invoices page stat cards) ────── */
+
+interface KpiItem {
+  label: string;
+  value: string;
+  icon: any;
+  color: string;
+  bg: string;
+}
+
+const KpiCards: React.FC<{ items: KpiItem[] }> = ({ items }) => {
+  if (!items.length) return null;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 18 }}>
+      {items.map((item, idx) => (
+        <div key={idx} onClick={() => {}} style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 14, background: paper, border: `1.4px solid ${hairline}`, borderLeft: `4px solid ${item.color}`, boxShadow: '0 1px 3px rgba(0,0,0,.04)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'transform .15s ease, box-shadow .15s ease' }}>
+          <div style={{ padding: 10, borderRadius: 10, background: item.bg, color: item.color, display: 'inline-flex' }}><item.icon size={20} /></div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{item.label}</p>
+            <p style={{ fontSize: 18, fontWeight: 700, color: ink, margin: 0, fontFamily: "'JetBrains Mono', monospace", letterSpacing: -0.2 }}>{item.value}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const QuotationRequests: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { companyConfig } = useAuth();
+  const currency = companyConfig?.currencySymbol || 'K';
   const initialTab = (location.state as any)?.tab || 'inbox';
   const [tab, setTab] = useState<string>(initialTab);
   const [requests, setRequests] = useState<AdminQuotationRequest[]>([]);
@@ -218,6 +249,7 @@ const QuotationRequests: React.FC = () => {
   const [staff, setStaff] = useState<{ id: string; username: string; email: string | null }[]>([]);
   const [staffNameMap, setStaffNameMap] = useState<Record<string, string>>({});
   const [paymentCount, setPaymentCount] = useState(0);
+  const [paymentStats, setPaymentStats] = useState<PaymentRequestStats | null>(null);
   const tabMeta: Record<string, { title: string; desc: string }> = {
     inbox: { title: 'Inbox', desc: 'Review new customer requests, assign staff, and triage submissions.' },
     quotations: { title: 'Quotations', desc: 'Review official quotations, track versions, signatures, and conversions.' },
@@ -307,6 +339,52 @@ const QuotationRequests: React.FC = () => {
     if (tab === 'orders') return requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type === 'order');
     return requests.filter((r) => INBOX_STATUSES.includes(r.status));
   }, [requests, tab, inboxRequests]);
+
+  const money = useCallback((v: number) => `${currency}${Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, [currency]);
+
+  const tabKpis = useMemo<KpiItem[]>(() => {
+    const orderReqs = requests.filter((r) => INBOX_STATUSES.includes(r.status) && r.request_type === 'order');
+    const historyReqs = requests.filter((r) => ['rejected', 'cancelled', 'converted'].includes(String(r.status || '')));
+    switch (tab) {
+      case 'inbox':
+        return [
+          { label: 'Total Requests', value: String(inboxRequests.length), icon: Inbox, color: '#1f8577', bg: '#eef7f6' },
+          { label: 'Awaiting Assignment', value: String(inboxRequests.filter((r) => r.status === 'submitted').length), icon: Clock, color: '#b97e2b', bg: '#fbead0' },
+          { label: 'Ready for Conversion', value: String(inboxRequests.filter((r) => r.status === 'ready_for_conversion').length), icon: BadgeCheck, color: '#059669', bg: '#ecfdf5' },
+          { label: 'Pipeline Value', value: money(inboxRequests.reduce((s, r) => s + Number(r.subtotal || 0), 0)), icon: Wallet, color: '#1f8577', bg: '#eef7f6' },
+        ];
+      case 'quotations':
+        return [
+          { label: 'Total Quotations', value: String(quotations.length), icon: FileText, color: '#1f8577', bg: '#eef7f6' },
+          { label: 'Accepted', value: String(quotations.filter((q) => q.status === 'accepted').length), icon: CheckCircle2, color: '#2563eb', bg: '#eff6ff' },
+          { label: 'Awaiting Response', value: String(quotations.filter((q) => q.status === 'ready').length), icon: Clock, color: '#b97e2b', bg: '#fbead0' },
+          { label: 'Total Quoted Value', value: money(quotations.reduce((s, q) => s + Number(q.total || 0), 0)), icon: HandCoins, color: '#1f8577', bg: '#eef7f6' },
+        ];
+      case 'orders':
+        return [
+          { label: 'Order Requests', value: String(orderReqs.length), icon: PackageCheck, color: '#1f8577', bg: '#eef7f6' },
+          { label: 'Sales Orders', value: String(orders.length), icon: FileText, color: '#2563eb', bg: '#eff6ff' },
+          { label: 'Ready for Conversion', value: String(orderReqs.filter((r) => r.status === 'ready_for_conversion').length), icon: Clock, color: '#b97e2b', bg: '#fbead0' },
+          { label: 'Orders Value', value: money(orders.reduce((s, o) => s + Number(o.total || 0), 0)), icon: Wallet, color: '#1f8577', bg: '#eef7f6' },
+        ];
+      case 'payments':
+        return [
+          { label: 'Payment Requests', value: String(paymentStats?.total ?? paymentCount), icon: HandCoins, color: '#1f8577', bg: '#eef7f6' },
+          { label: 'Awaiting Review', value: String(paymentStats?.awaitingReview ?? 0), icon: Clock, color: '#b97e2b', bg: '#fbead0' },
+          { label: 'Confirmed', value: String(paymentStats?.confirmed ?? 0), icon: CheckCircle2, color: '#059669', bg: '#ecfdf5' },
+          { label: 'Requested Value', value: money(paymentStats?.requestedValue ?? 0), icon: Wallet, color: '#1f8577', bg: '#eef7f6' },
+        ];
+      case 'history':
+        return [
+          { label: 'Closed Requests', value: String(historyReqs.length), icon: History, color: '#64748b', bg: '#f8fafc' },
+          { label: 'Rejected', value: String(historyReqs.filter((r) => r.status === 'rejected').length), icon: XCircle, color: '#b5493f', bg: '#fef2f2' },
+          { label: 'Cancelled', value: String(historyReqs.filter((r) => r.status === 'cancelled').length), icon: Ban, color: '#b97e2b', bg: '#fbead0' },
+          { label: 'Converted', value: String(historyReqs.filter((r) => r.status === 'converted').length), icon: ArrowUpRight, color: '#059669', bg: '#ecfdf5' },
+        ];
+      default:
+        return [];
+    }
+  }, [tab, requests, inboxRequests, quotations, orders, paymentStats, paymentCount, currency, money]);
 
   const action = async (key: string, fn: () => Promise<any>) => {
     setBusy(key);
@@ -452,6 +530,9 @@ const QuotationRequests: React.FC = () => {
         </div>
       )}
 
+      {/* KPI strip */}
+      <KpiCards items={tabKpis} />
+
       {/* Tabs */}
       {!(location.state as any)?.tab && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -501,7 +582,7 @@ const QuotationRequests: React.FC = () => {
           }}
         />
       )}
-      {tab === 'payments' && <PaymentRequests embedded onCountChange={setPaymentCount} />}
+      {tab === 'payments' && <PaymentRequests embedded onCountChange={setPaymentCount} onStatsChange={setPaymentStats} />}
       {(tab === 'quotations' || tab === 'orders') && (
         <QuotationRequestList
           data={activeRequests}

@@ -17,13 +17,34 @@ function adminHeaders() {
   };
 }
 
+/**
+ * Normalize any persisted timestamp to strict, JS-parseable ISO-8601
+ * (millisecond precision, Z offset). PostgREST serializes timestamptz with
+ * microsecond fractions ("2026-08-23T12:22:13.55572+00:00"); the ECMAScript
+ * date-time format only guarantees .sss, and stricter engines (WebKit) return
+ * Invalid Date for longer fractions. Same instant, canonical wire format.
+ * Unparseable values pass through untouched — never invent a date.
+ */
+function toStrictIso(value) {
+  if (value == null || value === '') return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toISOString();
+}
+
 function fromSupabaseRow(row) {
   if (!row) return null;
   const data = (row.data && typeof row.data === 'object') ? row.data : {};
   return {
     ...data,
     id: row.id,
-    updated_at: row.updated_at || null,
+    // Canonical server timestamp: the DB column (DEFAULT NOW()) is the
+    // authoritative creation time for every envelope row. Without this the
+    // API drops the date entirely (quotation/order requests showed
+    // "Invalid Date"), while payment requests worked only because they also
+    // persist an explicit requested_at INSIDE the envelope. An in-envelope
+    // value (if any legacy row has one) still wins.
+    created_at: toStrictIso(data.created_at || row.created_at || null),
+    updated_at: toStrictIso(row.updated_at || null),
     version: row.version != null ? Number(row.version) : 0,
   };
 }

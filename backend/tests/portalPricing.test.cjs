@@ -22,15 +22,15 @@ process.env.JWT_SECRET = 'test-jwt-secret';
 const PRODUCTS = [
   {
     id: 'prod-a4-env',
-    data: { id: 'prod-a4-env', name: 'A4 Envelope', sellingPrice: 500, type: 'Stationery', status: 'Active' },
+    data: { id: 'prod-a4-env', name: 'A4 Envelope', sellingPrice: 500, costPrice: 300, type: 'Stationery', status: 'Active' },
   },
   {
     id: 'prod-a4-hard',
-    data: { id: 'prod-a4-hard', name: 'A4 Hardcover', sellingPrice: 6500, type: 'Stationery', status: 'Active' },
+    data: { id: 'prod-a4-hard', name: 'A4 Hardcover', sellingPrice: 6500, cost_price: 4000, type: 'Stationery', status: 'Active' },
   },
   {
     id: 'prod-deleted',
-    data: { id: 'prod-deleted', name: 'Discontinued Pad', sellingPrice: 900, type: 'Stationery', status: 'deleted' },
+    data: { id: 'prod-deleted', name: 'Discontinued Pad', sellingPrice: 900, costPrice: 600, type: 'Stationery', status: 'deleted' },
   },
 ];
 
@@ -51,7 +51,10 @@ const upsertedTables = [];
 function recordUpsert(table, record) {
   upsertedTables.push(table);
   store[table] = store[table] || new Map();
-  store[table].set(record.id, { id: record.id, ...record.data });
+  // Mirror the real envelope contract: the domain object is stored verbatim
+  // (cloudSyncStore wraps it into the `data` JSONB column; fromSupabaseRow
+  // spreads it back). Flat records are preserved field-for-field.
+  store[table].set(record.id, { ...(record.data || record), id: record.id });
 }
 
 jest.mock('../services/supabaseRepository.cjs', () => ({
@@ -99,6 +102,7 @@ jest.mock('../services/promotionService.cjs', () => {
 jest.mock('../services/workflowEngine.cjs', () => {
   let seq = 0;
   return {
+    SALES_ORDER_STATUS: Object.freeze({ DRAFT: 'Draft', CONFIRMED: 'Confirmed', CANCELLED: 'Cancelled' }),
     nextYearScopedNumber: jest.fn(async () => {
       seq += 1;
       return `ODR-2026-${String(seq).padStart(6, '0')}`;
@@ -280,5 +284,149 @@ describe('F3 — portal pricing resolves from the authoritative `products` catal
       subtotalBefore: 1000,
       subtotalAfter: 900,
     }));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pricing-evidence preservation: portal order → sales order → invoice.
+//
+// Regression guard for the Internal Pricing Breakdown defect: portal-converted
+// invoices showed Material Cost K0.00 / Profit Markup = invoice total because
+// the pricing evidence (material-cost snapshot) captured at request ingestion
+// was stripped at every later boundary. These tests pin the evidence to the
+// request, the official sales order, and prove the accounting firewall.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Portal order pricing evidence — capture, persistence, conversion', () => {
+  const ADMIN = { id: 'adm_1', name: 'Sales', role: 'admin' };
+
+  beforeEach(() => {
+    repo.__reset();
+    jest.clearAllMocks();
+    promotionService.getActivePromotions.mockImplementation(async () => []);
+    promotionService.getUsageByPromotion.mockImplementation(async () => ({}));
+    promotionService.getUsageByPromotionForCustomer.mockImplementation(async () => ({}));
+    promotionService.recordRedemption.mockImplementation(async () => ({}));
+  });
+
+  it('Test A — master-priced request lines capture material cost from the authoritative catalog; unknown lines get none', async () => {
+    const result = await lifecycle.createQuotationRequest({
+      portalUserId: 'pusr_a',
+      customerId: 'cust_a',
+      customerName: 'Customer A',
+      requestType: 'order',
+      items: [
+        { productId: 'prod-a4-env', name: 'A4 Envelope', quantity: 2, unitPrice: 1 },
+        { productId: 'ghost-product', name: 'Custom Line', quantity: 1, unitPrice: 123 },
+      ],
+    });
+
+    const masterLine = result.items.find((l) => l.productId === 'prod-a4-env');
+    expect(masterLine.pricingBreakdown).toEqual(expect.objectContaining({
+      baseMaterialCost: 300,     // products.costPrice — NOT derived from any total
+      costPrice: 300,
+      sellingPrice: 500,         // ERP master price
+      profitMarginAmount: 200,   // selling − cost per established policy
+      adjustmentTotal: 0,
+      roundingDifference: 0,
+    }));
+
+    // A line the catalog cannot resolve must never receive invented evidence.
+    const unknownLine = result.items.find((l) => l.productId === 'ghost-product');
+    expect(unknownLine.pricingBreakdown).toBeUndefined();
+  });
+
+  it('Test B — the persisted quotation_requests row retains the pricing evidence', async () => {
+    const result = await lifecycle.createQuotationRequest({
+      portalUserId: 'pusr_a',
+      customerId: 'cust_a',
+      customerName: 'Customer A',
+      requestType: 'order',
+      items: [{ productId: 'prod-a4-hard', name: 'A4 Hardcover', quantity: 1, unitPrice: 1 }],
+    });
+
+    const storedRow = store.quotation_requests.get(result.id);
+    const storedItems = JSON.parse(storedRow.items);
+    // cost_price alias chain (products.cost_price=4000) resolves like resolveStoredCost.
+    expect(storedItems[0].pricingBreakdown).toEqual(expect.objectContaining({
+      baseMaterialCost: 4000,
+      costPrice: 4000,
+      sellingPrice: 6500,
+      profitMarginAmount: 2500,
+    }));
+  });
+
+  it('Test C — order → invoice source data keeps the evidence and accounting totals are untouched', async () => {
+    const created = await lifecycle.createQuotationRequest({
+      portalUserId: 'pusr_a',
+      customerId: 'cust_a',
+      customerName: 'Customer A',
+      requestType: 'order',
+      items: [{ productId: 'prod-a4-env', name: 'A4 Envelope', quantity: 2, unitPrice: 1 }],
+    });
+
+    upsertedTables.length = 0;
+    const so = await lifecycle.completeSalesOrder(created.id, { admin: ADMIN });
+
+    const orderRow = store.sales_orders.get(so.id);
+    expect(orderRow).toBeTruthy();
+
+    const items = JSON.parse(orderRow.items);
+    expect(items[0].pricingBreakdown).toEqual(expect.objectContaining({
+      baseMaterialCost: 300,
+      costPrice: 300,
+      sellingPrice: 500,
+      profitMarginAmount: 200,
+    }));
+    // Flat cost mirrors for every downstream invoice-conversion reader.
+    expect(items[0].cost).toBe(300);
+    expect(items[0].cost_price).toBe(300);
+
+    // Order-level aggregates match quantity-scaled line evidence.
+    expect(orderRow.materialTotal).toBe(600);       // 2 × 300
+    expect(orderRow.profitMarginTotal).toBe(400);   // 2 × 200
+    expect(orderRow.adjustmentTotal).toBe(0);
+    expect(orderRow.roundingTotal).toBe(0);
+
+    // Accounting firewall: financial totals identical to the request's.
+    expect(orderRow.subtotal).toBe(created.subtotal);
+    expect(orderRow.total).toBe(created.total);
+
+    // Accounting firewall: conversion writes NO accounting records.
+    const written = new Set(upsertedTables);
+    for (const forbidden of [
+      'invoices', 'sales', 'customer_payments', 'supplier_payments',
+      'payment_allocations', 'ledger_entries', 'receipts', 'quotations',
+    ]) {
+      expect(written.has(forbidden)).toBe(false);
+    }
+    expect(written.has('sales_orders')).toBe(true);
+  });
+
+  it('Test D — legacy requests without evidence are backfilled from the same catalog at conversion', async () => {
+    store.quotation_requests.set('req_legacy', {
+      id: 'req_legacy',
+      request_number: 'ODR-2026-999999',
+      customer_id: 'cust_a',
+      customer_name: 'Customer A',
+      request_type: 'order',
+      status: 'submitted',
+      items: JSON.stringify([
+        { productId: 'prod-a4-env', name: 'A4 Envelope', quantity: 3, unitPrice: 500, lineTotal: 1500 },
+      ]),
+      subtotal: 1500,
+      total: 1500,
+    });
+
+    const so = await lifecycle.completeSalesOrder('req_legacy', { admin: ADMIN });
+    const orderRow = store.sales_orders.get(so.id);
+    const items = JSON.parse(orderRow.items);
+
+    expect(items[0].pricingBreakdown).toEqual(expect.objectContaining({
+      baseMaterialCost: 300,
+      costPrice: 300,
+      profitMarginAmount: 200,
+    }));
+    expect(orderRow.materialTotal).toBe(900);       // 3 × 300
+    expect(orderRow.profitMarginTotal).toBe(600);   // 3 × 200
   });
 });

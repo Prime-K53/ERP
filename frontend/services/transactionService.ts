@@ -2995,6 +2995,23 @@ export const transactionService = {
         );
     },
 
+    /**
+     * Permanently remove a Voided customer payment record.
+     * Only payments whose status is 'Voided' may be purged — active
+     * transactions must go through voidCustomerPayment first. The record is
+     * removed locally and a cloud delete op is enqueued so other devices
+     * reconcile (standard dbService.delete tombstone flow).
+     */
+    async purgeVoidedCustomerPayment(paymentId: string) {
+        const payment = await dbService.get<CustomerPayment>('customerPayments', paymentId);
+        if (!payment) throw new Error("Payment not found");
+        if (String(payment.status || '').toLowerCase() !== 'voided') {
+            throw new Error("Only voided payments can be deleted permanently. Void the payment first.");
+        }
+        await dbService.delete('customerPayments', paymentId);
+        return { success: true };
+    },
+
     async saveCustomer(customer: Customer, oldCustomer?: Customer) {
         return dbService.executeAtomicOperation(
             ['customers'],

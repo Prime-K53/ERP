@@ -168,7 +168,12 @@ const SalesOrders: React.FC = () => {
           quantity: Number(it.quantity) || 0,
           unitPrice: Number(it.unitPrice) || 0,
           discount: 0,
-          lineTotal: Number(it.lineTotal) || 0
+          lineTotal: Number(it.lineTotal) || 0,
+          // Preserve the captured pricing-evidence snapshot from the portal
+          // request so it survives request → order → invoice intact.
+          ...(it.pricingBreakdown ? { pricingBreakdown: it.pricingBreakdown } : {}),
+          ...(it.cost !== undefined ? { cost: it.cost } : {}),
+          ...(it.cost_price !== undefined ? { cost_price: it.cost_price } : {}),
         })),
         subtotal: p.subtotal || 0,
         discounts: 0,

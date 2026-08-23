@@ -66,14 +66,24 @@ const fmtAmount = (n: number | undefined, currency: string): string => {
   return `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+export interface PaymentRequestStats {
+  total: number;
+  awaitingReview: number;
+  confirmed: number;
+  requestedValue: number;
+  confirmedValue: number;
+}
+
 interface PaymentRequestsProps {
   /** Render as a tab inside another page (hide the standalone page chrome). */
   embedded?: boolean;
   /** Reports the total request count whenever it changes (e.g. for a parent tab badge). */
   onCountChange?: (count: number) => void;
+  /** Reports aggregate stats whenever the underlying rows change (e.g. for parent KPIs). */
+  onStatsChange?: (stats: PaymentRequestStats) => void;
 }
 
-const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onCountChange }) => {
+const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onCountChange, onStatsChange }) => {
   const { companyConfig, notify } = useAuth();
   const currency = companyConfig?.currencySymbol || 'K';
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
@@ -131,7 +141,19 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
     onCountChange?.(counts.all);
   }, [counts.all, onCountChange]);
 
-  const review = async (id: string, status: Status, notes?: string) => {
+  const stats = useMemo<PaymentRequestStats>(() => ({
+    total: requests.length,
+    awaitingReview: requests.filter((r) => r.status === 'requested' || r.status === 'under_review').length,
+    confirmed: requests.filter((r) => r.status === 'confirmed').length,
+    requestedValue: requests.reduce((s, r) => s + Number(r.requested_amount || 0), 0),
+    confirmedValue: requests.filter((r) => r.status === 'confirmed').reduce((s, r) => s + Number(r.requested_amount || 0), 0),
+  }), [requests]);
+
+  useEffect(() => {
+    onStatsChange?.(stats);
+  }, [stats, onStatsChange]);
+
+  const review = async (id: string, status: Status, notes?: string, selectResult = true) => {
     setActing(true);
     try {
       const res = await fetch(`${API_BASE_URL}/payment-requests/${id}/review`, {
@@ -144,13 +166,28 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
       if (!res.ok) throw new Error(body.message || body.error || `Review failed (${res.status})`);
       notify(`Payment request marked ${status}`, 'success');
       await load();
-      setSelected(body);
-      setAdminNotes('');
+      if (selectResult) {
+        setSelected(body);
+        setAdminNotes('');
+      } else if (selected?.id === id) {
+        setSelected((prev) => (prev ? { ...prev, ...body } : prev));
+      }
     } catch (err: any) {
       notify(err?.message || 'Review failed', 'error');
     } finally {
       setActing(false);
     }
+  };
+
+  /** Inline Accept / Reject straight from the queue row (no need to open the detail panel). */
+  const onRowAction = (row: PaymentRequest, action: 'accept' | 'reject') => {
+    if (acting) return;
+    const status: Status = action === 'accept' ? 'confirmed' : 'rejected';
+    if (!canTransition(row.status, status)) return;
+    if (action === 'reject' && !window.confirm(`Reject payment request ${row.request_number || row.id}?`)) {
+      return;
+    }
+    review(row.id, status, undefined, false);
   };
 
   const onReview = (status: Status) => {
@@ -290,7 +327,7 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ background: '#faf9f6', color: inkSoft, textAlign: 'left' }}>
-                  {['Request', 'Customer', 'Invoice', 'Requested Amount', 'Method', 'Status', 'Requested Date', ''].map((h, i) => (
+                  {['Request', 'Customer', 'Invoice', 'Requested Amount', 'Method', 'Status', 'Requested Date', 'Actions'].map((h, i) => (
                     <th key={i} style={{ padding: '10px 14px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -329,7 +366,28 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
                       </span>
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      <span style={{ color: teal[600], fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>Review →</span>
+                      {canTransition(r.status, 'confirmed') ? (
+                        <span style={{ display: 'inline-flex', gap: 6, whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => onRowAction(r, 'accept')}
+                            disabled={acting}
+                            title="Accept this payment request"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: 'none', background: teal[500], color: '#fff', fontSize: 11, fontWeight: 700, cursor: acting ? 'not-allowed' : 'pointer', opacity: acting ? 0.6 : 1 }}
+                          >
+                            <CheckCircle2 size={12} /> Accept
+                          </button>
+                          <button
+                            onClick={() => onRowAction(r, 'reject')}
+                            disabled={acting}
+                            title="Reject this payment request"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: `1px solid ${red[100]}`, background: red[50], color: red[600], fontSize: 11, fontWeight: 700, cursor: acting ? 'not-allowed' : 'pointer', opacity: acting ? 0.6 : 1 }}
+                          >
+                            <XCircle size={12} /> Reject
+                          </button>
+                        </span>
+                      ) : (
+                        <span style={{ color: '#b6bfbd', fontSize: 11.5 }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -442,7 +500,7 @@ const PaymentRequests: React.FC<PaymentRequestsProps> = ({ embedded = false, onC
                     disabled={acting}
                     style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: 'none', background: teal[500], color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px -4px rgba(15,84,76,.5)' }}
                   >
-                    <CheckCircle2 size={13} /> Confirm
+                    <CheckCircle2 size={13} /> Accept
                   </button>
                 </div>
               </div>

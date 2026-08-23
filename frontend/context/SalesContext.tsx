@@ -116,6 +116,7 @@ interface SalesContextType {
     addCustomerPayment: (payment: CustomerPayment) => Promise<void>;
     updateCustomerPayment: (payment: CustomerPayment, reason?: string) => Promise<void>;
     deleteCustomerPayment: (id: string, reason?: string) => Promise<void>;
+    permanentlyDeleteCustomerPayment: (id: string) => Promise<void>;
 
     addCustomer: (customer: Customer, options?: { invite?: boolean }) => Promise<PortalCredentials | null>;
     updateCustomer: (customer: Customer) => Promise<void>;
@@ -994,6 +995,33 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
     };
 
+    const permanentlyDeleteCustomerPayment = async (id: string) => {
+        try {
+            const oldPayment = salesStore.customerPayments.find(p => p.id === id);
+            await salesStore.permanentlyDeleteCustomerPayment(id);
+            await salesStore.fetchSalesData();
+            notify(`Payment #${id} deleted permanently`, "success");
+            await pushTransactionAlert({
+                title: 'Customer Payment Deleted',
+                message: `Voided payment #${id} was permanently deleted.`,
+                module: 'Payments',
+                severity: 'High',
+                type: 'WARNING',
+                actionUrl: '/sales-flow/payments'
+            });
+            addAuditLog({
+                action: 'DELETE',
+                entityType: 'CustomerPayment',
+                entityId: id,
+                details: `Permanently deleted voided payment`,
+                oldValue: oldPayment
+            });
+        } catch (err: any) {
+            notify(`Failed to delete payment: ${err.message}`, "error");
+            throw err;
+        }
+    };
+
     const addCustomer = async (customer: Customer, options?: { invite?: boolean }): Promise<PortalCredentials | null> => {
         try {
             const id = customer.id || generateCustomerId(salesStore.customers);
@@ -1543,6 +1571,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             convertQuotationToInvoice,
             convertJobOrderToInvoice,
             updateCustomerPayment, deleteCustomerPayment,
+            permanentlyDeleteCustomerPayment,
             runRecurringBilling
         }}>
             {children}
