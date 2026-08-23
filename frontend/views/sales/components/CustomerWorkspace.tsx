@@ -331,20 +331,31 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
     [customer.id, customerInvoices, customerPaymentsList]
   );
 
-  // KPIs
+  // KPIs — derived from the canonical ledger to stay consistent with the
+  // Ledger tab. Only invoices that pass isInvoiceIncluded() are counted.
   const kpis = useMemo(() => {
-    const totalInvoiced = customerInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-    const totalPaid = customerInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-    const overdueBalance = customerInvoices
-      .filter(inv => {
-        const status = String(inv.status || '').toLowerCase();
-        return status !== 'paid' && status !== 'cancelled' && status !== 'voided' && isAfter(new Date(), parseISO(inv.dueDate));
-      })
-      .reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0);
+    // Use canonical ledger transactions (already filtered by validated rules)
+    const includedInvoices = canonicalLedger.transactions.filter(t => t.type === 'invoice' || t.type === 'credit_note');
+    const includedPayments = canonicalLedger.transactions.filter(t => t.type === 'payment');
 
-    const ytdSales = customerInvoices
-      .filter(inv => new Date(inv.date).getFullYear() === new Date().getFullYear())
-      .reduce((sum, inv) => sum + inv.totalAmount, 0);
+    const totalInvoiced = includedInvoices.reduce((sum, t) => sum + t.debit, 0);
+    const totalPaid = includedPayments.reduce((sum, t) => sum + t.credit, 0);
+
+    // Overdue: invoices included by the ledger that are past due date
+    const overdueBalance = canonicalLedger.transactions
+      .filter(t => {
+        if (t.type !== 'invoice') return false; // credit_notes are not overdue
+        const inv = customerInvoices.find(i => String(i.id) === t.id);
+        const dueDate = inv?.dueDate || inv?.due_date;
+        return dueDate && isAfter(new Date(), parseISO(dueDate));
+      })
+      .reduce((sum, t) => sum + t.debit, 0);
+
+    // YTD: only included invoices from the current year
+    const currentYear = new Date().getFullYear();
+    const ytdSales = canonicalLedger.transactions
+      .filter(t => t.type === 'invoice' && t.date && new Date(t.date).getFullYear() === currentYear)
+      .reduce((sum, t) => sum + t.debit, 0);
 
     const lastInvoice = customerInvoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
@@ -725,7 +736,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                 <div style={{ display: 'grid', gap: 16 }} className="grid-cols-2 lg:grid-cols-4">
                   {[
                     { icon: DollarSign, label: 'Total Balance', value: kpis.balance, color: teal[500], accent: teal[500], sub: 'Good Standing' },
-                    { icon: AlertTriangle, label: 'Overdue Balance', value: kpis.overdueBalance, color: danger, accent: danger, sub: `${customerInvoices.filter(i => i.status === 'Overdue').length} invoices` },
+                    { icon: AlertTriangle, label: 'Overdue Balance', value: kpis.overdueBalance, color: danger, accent: danger, sub: `${kpis.overdueBalance > 0 ? canonicalLedger.transactions.filter(t => { if (t.type !== 'invoice') return false; const inv = customerInvoices.find(i => String(i.id) === t.id); const dueDate = inv?.dueDate || inv?.due_date; return dueDate && isAfter(new Date(), parseISO(dueDate)); }).length : 0} invoices` },
                     { icon: Clock, label: 'Outstanding', value: kpis.outstandingBalance || 0, color: amber[500], accent: amber[500], sub: 'Open invoices & unpaid' },
                     { icon: TrendingUp, label: 'YTD Purchases', value: kpis.ytdSales, color: teal[700], accent: teal[500], sub: `FY ${new Date().getFullYear()}` },
                   ].map((kpi, i) => {
@@ -1219,7 +1230,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({ customer, 
                     <tbody className="divide-y divide-slate-50">
                       <tr style={{ background: teal[50] }}>
                         <td colSpan={6} className="px-6 py-3 font-bold text-slate-500">Opening Balance</td>
-                        <td className="px-6 py-3 text-right font-bold text-slate-900 finance-nums">{currency}0.00</td>
+                        <td className="px-6 py-3 text-right font-bold text-slate-900 finance-nums">{currency}{openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                       {ledgerEntries.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
