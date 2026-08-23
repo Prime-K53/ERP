@@ -438,6 +438,10 @@ const CustomerInvoices: React.FC = () => {
               <button onClick={resetPaySheet} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, borderRadius: 8 }}><X size={18} /></button>
             </div>
 
+            {paySuccess ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
+                <CheckCircle2 size={16} /> Payment request submitted — pending verification
+              </div>
             ) : (
               <>
                 {/* Method selector */}
@@ -506,11 +510,7 @@ const CustomerInvoices: React.FC = () => {
                 />
 
                 {payError && <ErrorBanner message={payError} onDismiss={() => setPayError(null)} />}
-                {paySuccess && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
-                    <CheckCircle2 size={16} /> Payment request submitted — pending verification
-                  </div>
-                )}
+
 
                 <button
                   onClick={confirmPayment}

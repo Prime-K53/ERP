@@ -926,13 +926,9 @@ export const transactionService = {
                     }
                 }
 
-                if (outstandingAmount > 0 && sale.customerId) {
-                    const customer = await customerStore.get(sale.customerId);
-                    if (customer) {
-                        customer.balance = toMoney((customer.balance || 0) + outstandingAmount);
-                        await customerStore.put(customer);
-                    }
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed — views use canonicalLedger via
+                // customerLedger.ts instead of this stale cache field.
 
                 // If sale has specific payments, reflect retained amounts in GL.
                 for (const payment of normalizedPayments) {
@@ -1335,14 +1331,9 @@ export const transactionService = {
                     await ledgerStore.put(cogsReversal);
                 }
 
-                // 3. Update Customer Balance if applicable
-                if (refund.customerId) {
-                    const customer = await customerStore.get(refund.customerId);
-                    if (customer) {
-                        customer.balance = (customer.balance || 0) - refund.totalAmount;
-                        await customerStore.put(customer);
-                    }
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed — views use canonicalLedger via
+                // customerLedger.ts instead of this stale cache field.
 
                 // 4. Ledger Entry for Refund
                 const gl = getGLConfig();
@@ -1627,15 +1618,9 @@ export const transactionService = {
                 // Update invoice with adjustment data
                 await invoiceStore.put(invoice);
 
-                // 5. Update Customer Balance (only outstanding amount)
-                if (invoice.customerId) {
-                    const customer = await customerStore.get(invoice.customerId);
-                    if (customer) {
-                        const outstanding = Math.max(0, totalAmount - paidAmount);
-                        customer.balance = (customer.balance || 0) + outstanding;
-                        await customerStore.put(customer);
-                    }
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed — views use canonicalLedger via
+                // customerLedger.ts instead of this stale cache field.
 
                 // 6. Ledger Entry
                 const gl = getGLConfig();
@@ -2062,13 +2047,8 @@ export const transactionService = {
                     }
                 }
 
-                // 4. Update Customer Balance (only outstanding amount)
-                const customer = await customerStore.get(invoice.customerId);
-                if (customer) {
-                    const outstanding = Math.max(0, totalAmount - paidAmount);
-                    customer.balance = (customer.balance || 0) + outstanding;
-                    await customerStore.put(customer);
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
 
                 // 5. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2397,15 +2377,8 @@ export const transactionService = {
                     }
                 }
 
-                // 5. Update Customer Balance (only outstanding amount)
-                if (invoiceData.customerId) {
-                    const customer = await customerStore.get(invoiceData.customerId);
-                    if (customer) {
-                        const outstanding = Math.max(0, (invoiceData.totalAmount || 0) - (invoiceData.paidAmount || 0));
-                        customer.balance = (customer.balance || 0) + outstanding;
-                        await customerStore.put(customer);
-                    }
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
 
                 // 6. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2536,15 +2509,8 @@ export const transactionService = {
 
                 await invoiceStore.put(invoiceData);
 
-                // 5. Update Customer Balance (only outstanding amount)
-                if (invoiceData.customerId) {
-                    const customer = await customerStore.get(invoiceData.customerId);
-                    if (customer) {
-                        const outstanding = Math.max(0, (invoiceData.totalAmount || 0) - (invoiceData.paidAmount || 0));
-                        customer.balance = (customer.balance || 0) + outstanding;
-                        await customerStore.put(customer);
-                    }
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
 
                 // 6. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2680,12 +2646,13 @@ export const transactionService = {
                     await invoiceStore.put(invoice);
                 }
 
-                // 5. Update Customer Balance
-                const customer = customerId ? await customerStore.get(customerId) : null;
-                if (customer) {
-                    // AR is reduced only by amount applied to invoices.
-                    customer.balance = Math.max(0, toMoney((customer.balance || 0) - snapshot.amountApplied));
-                    await customerStore.put(customer);
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
+
+                // Load customer record for wallet operations below.
+                let customer = null as any;
+                if (customerId) {
+                    customer = await customerStore.get(customerId);
                 }
 
                 // 6a. Handle wallet DEPOSIT (overpayment credited to wallet).
@@ -2889,15 +2856,13 @@ export const transactionService = {
                 }
 
                 // 2. Reverse Customer Balance
-                const amountApplied = toMoney(
-                    payment.amountApplied ??
-                    payment.receiptSnapshot?.amountApplied ??
-                    (payment.allocations || []).reduce((sum: number, allocation: any) => sum + Number(allocation.amount || 0), 0)
-                );
-                const customer = await customerStore.get(payment.customerId);
-                if (customer) {
-                    customer.balance = toMoney((customer.balance || 0) + amountApplied);
-                    await customerStore.put(customer);
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
+
+                // Load customer for wallet reversal below.
+                let customer = null as any;
+                if (payment.customerId) {
+                    customer = await customerStore.get(payment.customerId);
                 }
 
                 // 3. Reverse Wallet (if wallet deposit was posted)
@@ -3102,11 +3067,13 @@ export const transactionService = {
                     }
                 }
 
-                // 2. Reverse Customer Balance — subtract full totalAmount since payment voids (step 3) will add back their allocations independently
-                const customer = await customerStore.get(invoice.customerId);
-                if (customer) {
-                    customer.balance = toMoney((customer.balance || 0) - (invoice.totalAmount || 0));
-                    await customerStore.put(customer);
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
+
+                // Load customer for wallet reversal below.
+                let customer = null as any;
+                if (invoice.customerId) {
+                    customer = await customerStore.get(invoice.customerId);
                 }
 
                 const allPayments = await paymentStore.getAll();
@@ -3313,33 +3280,25 @@ export const transactionService = {
                     }
                 }
 
-                // 2. Reverse Customer Balance if there was outstanding amount
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
+
+                // Reverse wallet deposits if any
                 if (sale.customerId && sale.customerId !== 'walk-in') {
                     const customer = await customerStore.get(sale.customerId);
-                    if (customer) {
-                        const totalAmount = sale.totalAmount || sale.total || 0;
-                        const paidAmount = sale.paidAmount || 0;
-                        const outstanding = Math.max(0, totalAmount - paidAmount);
-                        if (outstanding > 0) {
-                            customer.balance = toMoney((customer.balance || 0) - outstanding);
-                            await customerStore.put(customer);
-                        }
+                    if (customer && sale.walletDeposit > 0) {
+                        customer.walletBalance = toMoney((customer.walletBalance || 0) - sale.walletDeposit);
+                        await customerStore.put(customer);
 
-                        // Reverse wallet deposits if any
-                        if (sale.walletDeposit > 0) {
-                            customer.walletBalance = toMoney((customer.walletBalance || 0) - sale.walletDeposit);
-                            await customerStore.put(customer);
-
-                            const walletTx: WalletTransaction = {
-                                id: generateId('WLT-REV'),
-                                customerId: sale.customerId,
-                                amount: sale.walletDeposit,
-                                type: 'Deduction',
-                                date: new Date().toISOString(),
-                                description: `REVERSAL: Void Sale #${sale.id}`
-                            };
-                            await walletStore.put(walletTx);
-                        }
+                        const walletTx: WalletTransaction = {
+                            id: generateId('WLT-REV'),
+                            customerId: sale.customerId,
+                            amount: sale.walletDeposit,
+                            type: 'Deduction',
+                            date: new Date().toISOString(),
+                            description: `REVERSAL: Void Sale #${sale.id}`
+                        };
+                        await walletStore.put(walletTx);
                     }
                 }
 

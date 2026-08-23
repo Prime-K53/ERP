@@ -114,6 +114,7 @@ const CustomerStatement: React.FC = () => {
         status: status.charAt(0).toUpperCase() + status.slice(1),
         type: payStatus as StatementTransaction['type'],
       };
+    });
 
     // The date range filters DISPLAY only — running balances stay true
     // (computed over the full canonical history).

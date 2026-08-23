@@ -156,7 +156,8 @@ const portalService = {
     const outstandingBalance = ledger.outstandingBalance;
 
     return {
-      balance: (customer && customer.balance != null) ? customer.balance : 0,
+      // [LEDGER] balance derived from the authoritative ledger, not the deprecated cache.
+      balance: ledger.closingBalance,
       walletBalance: (customer && customer.walletBalance != null) ? customer.walletBalance : 0,
       outstandingBalance,
       creditLimit: (customer && customer.creditLimit != null) ? customer.creditLimit : 0,
@@ -993,6 +994,9 @@ const portalService = {
   async getProfile(customerId) {
     const cloud = await getOneById('customers', customerId);
     if (!cloud) return null;
+    // [LEDGER] Derive balance from the authoritative ledger instead of the
+    // deprecated stored cache field.
+    const ledger = await customerLedger.buildLedger(customerId);
     return {
       id: cloud.id,
       full_name: cloud.name || '',
@@ -1003,10 +1007,10 @@ const portalService = {
       state: cloud.state || '',
       zip: cloud.zip || '',
       country: cloud.country || '',
-      balance: Number(cloud.balance) || 0,
+      balance: ledger.closingBalance,
       walletBalance: Number(cloud.walletBalance) || 0,
       creditLimit: Number(cloud.creditLimit) || 0,
-      outstandingBalance: Number(cloud.outstandingBalance) || 0,
+      outstandingBalance: ledger.outstandingBalance,
       status: cloud.status || '',
       created_at: cloud.created_at || null
     };

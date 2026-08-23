@@ -558,24 +558,13 @@ async function postSaleLedgerEntries(saleId, totalAmount, materialTotal, custome
   }
 }
 
-// Helper function to update customer balance
+// [LEDGER] updateCustomerBalance() is retired.
+// customers.balance is now a derived/cache field computed by the authoritative
+// customer ledger (backend/services/customerLedger.cjs). Independent balance
+// mutations are no longer performed. This function is retained as a no-op for
+// call-site compatibility until all callers are verified removed.
 async function updateCustomerBalance(customerId, amount) {
-  try {
-    if (!customerId || customerId === 'walk-in') return;
-    const customer = await sq.getOne('SELECT * FROM customers WHERE id = ?', [customerId]);
-    if (!customer) return;
-    const newBalance = (customer.balance || 0) + amount;
-    const newOutstanding = (customer.outstandingBalance || 0) + amount;
-    await repo.upsert('customers', {
-      ...customer,
-      balance: newBalance,
-      outstandingBalance: newOutstanding
-    });
-    console.log(`[Customer] Updated balance for customer ${customerId}: +${amount}`);
-  } catch (error) {
-    console.error(`[Customer] Error updating balance for customer ${customerId}:`, error);
-    throw error;
-  }
+  // No-op: balance is derived from the authoritative ledger.
 }
 
 // Helper function to deduct inventory for a sale
@@ -874,10 +863,8 @@ async function startServer() {
                 // Post ledger entries for the sale
                 postSaleLedgerEntries(id, totalAmount, materialTotal, customerId, customerName, req.user?.id || 'system');
                 
-                // Update customer balance if not walk-in
-                if (customerId && customerId !== 'walk-in') {
-                  updateCustomerBalance(customerId, totalAmount);
-                }
+                // [LEDGER] customer.balance is now derived from the authoritative ledger.
+                // Independent balance mutation removed.
                 
                 // Deduct inventory for physical products
                 const inventoryItems = payload.items.filter(item => item.type !== 'service');
