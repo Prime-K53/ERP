@@ -420,7 +420,7 @@ const createSession = async (portalUserId, refreshToken, ipAddress, userAgent) =
 
 const findSessionByRefreshToken = async (refreshToken) => {
   const tokenHash = hashToken(refreshToken);
-  const rows = await repo.portalEntities.portal_sessions.getAll({ 'refresh_token_hash': `eq.${tokenHash}` });
+  const rows = await repo.getAll('portal_sessions', { 'refresh_token_hash': `eq.${tokenHash}` });
   if (!rows || rows.length === 0) return null;
   const now = new Date();
   const row = rows.find(r => !r.revoked_at && new Date(r.expires_at) > now);
@@ -432,7 +432,7 @@ const revokeSession = async (sessionId) => {
 };
 
 const revokeAllSessions = async (portalUserId) => {
-  const sessions = await repo.portalEntities.portal_sessions.getAll({
+  const sessions = await repo.getAll('portal_sessions', {
     'portal_user_id': `eq.${portalUserId}`,
     'revoked_at': 'is.null'
   });
@@ -458,7 +458,7 @@ const recordLoginHistory = async (portalUserId, ip, userAgent) => {
 
 const listSessions = async (portalUserId) => {
   const now = new Date().toISOString();
-  return repo.portalEntities.portal_sessions.getAll({
+  return repo.getAll('portal_sessions', {
     'portal_user_id': `eq.${portalUserId}`,
     'revoked_at': 'is.null',
     'expires_at': `gt.${now}`,

@@ -46,7 +46,7 @@ const PortalInput: React.FC<Props> = ({
   };
 
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
+    <div className={`flex flex-col gap-1.5 ${className}`} style={style}>
       {label && (
         <label className="text-xs font-semibold text-slate-700 tracking-wide">
           {label}
@@ -74,7 +74,6 @@ const PortalInput: React.FC<Props> = ({
               : '0 1px 2px rgba(15, 23, 42, 0.03)',
           background: focused ? '#ffffff' : undefined,
           opacity: disabled ? 0.6 : 1,
-          ...style,
         }}
       />
       {error && <p className="text-[11px] font-medium text-rose-500 mt-0.5">{error}</p>}

@@ -102,7 +102,13 @@ const CustomerPaymentOptions: React.FC = () => {
   }, {});
 
   return (
-    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
+    <div style={{ fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}>
+      <PortalPageHeader
+        title="Payment Options"
+        subtitle="How to pay your invoices"
+        icon={CreditCard}
+      />
+
       <div style={{ padding: '0 28px 28px' }}>
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6, margin: 0 }}>

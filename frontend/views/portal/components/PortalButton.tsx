@@ -42,34 +42,33 @@ const PortalButton: React.FC<Props> = ({
     position: 'relative',
   };
 
-  // Compact paddings per portal spec: 6–8px vertical, 10–14px horizontal.
   const sizeStyles: Record<string, React.CSSProperties> = {
-    sm: { padding: '6px 12px', fontSize: 12, height: 32, minHeight: 32 },
-    md: { padding: '8px 14px', fontSize: 13, height: 38, minHeight: 38 },
-    lg: { padding: '10px 16px', fontSize: 14, height: 44, minHeight: 44 },
+    sm: { padding: '6px 14px', fontSize: 12, height: 36, minHeight: 36 },
+    md: { padding: '9px 18px', fontSize: 13, height: 42, minHeight: 42 },
+    lg: { padding: '12px 24px', fontSize: 14, height: 48, minHeight: 48 },
   };
 
   const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
     primary: {
-      background: 'linear-gradient(135deg, #0F2C59 0%, #0A1F42 100%)',
+      background: 'linear-gradient(135deg, #146b60 0%, #0f544c 100%)',
       color: '#fff',
       border: '1px solid rgba(255, 255, 255, 0.15)',
-      boxShadow: '0 4px 14px -2px rgba(15, 44, 89, 0.4)',
+      boxShadow: '0 4px 14px -2px rgba(15, 84, 76, 0.4)',
     },
     secondary: {
       background: 'rgba(255, 255, 255, 0.9)',
-      color: '#0F2C59',
-      border: '1px solid rgba(226, 232, 240, 0.8)',
+      color: '#0b3e39',
+      border: '1px solid rgba(203, 213, 225, 0.8)',
       boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
     },
     ghost: {
       background: 'transparent',
-      color: '#0F2C59',
+      color: '#146b60',
       border: '1px solid transparent',
       boxShadow: 'none',
     },
     danger: {
-      background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
+      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
       color: '#fff',
       border: '1px solid rgba(255, 255, 255, 0.15)',
       boxShadow: '0 4px 14px -2px rgba(220, 38, 38, 0.4)',

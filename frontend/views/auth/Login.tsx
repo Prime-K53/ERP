@@ -44,7 +44,7 @@ const Login: React.FC = () => {
 
       const token = result.token || '';
       const tokenExpiry = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-      establishSession(user, token, tokenExpiry, { email: email.trim(), password });
+      establishSession(user, token, tokenExpiry);
       navigate('/', { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {

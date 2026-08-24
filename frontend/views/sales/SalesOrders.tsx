@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useSalesOrderStore } from '../../stores/salesOrderStore';
+import { useSalesStore } from '../../stores/salesStore';
 import { useFinanceStore } from '../../stores/financeStore';
-import { OrderPrefillPayload } from '../../services/adminPortalClient';
-import { salesOrderService } from '../../services/salesOrderService';
-import { toast } from '../../components/Toast';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { adminLifecycle, OrderPrefillPayload } from '../../services/adminPortalClient';
 import SalesOrderForm from './SalesOrderForm';
+import SalesOrderDetail from './SalesOrderDetail';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -27,131 +25,43 @@ const statusBadgeColors: Record<string, { bg: string; color: string; border: str
   Cancelled: { bg: '#f3f4f6', color: inkSoft, border: hairline },
 };
 
-const statusOptions = ['Draft', 'Confirmed', 'Processing', 'Fulfilled', 'Cancelled'];
-
-interface RowActionsProps {
-  order: any;
-  onEdit: (o: any) => void;
-  onConvert: (o: any) => void;
-  onChangeStatus: (o: any, s: string) => void;
-}
-
-const RowActions: React.FC<RowActionsProps> = ({ order, onEdit, onConvert, onChangeStatus }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-    <button
-      onClick={() => onEdit(order)}
-      style={{
-        fontFamily: "'Inter', sans-serif",
-        fontSize: 12,
-        fontWeight: 600,
-        padding: '10px 12px',
-        borderRadius: 9,
-        cursor: 'pointer',
-        background: paper,
-        border: `1.4px solid ${hairline}`,
-        color: inkSoft,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        flex: 1,
-        minWidth: 0,
-        transition: 'all .15s ease'
-      }}
-      onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[800]; e.currentTarget.style.borderColor = teal[200]; }}
-      onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
-    >
-      Edit
-    </button>
-    <button
-      onClick={() => onConvert(order)}
-      style={{
-        fontFamily: "'Inter', sans-serif",
-        fontSize: 12,
-        fontWeight: 600,
-        padding: '10px 12px',
-        borderRadius: 9,
-        cursor: 'pointer',
-        background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
-        color: '#fff',
-        border: '1.4px solid transparent',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        flex: 1,
-        minWidth: 0,
-        transition: 'all .15s ease',
-        boxShadow: '0 4px 10px -4px rgba(15,84,76,.4)'
-      }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 14px -4px rgba(15,84,76,.55)'; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px -4px rgba(15,84,76,.4)'; }}
-    >
-      Convert
-    </button>
-    <select
-      value={order.status}
-      onChange={(e) => onChangeStatus(order, e.target.value)}
-      style={{
-        fontFamily: "'Inter', sans-serif",
-        fontSize: 12,
-        fontWeight: 500,
-        padding: '9px 10px',
-        borderRadius: 9,
-        cursor: 'pointer',
-        background: paper,
-        border: `1.4px solid ${hairline}`,
-        color: inkSoft,
-        outline: 'none',
-        flex: 1,
-        minWidth: 0,
-        transition: 'border-color .15s ease'
-      }}
-    >
-      {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-    </select>
-  </div>
-);
-
 const SalesOrders: React.FC = () => {
-  const store = useSalesOrderStore();
-  const { salesOrders, isLoading, fetchSalesOrders } = store;
+  const { salesOrders, isLoading, fetchSalesData, addSalesOrder, updateSalesOrder } = useSalesStore();
   const { addInvoice } = useFinanceStore();
   const location = useLocation();
-  const isMobile = useMediaQuery('(max-width: 767px)');
   const [editing, setEditing] = useState<any | null>(null);
   const [pendingOrderRequest, setPendingOrderRequest] = useState<{ requestId: string; requestNumber: string } | null>(null);
 
-  const handleCreate = async (o: any) => {
-    // Converting a portal request → the ERP record is saved first (offline-safe),
-    // then the backend ADOPTS it as the official sales order (SO-YYYY-######),
-    // links the request (marked converted) and notifies the customer. The local
-    // record is then updated with the official number + request linkage so the
-    // admin list never shows an "Unnumbered order" and ODR-… stays traceable.
-    if (pendingOrderRequest) {
-      const orderId = o.id || salesOrderService.generateProvisionalOrderId(salesOrders, 'SO');
-      const orderToSave = { ...o, id: orderId };
-      const result = await store.adoptQuotationRequest({
-        id: pendingOrderRequest.requestId,
-        requestNumber: pendingOrderRequest.requestNumber,
-      }, orderToSave);
-      if (result.adopted) {
-        toast.success(`Official sales order ${result.officialNumber || result.officialId} created. Request ${pendingOrderRequest.requestNumber} marked converted and the customer notified.`);
-      } else {
-        toast.error(result.error || 'Sales order saved locally, but the request could not be marked converted right now. Retry from Customer Requests when online.');
-      }
-      await fetchSalesOrders(true);
+  const completeOrderRequest = async (order: any) => {
+    if (!pendingOrderRequest) return;
+    try {
+      await adminLifecycle.requests.completeOrder(pendingOrderRequest.requestId, {
+        orderSnapshot: {
+          items: order.items || [],
+          subtotal: order.subtotal || 0,
+          discounts: order.discounts || 0,
+          tax: order.tax || 0,
+          otherCharges: 0,
+          total: order.total || 0,
+          notes: order.notes || null,
+          deliveryDate: order.deliveryDate || null,
+          customerId: order.customerId || null
+        }
+      });
+      alert(`Official sales order created. Request ${pendingOrderRequest.requestNumber} marked converted and the customer notified.`);
+    } catch (err: any) {
+      alert('Request conversion failed: ' + (err?.message || err));
+    } finally {
       setPendingOrderRequest(null);
       setEditing(null);
-      return;
+      void fetchSalesData();
     }
-    try {
-      await store.createSalesOrder(o);
-      toast.success('Sales order saved');
-    } catch (err: any) {
-      toast.error(`Failed to save sales order: ${err?.message || err}`);
-    }
-    await fetchSalesOrders(true);
+  };
+
+  const handleCreate = async (o: any) => {
+    await addSalesOrder(o);
+    await fetchSalesData();
+    await completeOrderRequest(o);
   };
 
   React.useEffect(() => {
@@ -160,7 +70,6 @@ const SalesOrders: React.FC = () => {
       const prefill: any = {
         id: '',
         customerId: p.customer_id || '',
-        customerName: p.customer_name || '',
         items: (p.items || []).map((it: any, i: number) => ({
           id: `item-${Date.now()}-${i}`,
           productId: it.productId || '',
@@ -168,12 +77,7 @@ const SalesOrders: React.FC = () => {
           quantity: Number(it.quantity) || 0,
           unitPrice: Number(it.unitPrice) || 0,
           discount: 0,
-          lineTotal: Number(it.lineTotal) || 0,
-          // Preserve the captured pricing-evidence snapshot from the portal
-          // request so it survives request → order → invoice intact.
-          ...(it.pricingBreakdown ? { pricingBreakdown: it.pricingBreakdown } : {}),
-          ...(it.cost !== undefined ? { cost: it.cost } : {}),
-          ...(it.cost_price !== undefined ? { cost_price: it.cost_price } : {}),
+          lineTotal: Number(it.lineTotal) || 0
         })),
         subtotal: p.subtotal || 0,
         discounts: 0,
@@ -181,51 +85,53 @@ const SalesOrders: React.FC = () => {
         total: p.subtotal || 0,
         orderDate: new Date().toISOString(),
         deliveryDate: p.deliveryDate || null,
-        status: 'Draft',
-        referenceDoc: p.requestNumber || '',
+        status: 'Draft'
       };
       setEditing(prefill);
       setPendingOrderRequest({ requestId: p.id, requestNumber: p.requestNumber });
       window.history.replaceState({}, '');
     }
-    fetchSalesOrders().catch(() => {});
+    fetchSalesData().catch(() => {});
   }, []);
 
   const handleConvertToInvoice = async (order: any) => {
+    const invoice = {
+      customerId: order.customerId,
+      customerName: order.customerName || '',
+      date: new Date().toISOString(),
+      dueDate: order.deliveryDate || null,
+      lines: (order.items || []).map((it: any) => ({ itemId: it.product_id || it.id, description: it.product_name || it.description || '', quantity: it.quantity, unitPrice: it.unit_price || it.unitPrice || 0, total: it.line_total || (it.quantity * (it.unit_price || it.unitPrice || 0)) })),
+      totalAmount: order.total || 0,
+      status: 'Unpaid',
+      sourceOrderId: order.id
+    };
+
     try {
-      // Idempotency: if already invoiced, return existing invoice ID
-      if (order.invoiceId || order.invoiceStatus === 'Invoiced') {
-        toast.info('This order has already been converted to an invoice');
-        return;
-      }
-      const invoice = salesOrderService.buildInvoiceFromOrder(order);
-      const invoiceId = await addInvoice(invoice);
-      await store.updateSalesOrder({ ...order, ...salesOrderService.markInvoiced(order, invoiceId, invoice.invoiceNumber) });
-      toast.success('Converted to invoice');
+      await addInvoice(invoice);
+      alert('Converted to invoice');
     } catch (err: any) {
-      toast.error('Failed to convert: ' + (err?.message || err));
+      alert('Failed to convert: ' + (err?.message || err));
     }
   };
 
   const changeStatus = async (order: any, status: string) => {
     try {
-      salesOrderService.assertCanTransition(order.status, status);
-      await store.updateSalesOrder({ ...order, status });
-      toast.success(`Sales order status updated to ${status}`);
+      await updateSalesOrder({ ...order, status });
+      await fetchSalesData();
     } catch (err: any) {
-      toast.error('Failed to update status: ' + (err?.message || err));
+      alert('Failed to update status: ' + (err?.message || err));
     }
   };
 
   return (
-    <div style={{ background: '#f0ede8', minHeight: '100vh', padding: '12px 12px 24px', fontFamily: "'Inter','DM Sans',sans-serif", color: ink }}>
+    <div style={{ background: '#f0ede8', minHeight: '100vh', padding: 24, fontFamily: "'Inter','DM Sans',sans-serif", color: ink }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <h1 style={{
           fontFamily: "'DM Serif Display', 'Georgia', serif",
           fontWeight: 400,
-          fontSize: 20,
+          fontSize: 22,
           color: teal[800],
-          margin: '0 0 16px',
+          margin: '0 0 20px',
           letterSpacing: 0.2
         }}>
           Sales Orders
@@ -274,11 +180,7 @@ const SalesOrders: React.FC = () => {
               <SalesOrderForm onCreate={handleCreate} />
             ) : (
               <div style={{ marginBottom: 16 }}>
-                <SalesOrderForm
-                  initial={editing}
-                  onCreate={pendingOrderRequest ? handleCreate : undefined}
-                  onDone={() => { setEditing(null); void fetchSalesOrders(); }}
-                />
+                <SalesOrderForm initial={editing} onDone={() => { setEditing(null); void fetchSalesData(); }} />
               </div>
             )}
           </div>
@@ -312,61 +214,11 @@ const SalesOrders: React.FC = () => {
                 <p style={{ fontSize: 13, color: inkSoft, margin: 0 }}>Create your first sales order using the form above.</p>
               </div>
             </div>
-          ) : isMobile ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}>
-              {salesOrders.map((o: any) => {
-                const sc = statusBadgeColors[o.status] || { bg: paper, color: inkSoft, border: hairline };
-                return (
-                  <div
-                    key={o.id}
-                    style={{
-                      background: paper,
-                      borderRadius: 14,
-                      border: `1px solid ${hairline}`,
-                      overflow: 'hidden',
-                      boxShadow: '0 1px 3px rgba(0,0,0,.05)'
-                    }}
-                  >
-                    <div style={{ padding: '12px 14px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: inkSoft, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.orderNumber || o.id}</span>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '3px 10px',
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        background: sc.bg,
-                        color: sc.color,
-                        border: `1px solid ${sc.border}`,
-                        letterSpacing: 0.02,
-                        flexShrink: 0
-                      }}>
-                        {o.status}
-                      </span>
-                    </div>
-                    <div style={{ padding: '10px 14px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.customerId || 'No customer'}</p>
-                        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: inkSoft }}>{new Date(o.orderDate).toLocaleDateString()}</p>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.08 }}>Total</p>
-                        <p style={{ margin: '2px 0 0', fontFamily: "'JetBrains Mono', monospace", fontSize: 15, fontWeight: 700, color: teal[800], fontVariantNumeric: 'tabular-nums' }}>{o.total}</p>
-                      </div>
-                    </div>
-                    <div style={{ borderTop: `1px solid ${hairline}`, padding: '10px 12px' }}>
-                      <RowActions order={o} onEdit={setEditing} onConvert={handleConvertToInvoice} onChangeStatus={changeStatus} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           ) : (
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
                 <tr style={{ background: teal[50] }}>
-                  {['Number', 'Customer', 'Order Date', 'Status', 'Total', 'Actions'].map((h) => (
+                  {['ID', 'Customer', 'Order Date', 'Status', 'Total', 'Actions'].map((h) => (
                     <th key={h} style={{
                       padding: '10px 14px',
                       textAlign: 'left',
@@ -377,7 +229,7 @@ const SalesOrders: React.FC = () => {
                       letterSpacing: 0.06,
                       borderBottom: `1px solid ${teal[100]}`,
                       fontFamily: "'Inter', sans-serif"
-                    }} className={h === 'Customer' || h === 'Order Date' ? 'hidden md:table-cell' : ''}>
+                    }}>
                       {h}
                     </th>
                   ))}
@@ -388,9 +240,9 @@ const SalesOrders: React.FC = () => {
                   const sc = statusBadgeColors[o.status] || { bg: paper, color: inkSoft, border: hairline };
                   return (
                     <tr key={o.id} style={{ borderBottom: `1px solid ${hairline}` }}>
-                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: ink, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{o.orderNumber || o.id}</td>
-                      <td style={{ padding: '10px 14px', color: ink }} className="hidden md:table-cell">{o.customerId || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: inkSoft, fontSize: 13, whiteSpace: 'nowrap' }} className="hidden md:table-cell">{new Date(o.orderDate).toLocaleDateString()}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: ink, fontVariantNumeric: 'tabular-nums' }}>{o.id}</td>
+                      <td style={{ padding: '10px 14px', color: ink }}>{o.customerId || '-'}</td>
+                      <td style={{ padding: '10px 14px', color: inkSoft, fontSize: 13 }}>{new Date(o.orderDate).toLocaleDateString()}</td>
                       <td style={{ padding: '10px 14px' }}>
                         <span style={{
                           display: 'inline-block',
@@ -406,16 +258,86 @@ const SalesOrders: React.FC = () => {
                           {o.status}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, fontWeight: 600, color: ink, whiteSpace: 'nowrap' }}>{o.total}</td>
-                      <td style={{ padding: '10px 14px', minWidth: 230 }}>
-                        <RowActions order={o} onEdit={setEditing} onConvert={handleConvertToInvoice} onChangeStatus={changeStatus} />
+                      <td style={{ padding: '10px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, fontWeight: 600, color: ink }}>{o.total}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            onClick={() => setEditing(o)}
+                            style={{
+                              fontFamily: "'Inter', sans-serif",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              padding: '7px 14px',
+                              borderRadius: 9,
+                              cursor: 'pointer',
+                              background: paper,
+                              border: `1.4px solid ${hairline}`,
+                              color: inkSoft,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              transition: 'all .15s ease'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[800]; e.currentTarget.style.borderColor = teal[200]; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleConvertToInvoice(o)}
+                            style={{
+                              fontFamily: "'Inter', sans-serif",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              padding: '7px 14px',
+                              borderRadius: 9,
+                              cursor: 'pointer',
+                              background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
+                              color: '#fff',
+                              border: '1.4px solid transparent',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              transition: 'all .15s ease',
+                              boxShadow: '0 4px 10px -4px rgba(15,84,76,.4)'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 14px -4px rgba(15,84,76,.55)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px -4px rgba(15,84,76,.4)'; }}
+                          >
+                            Convert
+                          </button>
+                          <div style={{ marginLeft: 4 }}>
+                            <select
+                              value={o.status}
+                              onChange={(e) => changeStatus(o, e.target.value)}
+                              style={{
+                                fontFamily: "'Inter', sans-serif",
+                                fontSize: 12,
+                                fontWeight: 500,
+                                padding: '6px 10px',
+                                borderRadius: 9,
+                                cursor: 'pointer',
+                                background: paper,
+                                border: `1.4px solid ${hairline}`,
+                                color: inkSoft,
+                                outline: 'none',
+                                transition: 'border-color .15s ease'
+                              }}
+                            >
+                              <option value="Draft">Draft</option>
+                              <option value="Confirmed">Confirm</option>
+                              <option value="Processing">Processing</option>
+                              <option value="Fulfilled">Fulfilled</option>
+                              <option value="Cancelled">Cancel</option>
+                            </select>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            </div>
           )}
         </div>
       </div>

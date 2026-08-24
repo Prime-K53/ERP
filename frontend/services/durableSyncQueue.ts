@@ -203,29 +203,6 @@ export const durableSyncQueue = {
       return duplicate;
     }
 
-    // Merge: when a pending upsert exists for the same table+recordId with
-    // a different payload, fold the newer fields into the existing queue item
-    // instead of creating a duplicate. This prevents a fresh create (Device B
-    // creating CUST-0001) from colliding with an earlier pending upsert of
-    // the same record with stale data.
-    if (input.operation === 'upsert' && input.recordId) {
-      const existingPendingUpsert = allExisting.find((op) =>
-        op.table === input.table
-        && op.recordId === input.recordId
-        && op.operation === 'upsert'
-        && (op.status === 'pending' || op.status === 'failed')
-        && JSON.stringify(op.payload) !== payloadStr
-      );
-
-      if (existingPendingUpsert) {
-        // Merge newer fields into the existing payload (latest-write-wins)
-        existingPendingUpsert.payload = { ...existingPendingUpsert.payload, ...input.payload };
-        const db = await getDb();
-        await db.put('operations', existingPendingUpsert);
-        return existingPendingUpsert;
-      }
-    }
-
     let dependsOn = [...(input.dependsOn || [])];
 
     if (input.operation === 'delete' && input.recordId) {
@@ -276,15 +253,6 @@ export const durableSyncQueue = {
       conflictCount: 0,
     };
     await db.put('operations', item);
-    console.log(`[SYNC-FORENSIC] STAGE-3 durableSyncQueue.enqueue() persisted`, {
-      queueId: item.id,
-      operationId: item.operationId,
-      table: item.table,
-      recordId: item.recordId,
-      operation: item.operation,
-      status: item.status,
-      payloadSizeBytes: item.payloadSizeBytes,
-    });
     return item;
   },
 
@@ -360,12 +328,6 @@ export const durableSyncQueue = {
       op.lastAttempt = now;
       await db.put('operations', op);
     }
-    console.log(`[SYNC-FORENSIC] STAGE-4 durableSyncQueue.dequeue() returned`, {
-      count: ready.length,
-      limit,
-      totalPending: allPending.length,
-      items: ready.map(o => ({ id: o.id, operationId: o.operationId, table: o.table, recordId: o.recordId, operation: o.operation })),
-    });
     return ready;
   },
 
@@ -547,19 +509,6 @@ export const durableSyncQueue = {
     const db = await getDb();
     const all = await db.getAllFromIndex('operations', 'by-operationId', operationId);
     return all[0];
-  },
-
-  async hasPendingMutation(table: string, recordId: string): Promise<boolean> {
-    const db = await getDb();
-    const activeLayers = await Promise.all(
-      (['pending', 'syncing', 'failed'] as QueueStatus[]).map((status) =>
-        db.getAllFromIndex('operations', 'by-status', IDBKeyRange.only(status))
-      )
-    );
-    const allActive = ([] as QueuedOperation[]).concat(...activeLayers);
-    return allActive.some(
-      (op) => op.table === table && op.recordId === recordId
-    );
   },
 
   async retryFailed(): Promise<number> {

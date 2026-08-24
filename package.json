@@ -45,9 +45,5 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
-  },
-  "main": "index.js",
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  }
 }

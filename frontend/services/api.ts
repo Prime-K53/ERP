@@ -11,7 +11,7 @@ import {
   MaintenanceLog, UserRole,
   ExamPaper, ExamPrintingBatch, School, ExamJob, Customer, Supplier, SupplierPayment, SalesReturn,
   ExaminationJob, ExaminationJobSubject, ExaminationInvoiceGroup, ExaminationRecurringProfile,
-  Order, BillOfMaterial, BOMTemplate, MarketAdjustment
+  Order, OrderPayment, OrderItem, BillOfMaterial, BOMTemplate, MarketAdjustment
 } from '../types';
 import { logger } from './logger';
 import { transactionService } from './transactionService';
@@ -285,10 +285,6 @@ export const api = {
       checkAuth(['Admin'], 'Sales.DeleteCustomerPayment');
       return transactionService.voidCustomerPayment(id, 'User requested deletion');
     }, 'Sales.DeleteCustomerPayment'),
-    permanentlyDeleteCustomerPayment: (id: string) => handle(() => {
-      checkAuth(['Admin'], 'Sales.PermanentlyDeleteCustomerPayment');
-      return transactionService.purgeVoidedCustomerPayment(id);
-    }, 'Sales.PermanentlyDeleteCustomerPayment'),
 
     getShipments: () => handle(() => dbService.getAll<Shipment>('shipments'), 'Sales.GetShipments'),
     saveShipment: (s: Shipment) => handle(() => {
@@ -379,10 +375,25 @@ export const api = {
       return { success: true };
     }, 'Sales.CancelExchange'),
 
-    // Legacy Orders Section — DEPRECATED: only kept for one-time migration (salesOrderStore.runMigrationIfNeeded).
-    // All runtime Sales Order operations MUST go through the canonical salesOrders path.
-    /** @deprecated Migration-only — reads from legacy IndexedDB 'orders' store. */
+    // Orders Section
     getAllOrders: () => handle(() => dbService.getAll<Order>('orders'), 'Orders.GetAll'),
+    getOrderById: (id: string) => handle(() => dbService.get<Order>('orders', id), 'Orders.GetById'),
+    createOrder: (order: Order) => handle(async () => {
+      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.Create');
+      return transactionService.createOrder(order);
+    }, 'Orders.Create'),
+    recordOrderPayment: (orderId: string, payment: OrderPayment) => handle(async () => {
+      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.RecordPayment');
+      return transactionService.recordOrderPayment(orderId, payment);
+    }, 'Orders.RecordPayment'),
+    updateOrderStatus: (orderId: string, status: Order['status']) => handle(async () => {
+      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.UpdateStatus');
+      return transactionService.updateOrderStatus(orderId, status);
+    }, 'Orders.UpdateStatus'),
+    cancelOrder: (orderId: string, reason: string) => handle(async () => {
+      checkAuth(['Admin', 'Accountant', 'Clerk'], 'Orders.Cancel');
+      return transactionService.cancelOrder(orderId, reason);
+    }, 'Orders.Cancel'),
   },
 
   procurement: {

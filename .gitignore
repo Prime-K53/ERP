@@ -6,8 +6,6 @@ dist
 build
 .env
 .env.local
-.env.staging
-.env.production
 *.log
 *.err
 *.db
@@ -28,8 +26,5 @@ backend/storage/
 tsc_*.txt
 temp_*.js
 scripts/inspect_*.js
-query_db.js
-query_supabase.js
-backfill-sales-order-numbers.sql
 
 __pycache__/

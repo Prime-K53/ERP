@@ -1,15 +1,12 @@
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { logger } from '@/services/logger';
-import { useSalesOrderStore } from '../stores/salesOrderStore';
+import { useOrdersStore } from '../stores/ordersStore';
 import { Order, OrderPayment, OrderItem, Quotation } from '../types';
-import { SalesOrder } from '../types/salesOrder';
 import { useAuth } from './AuthContext';
 import { useSales } from './SalesContext';
 import { generateNextId } from '../utils/helpers';
 import { customerNotificationService } from '../services/customerNotificationService';
 import { aggregateMarketAdjustmentSnapshots, attachPricingBreakdown, summarizePricingBreakdown } from '../utils/pricingBreakdown';
-import { canonicalizeStatus } from '../types/salesOrder';
-import { salesOrderService } from '../services/salesOrderService';
 
 interface OrdersContextType {
   orders: Order[];
@@ -25,35 +22,13 @@ interface OrdersContextType {
 
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
-/**
- * Legacy projection: canonical sales orders are served to legacy consumers
- * (Orders tab, Payments, reports) with a legacy-compatible `status` so existing
- * comparisons ('Completed', 'Paid', 'Converted', ...) keep working unchanged.
- * All writes translate back to the canonical model.
- */
-export const toLegacyOrder = (o: SalesOrder): Order => {
-  const status = canonicalizeStatus(o.status);
-  let legacyStatus: string = status;
-  if (status === 'Fulfilled') legacyStatus = 'Completed';
-  else if (status === 'Converted') legacyStatus = 'Converted';
-  else if (o.invoiceStatus === 'Invoiced') legacyStatus = 'Converted';
-  else if (o.paymentStatus === 'Paid') legacyStatus = 'Paid';
-  else if (o.paymentStatus === 'Partially Paid') legacyStatus = 'Partially Paid';
-  return { ...o, status: legacyStatus } as unknown as Order;
-};
-
 export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const store = useSalesOrderStore();
+  const { orders, isLoading, fetchOrders, addOrder, updateOrderStatus, recordPayment, cancelOrder } = useOrdersStore();
   const { companyConfig, notify, user } = useAuth();
   const salesContext = useSales();
 
-  const orders = store.salesOrders.map(toLegacyOrder);
-  const isLoading = store.isLoading;
-
   useEffect(() => {
-    store.runMigrationIfNeeded().finally(() => {
-      store.fetchSalesOrders();
-    });
+    fetchOrders();
   }, []);
 
   const toNum = (val: any, fallback = 0) => {
@@ -99,7 +74,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         notify('This quotation has already been converted to an order', 'warning');
         return existingOrder.id;
       }
-      const orderNumber = salesOrderService.generateProvisionalOrderId(orders, 'SO');
+      const orderNumber = generateNextId('ORD', orders, companyConfig);
       const conversionDate = new Date().toLocaleDateString();
       const acceptedBy = quotation.customerName || 'Customer';
       const conversionDetails = {
@@ -188,7 +163,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      await store.createFinancialOrder(newOrder as unknown as SalesOrder);
+      await addOrder(newOrder);
       await triggerSalesOrderNotification(newOrder);
 
       // Update quotation status to Converted
@@ -206,7 +181,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleCreateOrder = async (data: any) => {
     try {
-      const orderNumber = data.orderNumber || data.id || salesOrderService.generateProvisionalOrderId(orders, 'SO');
+      const orderNumber = data.orderNumber || data.id || generateNextId('ORD', orders, companyConfig);
 
       const subtotal = toNum(data.subtotal) || data.items.reduce((sum: number, it: any) => sum + (toNum(it.subtotal || (toNum(it.quantity || it.qty) * toNum(it.unitPrice || it.price || it.cost)))), 0);
       const discount = toNum(data.discount);
@@ -253,7 +228,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         roundingDifference: data.roundingDifference || pricingSummary.roundingTotal,
       };
 
-      await store.createFinancialOrder(newOrder as unknown as SalesOrder);
+      await addOrder(newOrder);
       await triggerSalesOrderNotification(newOrder);
       notify("Order created successfully", "success");
     } catch (error: any) {
@@ -277,7 +252,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reference: payment.reference
       };
 
-      await store.recordPayment(orderId, fullPayment);
+      await recordPayment(orderId, fullPayment);
       notify("Payment recorded successfully", "success");
     } catch (error: any) {
       notify(`Failed to record payment: ${error.message}`, "error");
@@ -287,7 +262,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleUpdateStatus = async (id: string, status: Order['status']) => {
     try {
-      await store.updateOrderStatus(id, status);
+      await updateOrderStatus(id, status);
       notify(`Order status updated to ${status}`, "success");
     } catch (error: any) {
       notify(`Failed to update status: ${error.message}`, "error");
@@ -297,7 +272,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleCancelOrder = async (id: string, reason: string) => {
     try {
-      await store.cancelOrder(id, reason);
+      await cancelOrder(id, reason);
       notify("Order cancelled successfully", "success");
     } catch (error: any) {
       notify(`Failed to cancel order: ${error.message}`, "error");
@@ -311,7 +286,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     <OrdersContext.Provider value={{
       orders,
       isLoading,
-      fetchOrders: store.fetchSalesOrders,
+      fetchOrders,
       createOrder: handleCreateOrder,
       updateOrderStatus: handleUpdateStatus,
       recordPayment: handleRecordPayment,

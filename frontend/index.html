@@ -6,24 +6,6 @@
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="Prime ERP - Professional Business Dashboard" />
     <title>Prime ERP System</title>
-    <script>
-      /* Portal-aware tab title: the customer portal (/portal or
-         portal.primeerp.com) is PrimePORTAL — never "Prime ERP System".
-         This runs before React mounts so the loading phase is labelled
-         correctly from the very first paint. */
-      (function () {
-        try {
-          var hash = (window.location.hash || '').toLowerCase();
-          var path = (window.location.pathname || '/').toLowerCase();
-          var host = (window.location.hostname || '').toLowerCase();
-          var isPortal = hash.indexOf('#/portal') === 0
-            || path.indexOf('/portal') === 0
-            || host === 'portal.primeerp.com'
-            || host.indexOf('.portal.primeerp.com') === host.length - '.portal.primeerp.com'.length;
-          if (isPortal) document.title = 'PrimePORTAL';
-        } catch (e) { /* never block boot on title cosmetics */ }
-      })();
-    </script>
     <link rel="icon" href="./favicon.ico" />
     <script>
       /* Clean-URL → hash-router compatibility shim.

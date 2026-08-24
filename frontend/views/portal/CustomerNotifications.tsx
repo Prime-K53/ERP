@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, Info, AlertCircle, CheckCircle, CreditCard, ShoppingCart, FileText, MessageCircle } from 'lucide-react';
 import { portalApi, portalLifecycle, PortalNotification } from '../../services/portalApiClient';
-
 import PortalPageHeader from './components/PortalPageHeader';
 import PortalButton from './components/PortalButton';
 import ErrorBanner from './components/ErrorBanner';
@@ -27,24 +26,20 @@ const CustomerNotifications: React.FC = () => {
   const [notifications, setNotifications] = useState<PortalNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
-  const fetchNotifications = (isRealtime = false) => {
+  const fetchNotifications = () => {
     portalApi.get<PortalNotification[]>('/notifications')
-      .then((result) => { setNotifications(result && result.length > 0 ? result : []); setRefreshError(null); })
-      .catch(() => {
-        if (isRealtime) {
-          setRefreshError('Unable to refresh — data may be stale');
-        } else {
-          setError('Failed to load notifications');
-        }
+      .then(setNotifications)
+      .catch((err) => {
+        setError(err.message || 'Failed to load notifications');
+        addToast('error', err.message || 'Failed to load notifications');
       })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchNotifications(false);
+    fetchNotifications();
   }, []);
 
   useEffect(() => {
@@ -53,7 +48,7 @@ const CustomerNotifications: React.FC = () => {
     (async () => {
       unsubscribe = await portalLifecycle.subscribe({
         onEvent: (type) => {
-          if (type === 'notification' && !cancelled) fetchNotifications(true);
+          if (type === 'notification' && !cancelled) fetchNotifications();
         },
       });
 
@@ -99,38 +94,31 @@ const CustomerNotifications: React.FC = () => {
   const unread = notifications.filter((n) => !n.is_read).length;
 
   return (
-    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
+    <div style={{ fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}>
+      <PortalPageHeader title="Notifications" subtitle={unread > 0 ? `You have ${unread} unread notification${unread > 1 ? 's' : ''}` : 'You\'re all caught up'} icon={Bell} />
+
       <div style={{ padding: '20px 28px 8px' }}>
-        {refreshError && <div style={{ marginBottom: 8 }}><ErrorBanner message={refreshError} onDismiss={() => setRefreshError(null)} /></div>}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-          {[
-            { key: 'all', label: 'All' },
-            { key: 'info', label: 'Info' },
-            { key: 'alert', label: 'Alerts' },
-            { key: 'success', label: 'Success' },
-            { key: 'payment', label: 'Receipt' },
-            { key: 'order', label: 'Orders' },
-            { key: 'invoice', label: 'Invoices' },
-            { key: 'message', label: 'Messages' },
-          ].map((chip) => {
-            const active = typeFilter === chip.key;
-            return (
-              <button
-                key={chip.key}
-                onClick={() => setTypeFilter(chip.key)}
-                style={{
-                  fontFamily: F, fontSize: 12, fontWeight: 600,
-                  padding: '7px 14px', borderRadius: 9, border: active ? '1px solid transparent' : '1px solid #E9EDF3',
-                  background: active ? '#008A4C' : '#fff',
-                  color: active ? '#fff' : '#718096', cursor: 'pointer',
-                  transition: 'all .15s ease', lineHeight: 1.4,
-                  boxShadow: active ? '0 2px 8px rgba(0,138,76,0.25)' : 'none',
-                }}
-              >
-                {chip.label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            style={{
+              fontFamily: F, fontSize: 13, fontWeight: 500,
+              color: '#1A202C', background: '#fff',
+              border: '1px solid #E9EDF3', borderRadius: 10,
+              padding: '8px 32px 8px 12px', outline: 'none', cursor: 'pointer',
+              minWidth: 130
+            }}
+          >
+            <option value="all">All Types</option>
+            <option value="info">Info</option>
+            <option value="alert">Alerts</option>
+            <option value="success">Success</option>
+            <option value="payment">Payments</option>
+            <option value="order">Orders</option>
+            <option value="invoice">Invoices</option>
+            <option value="message">Messages</option>
+          </select>
         </div>
       </div>
 

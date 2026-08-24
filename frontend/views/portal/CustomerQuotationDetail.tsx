@@ -37,13 +37,13 @@ function stageIndex(status: string): number {
   }
 }
 
-const root: React.CSSProperties = { fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B', padding: 24, maxWidth: 800, margin: '0 auto' };
+const root: React.CSSProperties = { fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748', padding: 24, maxWidth: 800, margin: '0 auto' };
 const card: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, border: '1px solid #E9EDF3' };
 const cardNoPad: React.CSSProperties = { background: '#fff', borderRadius: 12, marginBottom: 10, border: '1px solid #E9EDF3', overflow: 'hidden' };
 const sectionTitle: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1A202C', margin: 0 };
-const label: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const label: React.CSSProperties = { fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em' };
 const body: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: '#4A5568' };
-const muted: React.CSSProperties = { fontSize: 12, color: '#64748B' };
+const muted: React.CSSProperties = { fontSize: 10.5, color: '#8A94A6' };
 const th: React.CSSProperties = { padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em', borderTop: '1px solid #F3F4F6' };
 const thR: React.CSSProperties = { ...th, textAlign: 'right' };
 const td: React.CSSProperties = { padding: '8px 14px', fontSize: 13, fontWeight: 500, color: '#4A5568', borderTop: '1px solid #F3F4F6' };

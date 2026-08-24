@@ -14,7 +14,7 @@ import {
   CheckCircle, MonitorPlay, Maximize, Share2, Sparkles,
   Smartphone, FileSpreadsheet, BookOpen, FileCheck, History,
   Calculator, Search, GitFork,
-  Gift, Calendar, FileSearch, Receipt, Inbox, BadgePercent, Megaphone
+  Gift, Calendar, FileSearch, Receipt, Inbox
 } from 'lucide-react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -194,8 +194,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isCollapsed, toggle, toggleCo
             { label: 'Smart Pricing Engine', path: '/smart-operations/pricing', icon: <Calculator size={14} /> },
             { label: 'Marketing Messages', path: '/smart-operations/messages', icon: <MessageSquare size={14} /> },
             { label: 'Referrals', path: '/smart-operations/referrals', icon: <Gift size={14} /> },
-            { label: 'Promotions', path: '/smart-operations/promotions', icon: <BadgePercent size={14} /> },
-            { label: 'Ads', path: '/smart-operations/ads', icon: <Megaphone size={14} /> },
           ]
         },
         {
@@ -232,19 +230,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isCollapsed, toggle, toggleCo
       group: "Revenue",
       items: [
         {
-          label: 'Quotation Requests',
-          path: '/sales-flow/requests',
-          icon: <Inbox size={18} />,
-          hideSubMenu: true,
-          subItems: [
-            { label: 'Inbox', path: '/sales-flow/requests', icon: <Inbox size={14} /> },
-            { label: 'Quotations', path: '/sales-flow/requests', icon: <FileText size={14} />, state: { tab: 'quotations' } },
-            { label: 'Orders', path: '/sales-flow/requests', icon: <CheckSquare size={14} />, state: { tab: 'orders' } },
-            { label: 'Payment Requests', path: '/sales-flow/payment-requests', icon: <Banknote size={14} /> },
-            { label: 'History', path: '/sales-flow/requests', icon: <History size={14} />, state: { tab: 'history' } },
-          ]
-        },
-        {
           label: 'Sales Flow',
           path: '/sales-flow',
           icon: <ArrowLeftRight size={18} />,
@@ -252,6 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isCollapsed, toggle, toggleCo
           subItems: [
             { label: 'Point of Sale', path: '/sales-flow/pos', icon: <Coins size={14} /> },
             { label: 'Payment Management', path: '/sales-flow/payments', icon: <Banknote size={14} /> },
+            { label: 'Customer Requests', path: '/sales-flow/requests', icon: <Inbox size={14} /> },
             { label: 'Quotations', path: '/sales-flow/quotations', icon: <FileText size={14} /> },
             { label: 'Orders', path: '/sales-flow/orders', icon: <CheckSquare size={14} /> },
             { label: 'Billing / Invoices', path: '/sales-flow/invoices', icon: <FileSpreadsheet size={14} /> },

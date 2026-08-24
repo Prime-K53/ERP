@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CalendarDays, ChevronDown, AlertCircle, Check } from 'lucide-react';
+import { CalendarDays, ChevronDown, AlertCircle } from 'lucide-react';
 import { useFinancialYear } from '../context/FinancialYearContext';
 
 const FinancialYearSwitcher: React.FC<{ compact?: boolean }> = ({ compact }) => {

@@ -33,15 +33,14 @@ const ALLOWED_TABLES = new Set([
 
   // customers / sales
   'customers', 'suppliers', 'sales', 'purchases', 'invoices', 'quotations', 'orders',
-  'customer_payments', 'supplier_payments', 'payment_allocations', 'payment_allocation_lines',
-  'sales_orders', 'delivery_notes',
+  'customer_payments', 'supplier_payments', 'sales_orders', 'delivery_notes',
   'shipments', 'recurring_invoices', 'scheduled_payments', 'wallet_transactions',
   'sales_exchanges', 'sales_exchange_items', 'reprint_jobs', 'sales_exchange_approvals',
   'subscribers', 'reminders', 'tasks', 'schools', 'classes', 'subjects',
 
   // production / inventory
   'production_batches', 'production_resources', 'work_centers', 'work_orders',
-  'boms', 'bom_templates', 'goods_receipts', 'job_tickets',
+  'batches', 'boms', 'bom_templates', 'goods_receipts', 'job_tickets',
   'job_ticket_settings', 'resource_allocations', 'warehouse_inventory',
   'material_batches', 'material_categories', 'inventory_transactions',
   'material_reservations', 'profit_margin_settings', 'market_adjustments',
@@ -69,13 +68,15 @@ const ALLOWED_TABLES = new Set([
   // marketing / communications
   'sms_campaigns', 'sms_templates', 'customer_notification_logs',
   'whatsapp_chats', 'whatsapp_templates', 'whatsapp_campaigns',
-  'whatsapp_automations', 'portal_ads',
+  'whatsapp_automations',
 
   // procurement / maintenance
   'subcontract_orders', 'maintenance_logs',
 
-  // referral program — pending migration (0003/0004), not yet applied to live.
-  // Not in allow-list until the migration is applied to avoid dead-letter debt.
+  // referral program
+  'customer_referrals', 'referral_rewards', 'referral_timeline',
+  'referral_audit_logs', 'referral_campaigns', 'referral_analytics',
+  'referral_reversals', 'referral_event_history',
 
   // engagement / loyalty
   'engagement_timeline', 'engagement_audit', 'engagement_points',
@@ -86,7 +87,7 @@ const ALLOWED_TABLES = new Set([
   'engagement_customer_rewards', 'engagement_analytics',
 
   // audit / sync infrastructure
-  'audit_logs', 'profiles', 'idempotency_keys',
+  'audit_logs', 'profiles', 'users', 'idempotency_keys',
 ]);
 
 // Tables that simply do not exist in the cloud shape yet. Their writes are
@@ -97,84 +98,9 @@ const MAX_BATCH_SIZE = 100;
 
 const VALID_TABLE_PATTERN = /^[a-z_][a-z0-9_]*$/;
 
-// ─── portal_ads payload validation (Customer Portal banner pipeline) ────────
-// The portal renders banners at a fixed 4:1 area, so a record carrying an
-// arbitrary/non-image URL or inconsistent dimension metadata could break the
-// dashboard layout. This focused guard runs only for the portal_ads table —
-// every other table keeps its existing generic gateway behavior.
-
-const HTTP_URL_PATTERN = /^https?:\/\/[^\s]+$/i;
-
-function validatePortalAdPayload(op) {
-  if (op.operation === 'delete') {
-    return null; // deletes only carry { id, deleted } — nothing to validate
-  }
-  const p = op.payload;
-  if (!p || typeof p !== 'object' || Array.isArray(p)) {
-    return 'portal_ads payload must be an object';
-  }
-  if (typeof p.id !== 'string' || p.id.length === 0) {
-    return 'portal_ads payload requires a non-empty string id';
-  }
-  if (p.title != null && typeof p.title !== 'string') {
-    return 'portal_ads title must be a string';
-  }
-  if (p.imageUrl != null) {
-    if (typeof p.imageUrl !== 'string' || !HTTP_URL_PATTERN.test(p.imageUrl)) {
-      return 'portal_ads imageUrl must be a valid http(s) URL';
-    }
-  }
-  if (p.imageMeta != null) {
-    const m = p.imageMeta;
-    if (!m || typeof m !== 'object' || Array.isArray(m)) {
-      return 'portal_ads imageMeta must be an object';
-    }
-    const w = Number(m.width);
-    const h = Number(m.height);
-    if (!(Number.isFinite(w) && w > 0) || !(Number.isFinite(h) && h > 0)) {
-      return 'portal_ads imageMeta requires positive numeric width and height';
-    }
-    if (m.aspectRatio != null) {
-      const ar = Number(m.aspectRatio);
-      if (!(Number.isFinite(ar) && ar > 0)) {
-        return 'portal_ads imageMeta aspectRatio must be a positive number';
-      }
-      const fromDims = w / h;
-      if (Math.abs(ar - fromDims) / fromDims > 0.01) {
-        return `portal_ads imageMeta aspectRatio ${ar} does not match width/height (${fromDims})`;
-      }
-    }
-    if (m.format != null && typeof m.format !== 'string') {
-      return 'portal_ads imageMeta format must be a string';
-    }
-    if (m.fileSize != null && !(Number.isFinite(Number(m.fileSize)) && Number(m.fileSize) >= 0)) {
-      return 'portal_ads imageMeta fileSize must be a non-negative number';
-    }
-  }
-  return null;
-}
-
 router.post('/ops', async (req, res) => {
   try {
-    // B5: Authorization — reject portal customers and any unauthenticated caller.
-    // The global verifyToken middleware already authenticated the JWT; we now
-    // enforce that the caller is an ERP user (not a portal customer). Portal
-    // tokens carry role='portal_customer'; ERP tokens carry roles like
-    // 'Admin', 'User', 'Company Admin', etc.
-    const callerRole = String(req.user?.role || '').toLowerCase();
-    if (!req.user || callerRole === 'portal_customer' || callerRole === '') {
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'Sync gateway requires an ERP user token. Portal customers cannot write business data.',
-      });
-    }
-
     const { ops } = req.body || {};
-    console.log(`[SYNC-FORENSIC] STAGE-9 backend POST /api/sync/ops received`, {
-      opCount: Array.isArray(ops) ? ops.length : 0,
-      tables: Array.isArray(ops) ? ops.map(o => o?.table) : [],
-      ip: req.ip,
-    });
     if (!Array.isArray(ops) || ops.length === 0) {
       return res.status(400).json({ error: 'ops array is required' });
     }
@@ -218,39 +144,14 @@ router.post('/ops', async (req, res) => {
         continue;
       }
 
-      if (table === 'portal_ads') {
-        const adError = validatePortalAdPayload(op);
-        if (adError) {
-          console.warn(`[sync] portal_ads validation rejected ${op?.operationId}`, { error: adError });
-          results.push({ operationId: op?.operationId, ok: false, id: op?.recordId || null, error: adError, retryable: false });
-          continue;
-        }
-      }
-
       let result;
       try {
-        console.log(`[SYNC-FORENSIC] STAGE-10 backend applyOp()`, {
-          table,
-          recordId: op.recordId,
-          operation: op.operation,
-          operationId: op.operationId,
-        });
         result = await cloudSyncStore.applyOp({
           operationId: op.operationId,
           table,
           recordId: op.recordId || null,
           operation: op.operation,
           payload: op.payload,
-        });
-        console.log(`[SYNC-FORENSIC] STAGE-10 backend applyOp() RESULT`, {
-          table,
-          recordId: op.recordId,
-          ok: result?.ok,
-          version: result?.version,
-          conflict: result?.conflict,
-          error: result?.error,
-          replayed: result?.replayed,
-          id: result?.id,
         });
       } catch (opErr) {
         // applyOp is designed to return per-op failures, but a defensive catch
@@ -270,11 +171,6 @@ router.post('/ops', async (req, res) => {
     }
 
     const okCount = results.filter((r) => r.ok).length;
-    console.log(`[SYNC-FORENSIC] STAGE-11 backend response sent`, {
-      processed: results.length,
-      succeeded: okCount,
-      failed: results.length - okCount,
-    });
     res.json({
       ok: true,
       processed: results.length,

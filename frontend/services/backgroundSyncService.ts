@@ -97,10 +97,6 @@ async function processBatch(batchSize: number = 10): Promise<BatchResult> {
 
   if (items.length === 0) return { success: 0, failed: 0, deadLetter: 0, skipped: 0, conflictsResolved: 0, durationMs: 0 };
 
-  console.log(`[SYNC-FORENSIC] STAGE-5 processBatch() dequeued ${items.length} items`, {
-    items: items.map(i => ({ table: i.table, recordId: i.recordId, operation: i.operation, operationId: i.operationId })),
-  });
-
   // Split the batch: business ops go through the backend sync gateway
   // (single write path); file uploads stay direct to Supabase Storage.
   const gatewayOps: { item: QueuedOperation; op: SyncOp }[] = [];
@@ -128,27 +124,7 @@ async function processBatch(batchSize: number = 10): Promise<BatchResult> {
   let transportFailed = false;
   if (gatewayOps.length > 0) {
     try {
-      const syncPayload = gatewayOps.map(({ op }) => op);
-      console.log(`[SYNC-FORENSIC] STAGE-6 sendSyncOps() calling POST /api/sync/ops`, {
-        opCount: syncPayload.length,
-        tables: syncPayload.map(o => o.table),
-        endpoint: 'POST /api/sync/ops',
-      });
-      const response = await sendSyncOps(syncPayload);
-      console.log(`[SYNC-FORENSIC] STAGE-6 sendSyncOps() response`, {
-        ok: response.ok,
-        processed: response.processed,
-        succeeded: response.succeeded,
-        results: response.results.map(r => ({
-          operationId: r.operationId,
-          ok: r.ok,
-          version: r.version,
-          conflict: r.conflict,
-          error: r.error,
-          replayed: r.replayed,
-          noop: r.noop,
-        })),
-      });
+      const response = await sendSyncOps(gatewayOps.map(({ op }) => op));
       for (const result of response.results) {
         if (result.operationId) opResults.set(result.operationId, result);
       }
@@ -158,11 +134,6 @@ async function processBatch(batchSize: number = 10): Promise<BatchResult> {
       transportFailed = true;
       const errorMessage = err instanceof Error ? err.message : String(err);
       const errorType = classifyError(errorMessage);
-      console.error(`[SYNC-FORENSIC] STAGE-6 sendSyncOps() TRANSPORT FAILURE`, {
-        error: errorMessage,
-        errorType,
-        opCount: gatewayOps.length,
-      });
       for (const { item } of gatewayOps) {
         await durableSyncQueue.markFailed(item.id, errorMessage);
         if (errorType === 'permanent') deadLetter++;
@@ -311,13 +282,6 @@ async function processBatch(batchSize: number = 10): Promise<BatchResult> {
       continue;
     }
     const outcome = await settleItem(item, opResults.get(item.operationId));
-    console.log(`[SYNC-FORENSIC] STAGE-7 settleItem()`, {
-      table: item.table,
-      recordId: item.recordId,
-      operationId: item.operationId,
-      outcome,
-      serverVersion: opResults.get(item.operationId)?.version,
-    });
     if (outcome === 'success') {
       // Mark the local record as synced so the FY migration is idempotent
       // and the record is never re-queued. Uses bulkPut (no re-enqueue).
@@ -390,45 +354,21 @@ async function syncOnce(force: boolean = false): Promise<BatchResult | null> {
   // Never run two sync passes concurrently — forced syncs (navigation, online,
   // visibility) previously bypassed this guard and flooded the network with
   // overlapping cloud writes.
-  if (state.isSyncing) {
-    console.log(`[SYNC-FORENSIC] syncOnce() SKIPPED — already syncing`);
-    return null;
-  }
+  if (state.isSyncing) return null;
 
   // Simulated offline: the acceptance framework (and any user who wants a
   // true airplane mode) pauses network sync while local writes keep queuing.
-  if (paused) {
-    console.log(`[SYNC-FORENSIC] syncOnce() SKIPPED — paused (simulated offline)`);
-    return null;
-  }
+  if (paused) return null;
 
   // Cheap short-circuit: when nothing is pending there is nothing to do, so we
   // avoid the heavy getMetrics()/dequeue() scans that fired on every page
   // navigation and every background interval tick.
-  //
-  // CRITICAL: retry failed operations first. When the device goes offline
-  // mid-sync, the transport failure catch marks pending ops as `failed`.
-  // On reconnect, `countPending()` returns 0 because the items are `failed`,
-  // so `syncOnce()` would skip forever. Retrying them restores them to
-  // `pending` so the normal dequeue path picks them up.
   try {
-    await durableSyncQueue.retryFailed();
-  } catch {
-    // non-fatal
-  }
-
-  let pendingCount = 0;
-  try {
-    pendingCount = await durableSyncQueue.countPending();
-    if (pendingCount === 0) {
-      console.log(`[SYNC-FORENSIC] syncOnce() SKIPPED — 0 pending ops`);
-      return null;
-    }
+    if ((await durableSyncQueue.countPending()) === 0) return null;
   } catch {
     // If the count fails, proceed anyway.
   }
 
-  console.log(`[SYNC-FORENSIC] syncOnce() START`, { pendingCount, force, consecutiveFailures: state.consecutiveFailures });
   state.isSyncing = true;
 
   try {
@@ -504,17 +444,12 @@ async function syncOnce(force: boolean = false): Promise<BatchResult | null> {
       notify('queue-empty');
     }
 
-    console.log(`[SYNC-FORENSIC] syncOnce() COMPLETE`, {
-      totalSuccess, totalFailed, totalDeadLetter, totalConflicts, totalDuration, batchCount,
-      pendingAfter: metricsAfter.total,
-    });
     return { success: totalSuccess, failed: totalFailed, deadLetter: totalDeadLetter, skipped: totalSkipped, conflictsResolved: totalConflicts, durationMs: totalDuration };
   } catch (err) {
     state.consecutiveFailures++;
     state.lastSyncFailure = new Date().toISOString();
     await durableSyncQueue.recordMetric('last_sync_failure', state.lastSyncFailure);
     notify('sync-failure', { error: err instanceof Error ? err.message : String(err) });
-    console.error(`[SYNC-FORENSIC] syncOnce() EXCEPTION`, { error: err instanceof Error ? err.message : String(err) });
     return null;
   } finally {
     state.isSyncing = false;

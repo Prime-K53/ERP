@@ -103,13 +103,6 @@ export async function sendSyncOps(ops: SyncOp[], options: SyncSendOptions = {}):
     headers.Authorization = `Bearer ${token}`;
   }
 
-  console.log(`[SYNC-FORENSIC] STAGE-8 syncApiClient.sendSyncOps()`, {
-    endpoint: SYNC_ENDPOINT,
-    opCount: ops.length,
-    hasToken: !!token,
-    tables: ops.map(o => o.table),
-  });
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 25000);
 
@@ -119,12 +112,6 @@ export async function sendSyncOps(ops: SyncOp[], options: SyncSendOptions = {}):
       headers,
       body: JSON.stringify({ ops }),
       signal: controller.signal,
-    });
-
-    console.log(`[SYNC-FORENSIC] STAGE-8 syncApiClient HTTP response`, {
-      status: res.status,
-      statusText: res.statusText,
-      ok: res.ok,
     });
 
     if (res.status === 503) {

@@ -48,7 +48,6 @@ const CustomerInvoiceDetail: React.FC = () => {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -70,8 +69,8 @@ const CustomerInvoiceDetail: React.FC = () => {
         onEvent: (type, payload) => {
           if (type === 'entity_changed' && payload?.docType === 'invoice' && payload?.docId === id && !cancelled) {
             portalLifecycle.invoices.get(id)
-              .then((data) => { setInvoice(data); setRefreshError(null); })
-              .catch(() => { setRefreshError('Update failed — data may be stale'); })
+              .then(setInvoice)
+              .catch(() => {})
               .finally(() => setLoading(false));
           }
         },
@@ -123,25 +122,35 @@ const CustomerInvoiceDetail: React.FC = () => {
     }
   };
 
-  if (loading) return <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}><PortalLoadingSkeleton type="detail" /></div>;
-  if (error) return <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>;
+  if (loading) return <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}><PortalLoadingSkeleton type="detail" /></div>;
+  if (error) return <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>;
   if (!invoice) return null;
 
   const remaining = Number(invoice.total_amount) - Number(invoice.paid_amount || 0);
   const subtotal = (invoice.line_items || []).reduce((sum, item) => sum + Number(item.line_total), 0);
 
-  const rootStyle: React.CSSProperties = { fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' };
+  const rootStyle: React.CSSProperties = { fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' };
   const cardStyle: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, border: '1px solid #E9EDF3' };
   const cardNoPadStyle: React.CSSProperties = { background: '#fff', borderRadius: 12, marginBottom: 10, border: '1px solid #E9EDF3', overflow: 'hidden' };
   const sectionTitleStyle: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1A202C', margin: 0 };
-  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.03em' };
+  const labelStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em' };
   const bodyStyle: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: '#4A5568' };
-  const mutedStyle: React.CSSProperties = { fontSize: 12, color: '#64748B' };
+  const mutedStyle: React.CSSProperties = { fontSize: 10.5, color: '#8A94A6' };
 
   return (
     <div style={rootStyle}>
+      <PortalPageHeader
+        title={`Invoice ${invoice.invoice_number}`}
+        subtitle={`Issued: ${new Date(invoice.created_at).toLocaleDateString()} | Due: ${new Date(invoice.due_date).toLocaleDateString()}`}
+        icon={Eye}
+        action={{
+          label: downloading ? 'Generating...' : 'Download PDF',
+          onClick: handleDownloadPdf,
+          disabled: downloading,
+        }}
+      />
+
       {downloadError && <div style={{ padding: '0 28px 0' }}><ErrorBanner message={downloadError} onDismiss={() => setDownloadError(null)} /></div>}
-      {refreshError && <div style={{ padding: '0 28px 0' }}><ErrorBanner message={refreshError} onDismiss={() => { setRefreshError(null); portalLifecycle.invoices.get(id!).then(setInvoice).catch(() => setRefreshError('Retry failed — data may be stale')); }} /></div>}
 
       <div style={{ padding: '0 28px 28px' }}>
         <PortalCard style={{ ...cardStyle, padding: '16px 18px', marginBottom: 16 }}>
@@ -162,9 +171,10 @@ const CustomerInvoiceDetail: React.FC = () => {
           </div>
           <div style={{ padding: '4px 18px 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '10px 0', borderBottom: '1px solid #E9EDF3' }}>
-              <span style={{ flex: 1, ...labelStyle }}>Item</span>                  <span style={{ width: 48, textAlign: 'right', ...labelStyle }}>Qty</span>
-                  <span style={{ width: 96, textAlign: 'right', ...labelStyle, fontVariantNumeric: 'tabular-nums' }}>Price</span>
-                  <span style={{ width: 110, textAlign: 'right', ...labelStyle, fontVariantNumeric: 'tabular-nums' }}>Total</span>
+              <span style={{ flex: 1, ...labelStyle }}>Item</span>
+              <span style={{ width: 48, textAlign: 'right', ...labelStyle }}>Qty</span>
+              <span style={{ width: 96, textAlign: 'right', ...labelStyle }}>Price</span>
+              <span style={{ width: 110, textAlign: 'right', ...labelStyle }}>Total</span>
             </div>
             {(invoice.line_items || []).map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderBottom: i < (invoice.line_items || []).length - 1 ? '1px solid #F3F4F6' : 'none' }}>

@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSales } from '../../context/SalesContext';
-import { useSalesOrderStore } from '../../stores/salesOrderStore';
 import { useAuth } from '../../context/AuthContext';
 import type { SalesOrderItem, SalesOrder } from '../../types';
 
@@ -17,8 +16,7 @@ interface OrderFormState extends SalesOrder {
 }
 
 const SalesOrderForm: React.FC<SalesOrderFormProps> = ({ initial, onDone, onCreate, onSaved }) => {
-  const { customers } = useSales();
-  const { createSalesOrder, updateSalesOrder } = useSalesOrderStore.getState();
+  const { addSalesOrder, updateSalesOrder, customers } = useSales();
   const { companyConfig } = useAuth();
   const [order, setOrder] = React.useState<OrderFormState>({ 
     id: '',
@@ -166,7 +164,7 @@ const SalesOrderForm: React.FC<SalesOrderFormProps> = ({ initial, onDone, onCrea
     };
 
     if (!orderToSave.id) {
-      if (onCreate) await onCreate(orderToSave); else await createSalesOrder(orderToSave);
+      if (onCreate) await onCreate(orderToSave); else await addSalesOrder(orderToSave);
       alert('Sales order created');
     } else {
       await updateSalesOrder(orderToSave);
@@ -229,17 +227,6 @@ const SalesOrderForm: React.FC<SalesOrderFormProps> = ({ initial, onDone, onCrea
             </ul>
           )}
         </div>
-      </div>
-
-      {/* Reference */}
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Reference</label>
-        <input
-          value={order.referenceDoc || ''}
-          onChange={e => setOrder({ ...order, referenceDoc: e.target.value })}
-          placeholder="Request or document reference"
-          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
-        />
       </div>
 
       {/* Items Section */}

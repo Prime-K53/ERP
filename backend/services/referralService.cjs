@@ -8,10 +8,6 @@ class ReferralService {
     this.notificationService = new ReferralNotificationService();
   }
 
-  async _transaction(callback) {
-    return callback();
-  }
-
   _run(sql, params = []) {
     const trimmed = String(sql || '').trim();
     return new Promise((resolve, reject) => {
@@ -20,25 +16,11 @@ class ReferralService {
           const insertMatch = trimmed.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i);
           const id = String(params[0] || `gen_${Date.now()}`);
           const record = { id };
-          const colMatch = trimmed.match(/\(([^)]+)\)\s*VALUES\s*\((.+)\)\s*$/is);
+          const colMatch = trimmed.match(/\(([^)]+)\)\s*VALUES\s*\(/i);
           if (colMatch) {
             const cols = colMatch[1].split(',').map(c => c.trim());
-            const values = colMatch[2].split(',');
-            let paramIdx = 0;
-            for (let i = 0; i < cols.length; i++) {
-              const v = String(values[i] || '').trim();
-              if (v === '?') {
-                if (paramIdx < params.length) {
-                  record[cols[i]] = params[paramIdx];
-                  paramIdx++;
-                }
-              } else if (/^'/.test(v) && /'$/.test(v)) {
-                record[cols[i]] = v.replace(/^'(.*)'$/, '$1');
-              } else if (/^(CURRENT_TIMESTAMP|NULL)$/i.test(v)) {
-                // timestamp/null literals are left to the cloud store
-              } else {
-                record[cols[i]] = v;
-              }
+            for (let i = 1; i < Math.min(cols.length, params.length); i++) {
+              record[cols[i]] = params[i];
             }
           }
           if (insertMatch) {
@@ -56,25 +38,9 @@ class ReferralService {
             const setMatch = trimmed.match(/SET\s+(.+?)\s+WHERE/is);
             if (setMatch) {
               const pairs = setMatch[1].split(',');
-              let paramIdx = 0;
-              for (const pair of pairs) {
-                const m = pair.match(/(\w+)\s*=\s*(\?|'[^']*'|CURRENT_TIMESTAMP|NULL|[0-9.]+)/i);
-                if (!m) continue;
-                const col = m[1];
-                const val = m[2];
-                if (val === '?') {
-                  if (paramIdx >= params.length - 1) continue;
-                  updates[col] = params[paramIdx];
-                  paramIdx++;
-                } else if (/^'/.test(val) && /'$/.test(val)) {
-                  updates[col] = val.replace(/^'(.*)'$/, '$1');
-                } else if (/^CURRENT_TIMESTAMP$/i.test(val)) {
-                  updates[col] = new Date().toISOString();
-                } else if (/^NULL$/i.test(val)) {
-                  updates[col] = null;
-                } else {
-                  updates[col] = val;
-                }
+              for (let i = 0; i < Math.min(pairs.length, params.length - 1); i++) {
+                const colMatch = pairs[i].match(/(\w+)\s*=\s*\?/);
+                if (colMatch) updates[colMatch[1]] = params[i];
               }
             }
             return repo.upsert(updateMatch[1], updates);

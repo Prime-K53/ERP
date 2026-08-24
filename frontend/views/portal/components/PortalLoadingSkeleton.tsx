@@ -27,23 +27,23 @@ const TableSkeleton: React.FC = () => (
       <table className="w-full min-w-[640px] text-left text-[13px] table-fixed">
         <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
           <tr>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-left">Invoice #</th>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-left">Date</th>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-right">Amount</th>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-center">Status</th>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-left">Due Date</th>
-            <th className="px-5 py-2.5 font-semibold text-[13.5px] text-right">Actions</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-left">Invoice #</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-left">Date</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-right">Amount</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Status</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-left">Due Date</th>
+            <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100/50">
           {Array.from({ length: 5 }).map((_, i) => (
             <tr key={i}>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-20" /></td>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-16" /></td>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-16" /></td>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-12" /></td>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-16" /></td>
-            <td className="px-5 py-2.5"><SkeletonBlock className="h-4 w-12" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-20" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-16" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-16" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-12" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-16" /></td>
+              <td className="px-5 py-3"><SkeletonBlock className="h-4 w-12" /></td>
             </tr>
           ))}
         </tbody>

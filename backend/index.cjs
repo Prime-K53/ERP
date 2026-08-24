@@ -17,7 +17,6 @@ const { spawn } = require('child_process');
 const { randomUUID } = require('crypto');
 const { getFrontendDistPath } = require('./appRoot.cjs');
 const repo = require('./services/supabaseRepository.cjs');
-const paymentRequestService = require('./services/paymentRequestService.cjs');
 console.log('Requiring bootstrap...');
 const bootstrap = require('./bootstrap.cjs');
 const portalLifecycleService = require('./services/portalLifecycleService.cjs');
@@ -137,7 +136,7 @@ const { verifyToken, requireRole, requirePermission } = require('./middleware/au
 const { injectFinancialYear, addFyDateFilter, requireFyNotClosed } = require('./middleware/financialYearMiddleware.cjs');
 const { validateBody, sanitizeInput, inventorySchemas, salesSchemas, userSchemas, financialSchemas, productionSchemas, documentSchemas, exchangeSchemas, orderSchemas, classSchemas, subjectSchemas, notificationSchemas, accountSchemas, expenseSchemas, incomeSchemas, budgetSchemas, transferSchemas } = require('./middleware/validation.cjs');
 const CurrencyMiddleware = require('./middleware/currencyMiddleware.cjs');
-const { createLimiter, authLimiter, sensitiveLimiter, portalAuthLimiter, portalRefreshLimiter } = require('./services/redisRateLimiter.cjs');
+const { createLimiter, authLimiter, sensitiveLimiter } = require('./services/redisRateLimiter.cjs');
 const authRoutes = require('./routes/auth.cjs');
 const portalAdminRoutes = require('./routes/portalAdmin.cjs');
 app.use(auditContextMiddleware);
@@ -224,7 +223,7 @@ const corsOptions = {
     return callback(null, origin);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-mode', 'x-correlation-id', 'x-idempotency-key', 'x-user-id', 'x-user-role', 'x-user-email', 'x-user-is-super-admin', 'x-dev-bypass', 'Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-mode', 'x-correlation-id', 'x-idempotency-key', 'x-user-id', 'x-user-role', 'x-user-email', 'x-user-is-super-admin', 'x-dev-bypass'],
   credentials: true
 };
 
@@ -277,7 +276,7 @@ app.use((req, res, next) => {
     }
     res.header('Access-Control-Allow-Origin', allowed ? (origin || '*') : '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-mode, x-user-id, x-user-role, x-user-email, x-correlation-id, x-dev-bypass, x-idempotency-key, x-financial-year-id, x-user-is-super-admin, Idempotency-Key');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-mode, x-user-id, x-user-role, x-user-email, x-correlation-id, x-dev-bypass, x-idempotency-key, x-financial-year-id, x-user-is-super-admin');
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Max-Age', '86400');
     return res.sendStatus(204);
@@ -300,21 +299,11 @@ app.use(sanitizeInput);
 app.use('/api/auth', auditAuthMiddleware, authLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 10 }), authRoutes);
 
 // Portal Auth Routes — no JWT needed for login/register.
-// Refresh is an authenticated session operation (not a credential endpoint)
-// and receives its own higher-limit bucket so normal refresh traffic cannot
-// exhaust the login brute-force protection quota.
+// Throttled so the public credential endpoints (login, login-password, activate,
+// forgot/reset-password) can't be brute-forced from a single IP.
 const portalAuthRoutes = require('./routes/portalAuth.cjs');
-// Malformed JSON bodies on portal-auth endpoints previously escaped to the
-// global error handler as HTTP 500. Handle body-parser failures at this
-// boundary so portal auth always answers with documented JSON errors.
-app.use('/api/portal/auth', (err, req, res, next) => {
-  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
-    return res.status(400).json({ error: 'Invalid request body' });
-  }
-  next(err);
-});
-app.use('/api/portal/auth/refresh', portalRefreshLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 200 }));
-app.use('/api/portal/auth', portalAuthLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 100 }), portalAuthRoutes);
+const portalAuthLimiter = sensitiveLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 30 });
+app.use('/api/portal/auth', portalAuthLimiter, portalAuthRoutes);
 
 // Portal admin routes — registered before global verifyToken to avoid Supabase JWT collisions
 app.use('/api/portal/admin', portalAdminRoutes);
@@ -558,13 +547,24 @@ async function postSaleLedgerEntries(saleId, totalAmount, materialTotal, custome
   }
 }
 
-// [LEDGER] updateCustomerBalance() is retired.
-// customers.balance is now a derived/cache field computed by the authoritative
-// customer ledger (backend/services/customerLedger.cjs). Independent balance
-// mutations are no longer performed. This function is retained as a no-op for
-// call-site compatibility until all callers are verified removed.
+// Helper function to update customer balance
 async function updateCustomerBalance(customerId, amount) {
-  // No-op: balance is derived from the authoritative ledger.
+  try {
+    if (!customerId || customerId === 'walk-in') return;
+    const customer = await sq.getOne('SELECT * FROM customers WHERE id = ?', [customerId]);
+    if (!customer) return;
+    const newBalance = (customer.balance || 0) + amount;
+    const newOutstanding = (customer.outstandingBalance || 0) + amount;
+    await repo.upsert('customers', {
+      ...customer,
+      balance: newBalance,
+      outstandingBalance: newOutstanding
+    });
+    console.log(`[Customer] Updated balance for customer ${customerId}: +${amount}`);
+  } catch (error) {
+    console.error(`[Customer] Error updating balance for customer ${customerId}:`, error);
+    throw error;
+  }
 }
 
 // Helper function to deduct inventory for a sale
@@ -863,8 +863,10 @@ async function startServer() {
                 // Post ledger entries for the sale
                 postSaleLedgerEntries(id, totalAmount, materialTotal, customerId, customerName, req.user?.id || 'system');
                 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
+                // Update customer balance if not walk-in
+                if (customerId && customerId !== 'walk-in') {
+                  updateCustomerBalance(customerId, totalAmount);
+                }
                 
                 // Deduct inventory for physical products
                 const inventoryItems = payload.items.filter(item => item.type !== 'service');
@@ -1056,10 +1058,6 @@ async function startServer() {
   // --- Engagement (Loyalty, Cashback, Gift Cards, Promotions, etc.) ---
   const engagementRoutes = require('./routes/engagement.cjs');
   app.use('/api/engagement', verifyToken, engagementRoutes);
-
-  // --- Promotion Engine (Portal-driven promotions, server-authoritative) ---
-  const promotionsRoutes = require('./routes/promotions.cjs');
-  app.use('/api/promotions', verifyToken, promotionsRoutes);
 
   const notificationsRoute = require('./routes/notifications.cjs');
   app.use('/api/notifications', verifyToken, notificationsRoute);
@@ -1869,27 +1867,32 @@ async function startServer() {
       await validateFyDate('invoice_date', req.body);
       const { body } = req;
       const id = body.id || randomUUID();
-      const payload = {
-        id,
-        customer_id: body.customer_id || null,
-        customer_name: body.customer_name || null,
-        subtotal: body.subtotal || 0,
-        total_amount: body.total_amount || 0,
-        currency: body.currency || 'MWK',
-        status: body.status || 'unpaid',
-        payment_method: body.payment_method || null,
-        due_date: body.due_date || null,
-        invoice_number: body.invoice_number || null,
-        other_charges: body.other_charges || 0,
-        line_items: body.line_items || [],
-        notes: body.notes || null,
-        document_title: body.document_title || null,
-        created_by: req.user?.id || null,
-      };
-      const result = await repo.upsert('invoices', payload);
-      if (result) {
+      const result = await cloudSyncStore.applyOp({
+        operationId: `inv-${id}-${Date.now()}`,
+        table: 'invoices',
+        recordId: id,
+        operation: 'upsert',
+        payload: {
+          id,
+          customer_id: body.customer_id || null,
+          customer_name: body.customer_name || null,
+          subtotal: body.subtotal || 0,
+          total_amount: body.total_amount || 0,
+          currency: body.currency || 'MWK',
+          status: body.status || 'unpaid',
+          payment_method: body.payment_method || null,
+          due_date: body.due_date || null,
+          invoice_number: body.invoice_number || null,
+          other_charges: body.other_charges || 0,
+          line_items: body.line_items || [],
+          notes: body.notes || null,
+          document_title: body.document_title || null,
+          created_by: req.user?.id || null,
+        },
+      });
+      if (result && result.id) {
         portalLifecycleService.emitEntityChange('portal', { customerId: body.customer_id, docType: 'invoice', docId: id, status: body.status || 'unpaid', invoiceNumber: body.invoice_number });
-        return res.status(201).json({ id: result.id || id, ...body });
+        return res.status(201).json({ id: result.id, ...body });
       }
       res.status(500).json({ error: 'Failed to create invoice' });
     } catch (err) {
@@ -1913,20 +1916,12 @@ async function startServer() {
       }
       if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
       params.push(id);
-      sq.run(`UPDATE invoices SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, params, async function (err, result) {
+      sq.run(`UPDATE invoices SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, params, function (err, result) {
          if (err) { console.error('[Invoices] PUT error:', err); return res.status(500).json({ error: 'Failed to update invoice' }); }
          if (!result || result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
          const updatedFields = {};
          for (let i = 0; i < allowed.length; i++) {
            if (body[allowed[i]] !== undefined) updatedFields[allowed[i]] = body[allowed[i]];
-         }
-         try {
-           const existing = await repo.getById('invoices', id);
-           if (existing) {
-             await repo.upsert('invoices', { ...existing, ...updatedFields });
-           }
-         } catch (syncErr) {
-           console.warn('[Invoices] PUT Supabase sync failed:', syncErr?.message);
          }
          portalLifecycleService.emitEntityChange('portal', { customerId: body.customer_id, docType: 'invoice', docId: id, status: body.status, invoiceNumber: body.invoice_number, updatedFields });
          portalLifecycleService.emitEntityChange('admin', { customerId: body.customer_id, docType: 'invoice', docId: id, status: body.status, invoiceNumber: body.invoice_number, updatedFields });
@@ -2080,62 +2075,6 @@ const result = await paymentAllocation.allocatePayment(payment, allocations);
     } catch (err) {
       console.error('[PaymentAllocation] reverse error:', err?.message || err);
       res.status(500).json({ error: err?.message || 'Failed to reverse allocation' });
-    }
-  });
-
-  // --- Customer Payment Requests (NON-ACCOUNTING bank-transfer intentions) ---
-  // Customers cannot pay through the portal. A payment request is the
-  // customer's intent to pay by bank transfer — workflow/communication data
-  // ONLY. It never creates a customer_payments row, a payment allocation, or
-  // modifies the invoice. ERP staff review the request here, then record the
-  // REAL accounting payment later through the existing customer-payment /
-  // allocation workflow (after verifying the bank receipt).
-  app.get('/api/payment-requests', requireRole('Admin', 'Accountant', 'Manager', 'Clerk', 'Viewer'), async (req, res) => {
-    try {
-      const { status } = req.query;
-      const rows = await paymentRequestService.listRequests({ status: status || undefined });
-      res.json(rows || []);
-    } catch (err) {
-      console.error('[PaymentRequests] GET error:', err?.message || err);
-      res.status(500).json({ error: err?.message || 'Failed to fetch payment requests' });
-    }
-  });
-
-  app.get('/api/payment-requests/:id', requireRole('Admin', 'Accountant', 'Manager', 'Clerk', 'Viewer'), async (req, res) => {
-    try {
-      const row = await paymentRequestService.getRequestById(req.params.id);
-      if (!row) return res.status(404).json({ error: 'Payment request not found' });
-      res.json(row);
-    } catch (err) {
-      console.error('[PaymentRequests] GET detail error:', err?.message || err);
-      res.status(500).json({ error: err?.message || 'Failed to fetch payment request' });
-    }
-  });
-
-  // Review actions: requested → under_review → confirmed | rejected | cancelled.
-  // Confirmation NEVER records the actual payment; linkedPaymentId is an
-  // optional reference to a payment recorded later by the ERP payment workflow.
-  app.post('/api/payment-requests/:id/review', requireRole('Admin', 'Accountant', 'Manager'), async (req, res) => {
-    try {
-      const { status, adminNotes, linkedPaymentId } = req.body || {};
-      const result = await paymentRequestService.reviewRequest(req.params.id, {
-        status,
-        adminNotes,
-        linkedPaymentId,
-        reviewedBy: req.user?.id || req.user?.username || req.user?.email || null,
-        context: {
-          ip: req.ip,
-          userAgent: req.headers['user-agent'],
-          method: req.method,
-          path: req.originalUrl,
-          correlationId: req.correlationId,
-        },
-      });
-      res.json(result);
-    } catch (err) {
-      console.error('[PaymentRequests] review error:', err?.message || err);
-      const status = /not found/i.test(err.message) ? 404 : 400;
-      res.status(status).json({ error: err?.message || 'Failed to review payment request' });
     }
   });
 

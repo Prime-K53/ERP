@@ -229,7 +229,7 @@ export const InventoryReports: React.FC = () => {
   const renderTable = (items: Item[], showRop = false) => (
     <div className="pp-panel" style={{ padding: 0 }}>
       <div className="overflow-x-auto custom-scrollbar">
-        <table className="pp-table" data-mobile-cards="true">
+        <table className="pp-table">
           <thead>
             <tr>
               <th className="text-left">Item</th>
@@ -243,22 +243,22 @@ export const InventoryReports: React.FC = () => {
           </thead>
           <tbody>
             {items.length === 0 ? (
-              <tr><td colSpan={showRop ? 7 : 6} data-label="" className="px-4 py-12 text-center text-xs font-medium" style={{ color: inkSoft }}>No items match your filters.</td></tr>
+              <tr><td colSpan={showRop ? 7 : 6} className="px-4 py-12 text-center text-xs font-medium" style={{ color: inkSoft }}>No items match your filters.</td></tr>
             ) : items.map((item: Item, idx: number) => (
               <tr key={`${item.id}-${idx}`} style={{ borderBottom: `1px solid ${hairline}` }}>
-                <td data-label="Item" style={{ fontWeight: 600, color: ink }}>{item.name}</td>
-                <td data-label="SKU" style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: inkSoft }}>{item.sku}</td>
-                <td data-label="Stock" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (item.stock ?? 0) <= (item.reorderPoint ?? -1) ? danger : ink }}>
+                <td style={{ fontWeight: 600, color: ink }}>{item.name}</td>
+                <td style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: inkSoft }}>{item.sku}</td>
+                <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (item.stock ?? 0) <= (item.reorderPoint ?? -1) ? danger : ink }}>
                   {item.stock ?? 0}
                 </td>
-                {showRop && <td data-label="Reorder Point" className="num" style={{ color: inkSoft }}>{item.reorderPoint ?? '-'}</td>}
-                <td data-label="Cost Price" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: teal[800] }}>
+                {showRop && <td className="num" style={{ color: inkSoft }}>{item.reorderPoint ?? '-'}</td>}
+                <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: teal[800] }}>
                   {currency}{(item.costPrice ?? 0).toFixed(2)}
                 </td>
-                <td data-label="Stock Value" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: ink }}>
+                <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: ink }}>
                   {currency}{((item.costPrice ?? 0) * Math.max(item.stock ?? 0, 0)).toFixed(2)}
                 </td>
-                <td data-label="Status" style={{ textAlign: 'center' }}>{statusBadge(item)}</td>
+                <td style={{ textAlign: 'center' }}>{statusBadge(item)}</td>
               </tr>
             ))}
           </tbody>
@@ -394,7 +394,7 @@ export const InventoryReports: React.FC = () => {
           <div className="pp-panel" style={{ background: paper, border: `1px solid ${hairline}`, borderRadius: 14 }}>
             <h3 className="text-sm font-bold mb-4" style={{ color: ink }}>Value by Classification</h3>
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="pp-table" data-mobile-cards="true">
+              <table className="pp-table">
                 <thead>
                   <tr>
                     <th>Classification</th>
@@ -414,10 +414,10 @@ export const InventoryReports: React.FC = () => {
                     const total = breakdown.reduce((s, c) => s + c.value, 0);
                     return breakdown.map((c: { label: string; items: number; value: number }) => (
                       <tr key={c.label}>
-                        <td data-label="Classification" style={{ fontWeight: 600, color: ink }}>{c.label}</td>
-                        <td data-label="Items" className="num" style={{ color: inkSoft }}>{c.items}</td>
-                        <td data-label="Cost Value" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: ink }}>{currency}{c.value.toFixed(2)}</td>
-                        <td data-label="Share" className="num">
+                        <td style={{ fontWeight: 600, color: ink }}>{c.label}</td>
+                        <td className="num" style={{ color: inkSoft }}>{c.items}</td>
+                        <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: ink }}>{currency}{c.value.toFixed(2)}</td>
+                        <td className="num">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                             <div style={{ flex: 1, maxWidth: 120, height: 8, borderRadius: 4, background: teal[50], overflow: 'hidden' }}>
                               <div style={{ height: '100%', borderRadius: 4, background: `linear-gradient(90deg, #1f8577, #0f544c)`, width: `${total > 0 ? (c.value / total * 100) : 0}%` }} />
@@ -436,7 +436,7 @@ export const InventoryReports: React.FC = () => {
           <div className="pp-panel" style={{ background: paper, border: `1px solid ${hairline}`, borderRadius: 14 }}>
             <h3 className="text-sm font-bold mb-4" style={{ color: ink }}>Value by Category</h3>
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="pp-table" data-mobile-cards="true">
+              <table className="pp-table">
                 <thead>
                   <tr>
                     <th>Category</th>
@@ -449,11 +449,11 @@ export const InventoryReports: React.FC = () => {
                 <tbody>
                   {valuationByCategory.map(([cat, data]) => (
                     <tr key={cat}>
-                      <td data-label="Category" style={{ fontWeight: 600, color: ink }}>{cat}</td>
-                      <td data-label="Items" className="num" style={{ color: inkSoft }}>{data.count}</td>
-                      <td data-label="Total Cost" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827' }}>{currency}{data.cost.toFixed(2)}</td>
-                      <td data-label="Stock Value" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{data.value.toFixed(2)}</td>
-                      <td data-label="% of Total" className="num" style={{ color: inkSoft }}>{totalValue > 0 ? ((data.value / totalValue) * 100).toFixed(1) : '0.0'}%</td>
+                      <td style={{ fontWeight: 600, color: ink }}>{cat}</td>
+                      <td className="num" style={{ color: inkSoft }}>{data.count}</td>
+                      <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827' }}>{currency}{data.cost.toFixed(2)}</td>
+                      <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{data.value.toFixed(2)}</td>
+                      <td className="num" style={{ color: inkSoft }}>{totalValue > 0 ? ((data.value / totalValue) * 100).toFixed(1) : '0.0'}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -464,7 +464,7 @@ export const InventoryReports: React.FC = () => {
           <div className="pp-panel" style={{ background: paper, border: `1px solid ${hairline}`, borderRadius: 14 }}>
             <h3 className="text-sm font-bold mb-4" style={{ color: ink }}>Value by Warehouse</h3>
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="pp-table" data-mobile-cards="true">
+              <table className="pp-table">
                 <thead>
                   <tr>
                     <th>Warehouse</th>
@@ -476,10 +476,10 @@ export const InventoryReports: React.FC = () => {
                 <tbody>
                   {valuationByWarehouse.map(([wh, data]) => (
                     <tr key={wh}>
-                      <td data-label="Warehouse" style={{ fontWeight: 600, color: ink }}>{wh}</td>
-                      <td data-label="Items" className="num" style={{ color: inkSoft }}>{data.count}</td>
-                      <td data-label="Stock Value" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{data.value.toFixed(2)}</td>
-                      <td data-label="% of Total" className="num" style={{ color: inkSoft }}>{totalValue > 0 ? ((data.value / totalValue) * 100).toFixed(1) : '0.0'}%</td>
+                      <td style={{ fontWeight: 600, color: ink }}>{wh}</td>
+                      <td className="num" style={{ color: inkSoft }}>{data.count}</td>
+                      <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{data.value.toFixed(2)}</td>
+                      <td className="num" style={{ color: inkSoft }}>{totalValue > 0 ? ((data.value / totalValue) * 100).toFixed(1) : '0.0'}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -549,7 +549,7 @@ export const InventoryReports: React.FC = () => {
                 <h3 className="text-sm font-bold" style={{ color: ink }}>Items Selling Below Cost ({negativeMarkupItems.length})</h3>
               </div>
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="pp-table" data-mobile-cards="true">
+                <table className="pp-table">
                   <thead>
                     <tr>
                       <th>Item</th>
@@ -565,12 +565,12 @@ export const InventoryReports: React.FC = () => {
                       const loss = (i.costPrice || 0) - (i.sellingPrice || 0);
                       return (
                         <tr key={`${i.id}-${idx}`}>
-                          <td data-label="Item" style={{ fontWeight: 600, color: ink }}>{i.name}</td>
-                          <td data-label="Cost" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827' }}>{currency}{(i.costPrice || 0).toFixed(2)}</td>
-                          <td data-label="Selling Price" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: danger }}>{currency}{(i.sellingPrice || 0).toFixed(2)}</td>
-                          <td data-label="Loss/Unit" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: danger }}>-{currency}{loss.toFixed(2)}</td>
-                          <td data-label="Stock" className="num" style={{ color: inkSoft }}>{i.stock ?? 0}</td>
-                          <td data-label="Total Loss" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: danger }}>-{currency}{(loss * Math.max(i.stock || 0, 0)).toFixed(2)}</td>
+                          <td style={{ fontWeight: 600, color: ink }}>{i.name}</td>
+                          <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827' }}>{currency}{(i.costPrice || 0).toFixed(2)}</td>
+                          <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: danger }}>{currency}{(i.sellingPrice || 0).toFixed(2)}</td>
+                          <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: danger }}>-{currency}{loss.toFixed(2)}</td>
+                          <td className="num" style={{ color: inkSoft }}>{i.stock ?? 0}</td>
+                          <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: danger }}>-{currency}{(loss * Math.max(i.stock || 0, 0)).toFixed(2)}</td>
                         </tr>
                       );
                     })}
@@ -592,7 +592,7 @@ export const InventoryReports: React.FC = () => {
           </div>
           <div className="pp-panel" style={{ padding: 0, background: paper, border: `1px solid ${hairline}`, borderRadius: 14 }}>
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="pp-table" data-mobile-cards="true">
+              <table className="pp-table">
                 <thead>
                   <tr>
                     <th>#</th>
@@ -606,21 +606,21 @@ export const InventoryReports: React.FC = () => {
                 </thead>
                 <tbody>
                   {productSalesAggregated.length === 0 ? (
-                    <tr><td colSpan={7} data-label="" className="px-4 py-12 text-center text-xs font-medium" style={{ color: inkSoft }}>No sales data available to compute product profitability.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-12 text-center text-xs font-medium" style={{ color: inkSoft }}>No sales data available to compute product profitability.</td></tr>
                   ) : productSalesAggregated.slice(0, 100).map((p, i) => {
                     const markupPct = p.cost > 0 ? (p.profit / p.cost) * 100 : 0;
                     return (
                       <tr key={`${p.name}-${i}`}>
-                        <td data-label="#" style={{ color: inkSoft, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{i + 1}</td>
-                        <td data-label="Product">
+                        <td style={{ color: inkSoft, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{i + 1}</td>
+                        <td>
                           <div style={{ fontWeight: 600, color: ink }}>{p.name}</div>
                           {p.sku && <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: inkSoft }}>{p.sku}</div>}
                         </td>
-                        <td data-label="Units Sold" className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{p.qty}</td>
-                        <td data-label="Revenue" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{p.revenue.toFixed(2)}</td>
-                        <td data-label="Cost" className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{p.cost.toFixed(2)}</td>
-                        <td data-label="Total Profit" className="num" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: p.profit >= 0 ? teal[600] : danger, fontFamily: "'Inter', sans-serif" }}>{currency}{p.profit.toFixed(2)}</td>
-                        <td data-label="Markup" className="num">
+                        <td className="num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{p.qty}</td>
+                        <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{p.revenue.toFixed(2)}</td>
+                        <td className="num" style={{ fontVariantNumeric: 'tabular-nums', color: '#111827', fontFamily: "'Inter', sans-serif" }}>{currency}{p.cost.toFixed(2)}</td>
+                        <td className="num" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: p.profit >= 0 ? teal[600] : danger, fontFamily: "'Inter', sans-serif" }}>{currency}{p.profit.toFixed(2)}</td>
+                        <td className="num">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{
                             background: markupPct >= 30 ? teal[50] : markupPct >= 15 ? teal[100] : markupPct >= 0 ? amber[100] : '#fef2f2',
                             color: markupPct >= 30 ? teal[700] : markupPct >= 15 ? teal[600] : markupPct >= 0 ? '#8c5c1f' : danger,

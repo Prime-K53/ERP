@@ -45,15 +45,29 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
   const isExaminationQuotation = String((quotation as Quotation & { quotationType?: string }).quotationType || '').toLowerCase() === 'examination';
 
   return (
-    <div className="sales-detail-backdrop" style={{ fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink }}>
-      <div className="sales-detail-panel">
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15, 23, 42, 0.6)',
+      padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
+    }}>
+      <div style={{
+        width: 960, maxWidth: '100%', maxHeight: '92vh',
+        background: paper, borderRadius: 14,
+        boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
+      }}>
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 4,
           background: `linear-gradient(90deg, ${teal[600]}, ${teal[400]} 40%, ${amber[500]} 100%)`
         }} />
 
-        <div className="sales-detail-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '22px 28px 18px',
+          borderBottom: `1px solid ${hairline}`, background: paper
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
               width: 40, height: 40, borderRadius: 10,
               background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
@@ -62,14 +76,17 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
             }}>
               <FileText size={19} color="#fff" />
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h1 className="sales-detail-title">
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h1 style={{
+                  fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
+                  fontSize: 22, margin: 0, color: teal[800], letterSpacing: 0.2
+                }}>
                   Quotation #{quotation.id}
                 </h1>
                 <span style={{
                   padding: '2px 10px', borderRadius: 6,
-                  fontSize: 11.5, fontWeight: 600, letterSpacing: 0.04, flexShrink: 0,
+                  fontSize: 11.5, fontWeight: 600, letterSpacing: 0.04,
                   background: quotation.status === 'Accepted' || quotation.status === 'Approved' || quotation.status === 'Converted' ? '#ecfdf5' :
                     quotation.status === 'Rejected' ? '#fef2f2' : isExpired ? amber[100] : '#eff6ff',
                   color: quotation.status === 'Accepted' || quotation.status === 'Approved' || quotation.status === 'Converted' ? '#059669' :
@@ -78,12 +95,12 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
                   {isExpired ? 'Expired' : quotation.status}
                 </span>
                 {isExaminationQuotation && (
-                  <span style={{ padding: '2px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: '#f5f3ff', color: '#7c3aed', flexShrink: 0 }}>
+                  <span style={{ padding: '2px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: '#f5f3ff', color: '#7c3aed' }}>
                     Examination
                   </span>
                 )}
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ padding: '1px 6px', borderRadius: 4, background: teal[50], color: teal[700], fontWeight: 600 }}>{quotation.customerName}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> Issued {new Date(quotation.date).toLocaleDateString()}</span>
                 {quotation.validUntil && (
@@ -94,7 +111,7 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={() => onEdit(quotation)}
               style={{
                 padding: '8px 14px', borderRadius: 8, background: paper,
@@ -104,7 +121,7 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
               }}
               onMouseEnter={e => { e.currentTarget.style.background = teal[50]; e.currentTarget.style.color = teal[800]; e.currentTarget.style.borderColor = teal[200]; }}
               onMouseLeave={e => { e.currentTarget.style.background = paper; e.currentTarget.style.color = inkSoft; e.currentTarget.style.borderColor = hairline; }}>
-              <Edit2 size={14} /> <span className="hidden sm:inline">Edit</span>
+              <Edit2 size={14} /> Edit
             </button>
             <button onClick={onClose} aria-label="Close"
               style={{
@@ -120,16 +137,22 @@ export const QuotationDetails: React.FC<QuotationDetailsProps> = ({ quotation: i
           </div>
         </div>
 
-        <div className="sales-tabs">
+        <div style={{ display: 'flex', borderBottom: `1px solid ${hairline}`, padding: '0 28px', background: paper, flexShrink: 0 }}>
           {(['Overview', 'Activity'] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`sales-tab ${activeTab === tab ? 'active' : ''}`}>
+              style={{
+                padding: '14px 16px 12px', fontSize: 12, fontWeight: 700, letterSpacing: 0.08, textTransform: 'uppercase',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: activeTab === tab ? teal[600] : inkSoft,
+                borderBottom: `2px solid ${activeTab === tab ? teal[500] : 'transparent'}`,
+                transition: 'all .15s ease'
+              }}>
               {tab}
             </button>
           ))}
         </div>
 
-        <div className="sales-detail-content" style={{ background: teal[50] }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 8px', background: teal[50] }}>
           {activeTab === 'Overview' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-8">

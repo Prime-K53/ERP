@@ -61,7 +61,6 @@ let pushTimer: ReturnType<typeof setInterval> | null = null;
 let realtimeSubscribed = false;
 let realtimeChannels: any[] = [];
 let subscriptionGeneration = 0; // incremented on each unsubscribe to cancel stale async inits
-let syncLifecycleActive = false; // idempotency guard — prevents duplicate initial pulls / subscriptions
 
 export interface SyncProgress {
   totalStores: number;
@@ -254,18 +253,11 @@ export async function pullRemoteChanges(
   onProgress?: (progress: SyncProgress) => void,
   forceFullSync: boolean = false
 ): Promise<{ pulled: number; errors: string[] }> {
-  if (!SUPABASE_ENABLED) {
-    console.log(`[SYNC-FORENSIC] pullRemoteChanges() SKIPPED — Supabase not enabled`);
-    return { pulled: 0, errors: [] };
-  }
+  if (!SUPABASE_ENABLED) return { pulled: 0, errors: [] };
 
   const session = await ensureSession();
-  if (!session) {
-    console.log(`[SYNC-FORENSIC] pullRemoteChanges() SKIPPED — not authenticated`);
-    return { pulled: 0, errors: ['Not authenticated'] };
-  }
+  if (!session) return { pulled: 0, errors: ['Not authenticated'] };
 
-  console.log(`[SYNC-FORENSIC] PULL-START pullRemoteChanges()`, { forceFullSync, tableCount: TABLES_TO_SYNC.length });
   const errors: string[] = [];
   let pulled = 0;
   const totalStores = TABLES_TO_SYNC.length;
@@ -308,8 +300,6 @@ export async function pullRemoteChanges(
 
             const cloudRecords = data.map((record: any) => toCloudRecord(record));
 
-            console.log(`[SYNC-FORENSIC] PULL-PAGE ${table}: fetched ${cloudRecords.length} rows (offset=${offset})`);
-
             // Apply field-level merge for existing records, skip for new ones
             // All cloud records are marked _cloudSource: true so they don't trigger re-sync
             const mergedRecords = [];
@@ -325,11 +315,6 @@ export async function pullRemoteChanges(
               }
               const existing = await dbService.get(storeName, cloudRecord.id);
               if (existing) {
-                const pendingMutation = await durableSyncQueue.hasPendingMutation(table, cloudRecord.id);
-                if (pendingMutation) {
-                  console.log(`[SYNC-FORENSIC] PULL-SKIP-MERGE ${table}/${cloudRecord.id} — has pending local mutation`);
-                  continue;
-                }
                 const merged = fieldLevelMerge(existing, cloudRecord);
                 if (cloudRecord.serverUpdatedAt) {
                   merged.serverUpdatedAt = cloudRecord.serverUpdatedAt;
@@ -390,7 +375,6 @@ export async function pullRemoteChanges(
     localStorage.setItem('nexus_last_sync_pull', new Date().toISOString());
   }
 
-  console.log(`[SYNC-FORENSIC] PULL-COMPLETE pullRemoteChanges()`, { pulled, errorCount: errors.length, errors: errors.slice(0, 5) });
   return { pulled, errors };
 }
 
@@ -407,11 +391,7 @@ export async function pullRemoteChanges(
  * RLS is temporarily misconfigured and reduces unnecessary traffic.
  */
 async function subscribeToRemoteChanges() {
-  if (!SUPABASE_ENABLED || realtimeSubscribed) {
-    console.log(`[SYNC-FORENSIC] subscribeToRemoteChanges() SKIPPED`, { SUPABASE_ENABLED, realtimeSubscribed });
-    return;
-  }
-  console.log(`[SYNC-FORENSIC] subscribeToRemoteChanges() START`);
+  if (!SUPABASE_ENABLED || realtimeSubscribed) return;
   realtimeSubscribed = true;
   const myGeneration = ++subscriptionGeneration;
 
@@ -457,9 +437,6 @@ async function subscribeToRemoteChanges() {
           async (payload: any) => {
             try {
               const eventType: string = payload.eventType || 'UNKNOWN';
-              console.log(`[SYNC-FORENSIC] REALTIME event received`, {
-                table, eventType, id: payload.new?.id || payload.old?.id,
-              });
 
               if (eventType === 'DELETE') {
                 const deleteId = payload.old?.id;
@@ -488,20 +465,13 @@ async function subscribeToRemoteChanges() {
 
                 const local = await dbService.get(storeName, payload.new.id);
                 if (local) {
-                  const pendingMutation = await durableSyncQueue.hasPendingMutation(table, payload.new.id);
-                  if (pendingMutation) {
-                    console.log(`[SYNC-FORENSIC] REALTIME-SKIP-MERGE ${table}/${payload.new.id} — has pending local mutation`);
-                    return;
-                  }
                   const merged = fieldLevelMerge(local, cloudRecord);
                   if (cloudRecord.serverUpdatedAt) {
                     merged.serverUpdatedAt = cloudRecord.serverUpdatedAt;
                   }
                   merged._cloudSource = true;
-                  console.log(`[SYNC-FORENSIC] REALTIME MERGE ${table}/${payload.new.id}`);
                   await dbService.put(storeName, merged as Record<string, unknown>, { cloudSource: true });
                 } else {
-                  console.log(`[SYNC-FORENSIC] REALTIME NEW ${table}/${payload.new.id}`);
                   await dbService.put(storeName, cloudRecord as Record<string, unknown>, { cloudSource: true });
                 }
 
@@ -550,18 +520,10 @@ export function startPeriodicSync(
   intervalMs = PUSH_INTERVAL_MS,
   onSyncComplete?: (result: { pulled: number; pushed: number; errors: string[] }) => void
 ) {
-  if (!SUPABASE_ENABLED) {
-    console.log(`[SYNC-FORENSIC] startPeriodicSync() SKIPPED — SUPABASE_ENABLED=false`);
-    return;
-  }
-  if (syncLifecycleActive) {
-    console.log(`[SYNC-FORENSIC] startPeriodicSync() SKIPPED — lifecycle already active`);
-    return;
-  }
+  if (!SUPABASE_ENABLED) return;
+  if (pushTimer) clearInterval(pushTimer);
 
-  console.log(`[SYNC-FORENSIC] startPeriodicSync() START`, { intervalMs, isOnline: navigator.onLine });
   audit('sync', 'startPeriodicSync', { intervalMs });
-  syncLifecycleActive = true;
 
   // subscribeToRemoteChanges is now async (fetches session for company_id filter)
   subscribeToRemoteChanges().catch((err) => {
@@ -584,15 +546,12 @@ export function startPeriodicSync(
   // Initial sync on start - full pull on first sync, then incremental
   if (navigator.onLine) {
     const isFirstSync = !localStorage.getItem('nexus_last_sync_pull');
-    console.log(`[SYNC-FORENSIC] startPeriodicSync() initial pull decision`, { isFirstSync, lastSyncPull: localStorage.getItem('nexus_last_sync_pull') });
     audit('sync', 'initial pull starting', { isFirstSync });
     pullRemoteChanges(undefined, isFirstSync).then(result => {
-      console.log(`[SYNC-FORENSIC] startPeriodicSync() initial pull COMPLETE`, { pulled: result.pulled, errorCount: result.errors.length });
       audit('sync', 'initial pull complete', { pulled: result.pulled, errors: result.errors });
       onSyncComplete?.({ pulled: result.pulled, pushed: 0, errors: result.errors });
     }).catch(err => console.warn('[Sync] Initial pull failed:', err));
   } else {
-    console.log(`[SYNC-FORENSIC] startPeriodicSync() initial pull SKIPPED — offline`);
     audit('sync', 'initial pull skipped offline', {});
     onSyncComplete?.({ pulled: 0, pushed: 0, errors: ['offline'] });
   }
@@ -603,7 +562,6 @@ export function stopPeriodicSync() {
     clearInterval(pushTimer);
     pushTimer = null;
   }
-  syncLifecycleActive = false;
   unsubscribeFromRemoteChanges();
   import('./backgroundSyncService').then(({ backgroundSyncService }) => {
     backgroundSyncService.stopPeriodicSync();

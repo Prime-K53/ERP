@@ -344,14 +344,12 @@ const Referrals: React.FC = () => {
       <div style={{
         background: paper,
         borderBottom: `1px solid ${hairline}`,
-        padding: '12px 16px',
+        padding: '16px 32px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexShrink: 0,
-        flexWrap: 'wrap',
-        gap: 12,
-      }} className="md:!px-8 md:!py-4">
+      }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, fontWeight: 600, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.1, marginBottom: 4 }}>
             <span>Sales Flow</span>
@@ -361,14 +359,14 @@ const Referrals: React.FC = () => {
           <h1 style={{
             fontFamily: "'DM Serif Display', 'Georgia', serif",
             fontWeight: 400,
-            fontSize: 20,
+            fontSize: 22,
             margin: 0,
             color: teal[800],
             letterSpacing: 0.2,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-          }} className="md:!text-[22px]">
+          }}>
             <Award size={24} style={{ color: amber[500] }} />
             Referral Management
           </h1>
@@ -382,7 +380,7 @@ const Referrals: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 12 }} className="md:!p-6">
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         <div style={{ maxWidth: 1152, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Error banner */}
           {loadError && (
@@ -410,7 +408,7 @@ const Referrals: React.FC = () => {
 
           {/* Stats (Referrals tab only) */}
           {activeView === 'referrals' && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6" style={{ gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
               {[
                 { key: 'total', label: 'Total Referrals', value: stats.total, icon: Award, iconBg: teal[50], iconColor: teal[500], borderColor: teal[500] },
                 { key: 'active', label: 'Active', value: stats.active, icon: TrendingUp, iconBg: teal[50], iconColor: teal[500], borderColor: teal[500] },

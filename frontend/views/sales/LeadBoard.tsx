@@ -110,7 +110,7 @@ const LeadBoard: React.FC = () => {
   const conversionRate = filteredLeads.length > 0 ? Math.round((wonCount / filteredLeads.length) * 100) : 0;
 
   return (
-    <div style={{ padding: '12px 12px 24px', background: '#FEFDFB', minHeight: '100vh', fontFamily: "'Inter', sans-serif" }} className="md:!px-6 md:!py-4">
+    <div style={{ padding: '16px 24px', background: '#FEFDFB', minHeight: '100vh', fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
@@ -124,7 +124,7 @@ const LeadBoard: React.FC = () => {
               Track opportunities across your sales pipeline.
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3" style={{ gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
             <div style={{ ...cardStyle, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 16, borderLeft: '4px solid #1f8577' }}>
               <div style={{ padding: 10, background: teal[50], color: teal[600], borderRadius: 8, display: 'flex' }}>
                 <Target size={20} />
@@ -167,7 +167,7 @@ const LeadBoard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6" style={{ gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
           {pipelineStages.map((stage) => (
             <div key={stage} style={{ ...cardStyle, overflow: 'hidden', minHeight: 360, display: 'flex', flexDirection: 'column' }}>
               <div style={{

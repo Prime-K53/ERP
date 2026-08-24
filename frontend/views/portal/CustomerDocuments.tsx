@@ -4,7 +4,6 @@ import { FileText, File, Download, FileSpreadsheet, ArrowUpRight, Search, CheckS
 import { createElement } from 'react';
 import { pdf } from '@react-pdf/renderer';
 import { portalLifecycle } from '../../services/portalApiClient';
-
 import { mapToInvoiceData } from '../../utils/pdfMapper';
 import { attachDocumentSecurity } from '../../utils/documentSecurity';
 import { initializePrimePdfFonts } from '../shared/components/PDF/templateSettings';
@@ -40,15 +39,14 @@ const CustomerDocuments: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     portalLifecycle.documents.list()
-      .then((result) => { setDocuments(result && result.length > 0 ? result : []); setRefreshError(null); })
-      .catch(() => { if (documents.length === 0) setError('Failed to load documents'); else setRefreshError('Unable to refresh — data may be stale'); })
+      .then(setDocuments)
+      .catch((err) => setError(err.message || 'Failed to load documents'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -60,8 +58,8 @@ const CustomerDocuments: React.FC = () => {
         onEvent: (type, payload) => {
           if (type === 'entity_changed' && !cancelled) {
             portalLifecycle.documents.list()
-              .then((result) => { setDocuments(result && result.length > 0 ? result : []); setRefreshError(null); })
-              .catch(() => { if (!cancelled) setRefreshError('Unable to refresh — data may be stale'); });
+              .then(setDocuments)
+              .catch(() => {});
           }
         },
       });
@@ -119,13 +117,11 @@ const CustomerDocuments: React.FC = () => {
           const invoice = await portalLifecycle.invoices.get(invoiceId);
           if (!invoice) continue;
 
-          const items = Array.isArray(invoice.line_items)
-            ? invoice.line_items
-            : Array.isArray(invoice.line_items_json)
-              ? invoice.line_items_json
-              : typeof invoice.line_items_json === 'string'
-                ? JSON.parse(invoice.line_items_json)
-                : [];
+          const items = Array.isArray(invoice.line_items_json)
+            ? invoice.line_items_json
+            : typeof invoice.line_items_json === 'string'
+              ? JSON.parse(invoice.line_items_json)
+              : [];
 
           const customerName = invoice.customer_name || invoice.customerName || 'Customer';
 
@@ -182,13 +178,14 @@ const CustomerDocuments: React.FC = () => {
   }
 
   return (
-    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
+    <div style={{ fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}>
+      <PortalPageHeader title="Documents" subtitle="Access your invoices, receipts, statements and more" icon={FileText} />
+
       <div style={{ padding: '20px 28px 8px' }}>
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-        {refreshError && <div style={{ marginBottom: 8 }}><ErrorBanner message={refreshError} onDismiss={() => setRefreshError(null)} /></div>}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', maxWidth: 360, flex: 1 }}>
-            <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
+            <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
             <input
               type="text"
               placeholder="Search documents..."
@@ -197,7 +194,7 @@ const CustomerDocuments: React.FC = () => {
               style={{
                 fontFamily: F,
                 fontSize: 13,
-                padding: '10px 14px 10px 40px',
+                padding: '8px 12px 8px 32px',
                 border: '1px solid #E9EDF3',
                 borderRadius: 10,
                 background: '#fff',

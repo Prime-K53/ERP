@@ -17,34 +17,13 @@ function adminHeaders() {
   };
 }
 
-/**
- * Normalize any persisted timestamp to strict, JS-parseable ISO-8601
- * (millisecond precision, Z offset). PostgREST serializes timestamptz with
- * microsecond fractions ("2026-08-23T12:22:13.55572+00:00"); the ECMAScript
- * date-time format only guarantees .sss, and stricter engines (WebKit) return
- * Invalid Date for longer fractions. Same instant, canonical wire format.
- * Unparseable values pass through untouched — never invent a date.
- */
-function toStrictIso(value) {
-  if (value == null || value === '') return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toISOString();
-}
-
 function fromSupabaseRow(row) {
   if (!row) return null;
   const data = (row.data && typeof row.data === 'object') ? row.data : {};
   return {
     ...data,
     id: row.id,
-    // Canonical server timestamp: the DB column (DEFAULT NOW()) is the
-    // authoritative creation time for every envelope row. Without this the
-    // API drops the date entirely (quotation/order requests showed
-    // "Invalid Date"), while payment requests worked only because they also
-    // persist an explicit requested_at INSIDE the envelope. An in-envelope
-    // value (if any legacy row has one) still wins.
-    created_at: toStrictIso(data.created_at || row.created_at || null),
-    updated_at: toStrictIso(row.updated_at || null),
+    updated_at: row.updated_at || null,
     version: row.version != null ? Number(row.version) : 0,
   };
 }
@@ -85,20 +64,6 @@ async function getAll(table, filters = {}) {
   return rows.map(fromSupabaseRow);
 }
 
-/**
- * Strict read: distinguishes "genuinely zero rows" from "query failed".
- * The Portal must never present a database failure as an empty result, so
- * financial/customer-critical reads go through this method and let the
- * failure propagate to a visible error state.
- */
-async function getAllStrict(table, filters = {}) {
-  const rows = await request(table, filters);
-  if (rows === null) {
-    throw new Error(`Failed to read ${table} from Supabase (query returned no data)`);
-  }
-  return rows.map(fromSupabaseRow);
-}
-
 async function getById(table, id) {
   const rows = await request(table, { id: `eq.${id}`, limit: 1 });
   if (!rows || rows.length === 0) return null;
@@ -107,18 +72,11 @@ async function getById(table, id) {
 
 async function upsert(table, domainObject) {
   if (!isConfigured()) return null;
-  if (!domainObject || !domainObject.id) return null;
+  const row = toSupabaseRow(domainObject);
+  if (!row) return null;
 
   try {
-    // Pass the RAW domain object to cloudSyncStore.upsertRow, exactly like the
-    // sync gateway's applyOp() does. upsertRow treats the payload as the domain
-    // and stores it in the `data` JSONB column (single-wrapped), using
-    // payload.version as the optimistic-concurrency base it matches against.
-    // Passing toSupabaseRow()'s envelope instead double-wrapped the data
-    // ({ id, data: { id, data: {...} } }) and double-bumped the version, which
-    // made every new row unreadable and every update a permanent version
-    // conflict.
-    const result = await cloudSyncStore.upsertRow(table, domainObject.id, domainObject);
+    const result = await cloudSyncStore.upsertRow(table, row.id, row);
     if (result && result.id) {
       return getById(table, result.id);
     }
@@ -889,12 +847,6 @@ const entityQueries = {
     upsert: (record) => upsert('quotation_requests', record),
     softDelete: (id) => softDelete('quotation_requests', id),
   },
-  payment_requests: {
-    getAll: (filters = {}) => getAll('payment_requests', filters),
-    getById: (id) => getById('payment_requests', id),
-    upsert: (record) => upsert('payment_requests', record),
-    softDelete: (id) => softDelete('payment_requests', id),
-  },
   support_tickets: {
     getAll: (filters = {}) => getAll('support_tickets', filters),
     getById: (id) => getById('support_tickets', id),
@@ -1054,7 +1006,6 @@ module.exports = {
   toSupabaseRow,
   request,
   getAll,
-  getAllStrict,
   getById,
   upsert,
   softDelete,

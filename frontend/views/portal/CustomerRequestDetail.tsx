@@ -35,13 +35,13 @@ function stageIndex(status: string): number {
   }
 }
 
-const root: React.CSSProperties = { fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B', maxWidth: 720, margin: '0 auto', paddingBottom: 100 };
+const root: React.CSSProperties = { fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748', maxWidth: 720, margin: '0 auto', paddingBottom: 100 };
 const card: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, border: '1px solid #E9EDF3' };
 const cardNoPad: React.CSSProperties = { background: '#fff', borderRadius: 12, marginBottom: 10, border: '1px solid #E9EDF3', overflow: 'hidden' };
 const sectionTitle: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1A202C', margin: 0 };
-const label: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const label: React.CSSProperties = { fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em' };
 const body: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: '#4A5568' };
-const muted: React.CSSProperties = { fontSize: 12, color: '#64748B' };
+const muted: React.CSSProperties = { fontSize: 10.5, color: '#8A94A6' };
 
 const CustomerRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -264,41 +264,6 @@ const CustomerRequestDetail: React.FC = () => {
           </div>
         )}
 
-        {request.promotion && Number(request.discount_total || 0) > 0 && (
-          <div style={{
-            background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
-            border: '1px solid #FDBA74', borderRadius: 12, padding: '14px 18px',
-            boxShadow: '0 2px 8px -4px rgba(249,115,22,.2)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                  background: 'linear-gradient(135deg, #F97316, #EA580C)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 4px 10px -4px rgba(249,115,22,.5)'
-                }}>
-                  <span style={{ fontSize: 18 }}>🎁</span>
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: '#C2410C', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-                    Portal Exclusive Offer{request.promotion.channel === 'BOTH' ? ' • Special Offer' : ''}
-                  </p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: '#7C2D12', margin: '3px 0 0', lineHeight: 1.35 }}>
-                    {request.promotion.name}{request.promotion.code ? ` • ${request.promotion.code}` : ''}
-                  </p>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ fontSize: 20, fontWeight: 800, color: '#C2410C', margin: 0, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>
-                  −{formatK(Number(request.discount_total || 0))}
-                </p>
-                <p style={{ fontSize: 10.5, fontWeight: 600, color: '#9A3412', margin: '2px 0 0' }}>Discount applied</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {isConverted && request.quotation_id && (
           <button
             onClick={() => navigate(`/portal/quotations/${request.quotation_id}`)}
@@ -373,28 +338,10 @@ const CustomerRequestDetail: React.FC = () => {
           </div>
           <div style={{ padding: '10px 14px', borderTop: '1px solid #E9EDF3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Subtotal</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1A202C', fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#1A202C', fontFamily: "'JetBrains Mono', monospace" }}>
               {formatK(request.subtotal)}
             </span>
           </div>
-          {request.promotion && Number(request.discount_total || 0) > 0 && (
-            <div style={{ padding: '8px 14px', borderTop: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFBEB' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#B45309' }}>
-                {request.promotion.code || request.promotion.name} discount
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#B45309', fontFamily: "'JetBrains Mono', monospace" }}>
-                −{formatK(Number(request.discount_total || 0))}
-              </span>
-            </div>
-          )}
-          {Number(request.total ?? request.subtotal ?? 0) > 0 && Number(request.discount_total || 0) > 0 && (
-            <div style={{ padding: '10px 14px', borderTop: '1px solid #E9EDF3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1A202C' }}>Total</span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: '#146b60', fontFamily: "'JetBrains Mono', monospace" }}>
-                {formatK(request.total)}
-              </span>
-            </div>
-          )}
         </div>
 
         <div style={{ ...card, padding: '16px 18px' }}>

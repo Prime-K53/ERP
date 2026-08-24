@@ -15,7 +15,7 @@ const EmptyState: React.FC<Props> = ({ icon, title, description, action, seconda
       <div className="glass-panel p-5 rounded-2xl mb-5 text-slate-400 inline-flex">
         {React.isValidElement(icon) ? icon : IconComponent ? <IconComponent.size size={36} /> : null}
       </div>
-      <h3 className="text-xl font-semibold text-slate-800 mb-1.5" style={{ fontFamily: "'Inter', sans-serif" }}>{title}</h3>
+      <h3 className="text-lg font-semibold text-slate-800 mb-1.5" style={{ fontFamily: "'Inter', sans-serif" }}>{title}</h3>
       {description && (
         <p className="text-sm text-slate-500 max-w-sm leading-relaxed mb-6" style={{ fontFamily: "'Inter', sans-serif", lineHeight: 1.6 }}>
           {description}

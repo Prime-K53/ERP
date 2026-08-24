@@ -1510,81 +1510,37 @@ const handleQuickPrintConfirm = (quantity: number, pagesPerCopy: number, total: 
       )}
 
       {quickReceiptSale && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(15, 23, 42, 0.6)', padding: '40px 20px',
-          fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: '#23282A', lineHeight: 1.5
-        }}>
-          <div style={{
-            width: 420, maxWidth: '100%', maxHeight: '92vh',
-            background: '#FEFDFB', borderRadius: 14,
-            boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '16px 20px 12px',
-              borderBottom: '1px solid #e4ddd1',
-              background: '#eef7f6'
-            }}>
-              <h2 style={{ fontSize: 13.5, fontWeight: 700, color: '#23282A', margin: 0, display: 'flex', alignItems: 'center', gap: 8, letterSpacing: 0.01 }}>
-                <CheckCircle size={16} style={{ color: '#1f8577' }} /> Sale Successful
-              </h2>
-              <button onClick={() => setQuickReceiptSale(null)} style={{ color: '#5c6567', background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color .15s ease' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#b5493f'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#5c6567'; }}
-              >
-                <X size={18} />
-              </button>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-[2px]">
+          <div className="bg-[#FEFDFB] w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col border border-[#e4ddd1]">
+            <div className="px-6 py-4 border-b border-[#e4ddd1] bg-[#eef7f6] flex justify-between items-center">
+              <h2 className="text-sm font-bold text-[#23282A] flex items-center gap-2 uppercase tracking-wider"><CheckCircle size={16} className="text-[#1f8577]" /> Sale Successful</h2>
+              <button onClick={() => setQuickReceiptSale(null)} className="text-[#5c6567] hover:text-[#b5493f]"><X size={20} /></button>
             </div>
-
-            {/* Body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 8px' }}>
-              <div style={{ textAlign: 'center', marginBottom: 18 }}>
-                <h1 style={{ fontSize: 20, fontWeight: 700, color: '#23282A', margin: '0 0 4px', letterSpacing: 0.2 }}>{companyConfig.companyName}</h1>
-                <p style={{ fontSize: 12, color: '#5c6567', margin: 0, fontWeight: 500 }}>Receipt #{quickReceiptSale.id}</p>
+            <div className="flex-1 overflow-y-auto p-8 bg-[#FEFDFB]" style={{ fontFamily: (() => { const s = resolvePrimeTemplateSettings(getStoredCompanyConfig()); return s.fontFamily === 'Helvetica' ? "'Helvetica', Arial, sans-serif" : s.fontFamily; })(), fontSize: 14, color: '#1E293B', lineHeight: 1.5 }}>
+              <div className="text-center border-b border-[#e4ddd1] pb-6 mb-6">
+                <h1 className="font-bold uppercase tracking-tight" style={{ fontSize: 18, color: '#23282A' }}>{companyConfig.companyName}</h1>
+                <p className="mt-1 font-medium" style={{ fontSize: 12, color: '#5c6567' }}>Receipt #{quickReceiptSale.id}</p>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                  <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Customer</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#23282A' }}>{quickReceiptSale.customerName || 'Walk-in'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                  <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Total Amount</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: '#23282A', fontVariantNumeric: 'tabular-nums' }}>{currency}{formatNumber(quickReceiptSale.totalAmount)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                  <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Paid Amount</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: '#23282A', fontVariantNumeric: 'tabular-nums' }}>{currency}{formatNumber(quickReceiptSale.cash_tendered || quickReceiptSale.totalAmount)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                  <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Change Due</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: '#1f8577', fontVariantNumeric: 'tabular-nums' }}>{currency}{formatNumber(quickReceiptSale.change_due || 0)}</span>
-                </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center"><span style={{ fontSize: 12, color: '#5c6567' }}>Customer</span><span className="font-bold" style={{ fontSize: 14, color: '#23282A' }}>{quickReceiptSale.customerName || 'Walk-in'}</span></div>
+                <div className="flex justify-between items-center"><span style={{ fontSize: 12, color: '#5c6567' }}>Total Amount</span><span className="font-bold" style={{ fontSize: 14, color: '#23282A' }}>{currency}{formatNumber(quickReceiptSale.totalAmount)}</span></div>
+                <div className="flex justify-between items-center"><span style={{ fontSize: 12, color: '#5c6567' }}>Paid Amount</span><span className="font-bold" style={{ fontSize: 14, color: '#23282A' }}>{currency}{formatNumber(quickReceiptSale.cash_tendered || quickReceiptSale.totalAmount)}</span></div>
+                <div className="flex justify-between items-center"><span style={{ fontSize: 12, color: '#5c6567' }}>Change Due</span><span className="font-bold" style={{ fontSize: 14, color: '#1f8577' }}>{currency}{formatNumber(quickReceiptSale.change_due || 0)}</span></div>
               </div>
             </div>
-
-            {/* Footer */}
-            <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid #e4ddd1', background: '#eef7f6' }}>
+            <div className="p-6 bg-[#eef7f6] border-t border-[#e4ddd1] flex gap-3">
               <button
                 onClick={() => {
                   const receiptData = buildValidatedPosReceipt(quickReceiptSale);
                   setQuickReceiptSale(null);
                   setPreviewState({ isOpen: true, type: 'POS_RECEIPT', data: receiptData });
                 }}
-                style={{ flex: 1, padding: '8px 12px', background: 'linear-gradient(155deg, #1f8577, #0f544c)', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, boxShadow: '0 6px 16px -6px rgba(15,84,76,.55)', transition: 'all .15s ease' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 20px -6px rgba(15,84,76,.65)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 16px -6px rgba(15,84,76,.55)'; }}
-              >
-                <FileText size={15} /> Full Receipt
+                className="flex-1 py-3 text-white rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm" style={{ background: 'linear-gradient(155deg, #1f8577, #0f544c)' }}>
+                <FileText size={16} /> Full Receipt
               </button>
               <button
                 onClick={() => setQuickReceiptSale(null)}
-                style={{ flex: 1, padding: '8px 12px', background: '#FEFDFB', border: '1.4px solid #e4ddd1', color: '#5c6567', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#eef7f6'; e.currentTarget.style.color = '#0f544c'; e.currentTarget.style.borderColor = '#a6d9d3'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#FEFDFB'; e.currentTarget.style.color = '#5c6567'; e.currentTarget.style.borderColor = '#e4ddd1'; }}
+                className="flex-1 py-3 bg-[#FEFDFB] border border-[#e4ddd1] text-[#5c6567] rounded-full font-bold text-sm hover:bg-[#eef7f6] transition-all shadow-sm"
               >
                 Done
               </button>

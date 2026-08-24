@@ -46,15 +46,29 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
     const isPaid = order.status === 'Paid';
 
     return (
-        <div className="sales-detail-backdrop" style={{ fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink }}>
-            <div className="sales-detail-panel">
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.6)',
+            padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
+        }}>
+            <div style={{
+                width: 960, maxWidth: '100%', maxHeight: '92vh',
+                background: paper, borderRadius: 14,
+                boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
+                display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
+            }}>
                 <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, height: 4,
                     background: `linear-gradient(90deg, ${teal[600]}, ${teal[400]} 40%, ${amber[500]} 100%)`
                 }} />
 
-                <div className="sales-detail-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '22px 28px 18px',
+                    borderBottom: `1px solid ${hairline}`, background: paper
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                         <div style={{
                             width: 40, height: 40, borderRadius: 10,
                             background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
@@ -63,13 +77,16 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                         }}>
                             <Package size={19} color="#fff" />
                         </div>
-                        <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                <h1 className="sales-detail-title">
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <h1 style={{
+                                    fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
+                                    fontSize: 22, margin: 0, color: teal[800], letterSpacing: 0.2
+                                }}>
                                     Order #{order.orderNumber}
                                 </h1>
                                 <span style={{
-                                    padding: '2px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, flexShrink: 0,
+                                    padding: '2px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
                                     background: order.status === 'Completed' || order.status === 'Paid' ? '#ecfdf5' :
                                         order.status === 'Partially Paid' ? amber[100] :
                                         order.status === 'Cancelled' ? '#fef2f2' :
@@ -82,17 +99,17 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                     {order.status}
                                 </span>
                             </div>
-                            <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                            <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02, display: 'flex', alignItems: 'center', gap: 12 }}>
                                 <span style={{ padding: '1px 6px', borderRadius: 4, background: teal[50], color: teal[700], fontWeight: 600 }}>{order.customerName}</span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> Placed {new Date(order.orderDate).toLocaleDateString()}</span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> Created by {order.createdBy}</span>
                             </p>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <button onClick={() => onEdit(order)}
                             style={{ padding: '8px 14px', borderRadius: 8, background: paper, border: `1.4px solid ${hairline}`, color: inkSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
-                            <Edit2 size={14} /> <span className="hidden sm:inline">Edit</span>
+                            <Edit2 size={14} /> Edit
                         </button>
                         <button onClick={onClose}
                             style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${hairline}`, background: paper, color: inkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -103,16 +120,22 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
 
                 <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                        <div className="sales-tabs">
+                        <div style={{ display: 'flex', borderBottom: `1px solid ${hairline}`, padding: '0 28px', background: paper, flexShrink: 0 }}>
                             {(['Overview', 'Payments', 'Activity'] as const).map(tab => (
                                 <button key={tab} onClick={() => setActiveTab(tab)}
-                                    className={`sales-tab ${activeTab === tab ? 'active' : ''}`}>
+                                    style={{
+                                        padding: '14px 16px 12px', fontSize: 12, fontWeight: 700, letterSpacing: 0.08, textTransform: 'uppercase',
+                                        background: 'transparent', border: 'none', cursor: 'pointer',
+                                        color: activeTab === tab ? teal[600] : inkSoft,
+                                        borderBottom: `2px solid ${activeTab === tab ? teal[500] : 'transparent'}`,
+                                        transition: 'all .15s ease'
+                                    }}>
                                     {tab}
                                 </button>
                             ))}
                         </div>
 
-                        <div className="sales-detail-content">
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 8px' }}>
                             {activeTab === 'Overview' && (
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
                                     <div style={{ borderRadius: 12, border: `1px solid ${hairline}`, overflow: 'hidden', background: paper }}>
@@ -135,15 +158,15 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                                                 <DocLink docNumber={item.productId} targetPage="/inventory" rowId={`item-${item.productId}`} currentPage={location.pathname} />
                                                             </div>
                                                         </td>
-                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 500, color: ink }}>{currency}{(item.unitPrice || 0).toLocaleString()}</td>
-                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: ink }}>{currency}{(item.subtotal || 0).toLocaleString()}</td>
+                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 500, color: ink }}>{currency}{item.unitPrice.toLocaleString()}</td>
+                                                        <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: ink }}>{currency}{item.subtotal.toLocaleString()}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
 
-                                    <div className="sales-grid-2">
+                                    <div className="grid grid-cols-2 gap-8">
                                         <div className="space-y-6">
                                             <div style={{ padding: 20, background: paper, borderRadius: 12, border: `1px solid ${hairline}` }}>
                                                 <h3 style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.06, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -175,21 +198,21 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                             {order.tax && order.tax > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,.6)', marginBottom: 8 }}>
                                                     <span>Tax ({order.taxRate}%)</span>
-                                                    <span>{currency}{(order.tax || 0).toLocaleString()}</span>
+                                                    <span>{currency}{order.tax.toLocaleString()}</span>
                                                 </div>
                                             )}
                                             <div style={{ height: 1, background: 'rgba(255,255,255,.1)', margin: '8px 0' }} />
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.08, color: amber[300] }}>Total Amount</span>
-                                                <span style={{ fontSize: 24, fontWeight: 800 }}>{currency}{(order.totalAmount || 0).toLocaleString()}</span>
+                                                <span style={{ fontSize: 24, fontWeight: 800 }}>{currency}{order.totalAmount.toLocaleString()}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
                                                 <span style={{ fontSize: 11, color: '#6ee7b7' }}>Paid Amount</span>
-                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#6ee7b7' }}>{currency}{(order.paidAmount || 0).toLocaleString()}</span>
+                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#6ee7b7' }}>{currency}{order.paidAmount.toLocaleString()}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
                                                 <span style={{ fontSize: 11, color: '#fca5a5' }}>Balance Due</span>
-                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#fca5a5' }}>{currency}{(order.remainingBalance || 0).toLocaleString()}</span>
+                                                <span style={{ fontSize: 16, fontWeight: 700, color: '#fca5a5' }}>{currency}{order.remainingBalance.toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -209,7 +232,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                                                             <DollarSign size={20} />
                                                         </div>
                                                         <div>
-                                                            <div style={{ fontWeight: 700, color: ink }}>{currency}{(payment.amountPaid || 0).toLocaleString()}</div>
+                                                            <div style={{ fontWeight: 700, color: ink }}>{currency}{payment.amountPaid.toLocaleString()}</div>
                                                             <div style={{ fontSize: 11, color: inkSoft, marginTop: 2 }}>via {payment.paymentMethod} &bull; {new Date(payment.paymentDate).toLocaleDateString()}</div>
                                                         </div>
                                                     </div>
@@ -233,7 +256,7 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                         </div>
                     </div>
 
-                    <div className="sales-desktop-actions" style={{ width: 260, flexShrink: 0, borderLeft: `1px solid ${hairline}`, padding: 16, background: teal[50], display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ width: 260, flexShrink: 0, borderLeft: `1px solid ${hairline}`, padding: 16, background: teal[50], display: 'flex', flexDirection: 'column', gap: 16 }}>
                         <div>
                             <h3 style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: inkSoft }}>Quick Actions</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -280,22 +303,11 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({ order: initialOrder,
                     </div>
                 </div>
 
-                <div className="sales-mobile-actions" style={{ flexWrap: 'wrap' }}>
-                    <button onClick={() => onAction(order, 'record_payment')} disabled={isCompleted || isPaid || isCancelled}
-                        style={{ flex: 1, minWidth: 120, padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`, color: '#fff', fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (isCompleted || isPaid || isCancelled) ? 0.5 : 1 }}>
-                        <DollarSign size={14} /> Pay
-                    </button>
-                    <button onClick={() => onAction(order, 'convert_to_invoice')} disabled={isCompleted || isCancelled}
-                        style={{ flex: 1, minWidth: 120, padding: '10px 12px', borderRadius: 8, border: `1.4px solid ${teal[200]}`, cursor: 'pointer', background: teal[50], color: teal[700], fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (isCompleted || isCancelled) ? 0.5 : 1 }}>
-                        <CheckCircle size={14} /> Invoice
-                    </button>
-                    <button onClick={() => onAction(order, 'preview_pdf')}
-                        style={{ padding: '10px 12px', borderRadius: 8, border: `1.4px solid ${hairline}`, cursor: 'pointer', background: paper, color: inkSoft, fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <Eye size={14} />
-                    </button>
-                </div>
-
-                <div className="sales-detail-footer">
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                    gap: 10, padding: '16px 28px',
+                    borderTop: `1px solid ${hairline}`, background: paper
+                }}>
                     <button type="button" onClick={onClose}
                         style={{
                             fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,

@@ -23,16 +23,6 @@ export const promotionPlugin: IEngagementPlugin = {
     const paidAmount = event.data?.paidAmount ?? event.data?.amount ?? 0
     if (paidAmount <= 0) return null
 
-    // Safety: if this invoice already carries a promotion snapshot (a portal
-    // order that was discounted server-side by the promotion engine), never
-    // apply a second client-side discount here.
-    const hasPortalPromotion = Boolean(
-      event.data?.promotion ||
-      event.data?.promotionApplied ||
-      (event.data?.items || []).some((i: any) => i.promotionId || i.promotionCode)
-    )
-    if (hasPortalPromotion) return null
-
     const settings = companyConfig?.engagementSettings
     const stackingRule = settings?.promotionDefaultStacking ?? 'best_only'
     const maxStacked = settings?.promotionMaxStacked ?? 3
@@ -50,10 +40,6 @@ export const promotionPlugin: IEngagementPlugin = {
 
       let applicablePromotions = allPromotions.filter((p: any) => {
         if (p.status !== 'active') return false
-        // PORTAL-channel promotions are applied server-side by the promotion
-        // engine at order creation. Skipping them here prevents double
-        // discounting on portal orders.
-        if (String(p.channel ?? p.channel ?? 'BOTH').toUpperCase() === 'PORTAL') return false
         if (p.startsAt && new Date(p.startsAt) > now) return false
         if (p.expiresAt && new Date(p.expiresAt) < now) return false
         if (p.maxUses > 0 && (p.currentUses ?? 0) >= p.maxUses) return false

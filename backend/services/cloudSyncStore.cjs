@@ -145,13 +145,6 @@ function sanitizeRecord(payload) {
   delete raw._version;
   delete raw.dependsOn;
   delete raw.deletedAt; // computed server-side for tombstones only
-  // Strip top-level sync metadata that lives in its own Supabase column.
-  // `version` and `updated_at` are top-level columns; storing them inside
-  // the `data` JSONB causes toCloudRecord() to read a stale value (from
-  // the JSONB) that overrides the fresh top-level column on the next pull.
-  delete raw.version;
-  delete raw.updated_at;
-  delete raw.created_at;
   return raw;
 }
 
@@ -178,84 +171,10 @@ async function listRows(table) {
   return out;
 }
 
-// ─── Sales order official-number minting ────────────────────────────────────
-// The canonical sales order number is backend-authoritative (`ORD-YYYY-######`).
-// Portal-created orders already get one server-side (portalLifecycleService).
-// Admin-created orders arrive here through the sync gateway with a provisional
-// or missing number, so the gateway mints the official number at write time.
-// Minting is idempotent: an already-official number in the payload is kept,
-// and a row that already carries an official number on the server is reused
-// (never re-minted) so retries cannot produce two numbers for one order.
-
-const SALES_ORDER_NUMBER_PATTERN = /^ORD-\d{4}-\d{6}$/;
-
-/**
- * Pure decision helper (unit-testable): returns the official number to use, or
- * null when one must be minted. `payloadNumber` is preferred; `rowNumber` is
- * the number already committed on the server (used for idempotent replays).
- */
-function pickSalesOrderNumber({ payload, rowNumber }) {
-  const has = (v) => typeof v === 'string' && v.trim().length > 0;
-  const data = payload && typeof payload === 'object' ? payload : {};
-  const payloadNumber = has(data.order_number)
-    ? data.order_number
-    : (has(data.orderNumber) && SALES_ORDER_NUMBER_PATTERN.test(data.orderNumber) ? data.orderNumber : null);
-  if (payloadNumber) return payloadNumber;
-  return has(rowNumber) ? rowNumber : null;
-}
-
-/**
- * Pure scanner (unit-testable): next sequence value across every committed
- * sales_orders row, reading both key spellings (`order_number` snake_case from
- * the portal, `orderNumber` camelCase from admin-synced records).
- */
-function nextSalesOrderNumber(rows) {
-  const year = new Date().getFullYear();
-  const prefixToken = `ORD-${year}-`;
-  let maxSeq = 0;
-  for (const row of rows || []) {
-    const data = row && typeof row === 'object'
-      ? (row.data && typeof row.data === 'object' ? row.data : row)
-      : {};
-    const value = String(data.order_number || data.orderNumber || '');
-    if (!value.startsWith(prefixToken)) continue;
-    const num = parseInt(value.slice(prefixToken.length), 10);
-    if (Number.isFinite(num) && num > maxSeq) maxSeq = num;
-  }
-  return `${prefixToken}${String(maxSeq + 1).padStart(6, '0')}`;
-}
-
-/**
- * Resolve the official sales order number for an incoming upsert. Returns the
- * number to stamp onto the payload, or null when the payload already carries a
- * settled official number (in which case nothing needs to be injected).
- * Never throws — the gateway must not block a business write on numbering.
- */
-async function ensureSalesOrderNumber(payload) {
-  const settled = pickSalesOrderNumber({ payload, rowNumber: null });
-  if (settled) return settled;
-  let rowNumber = null;
-  try {
-    const existing = await getRow('sales_orders', payload.id);
-    rowNumber = existing && existing.data && typeof existing.data === 'object'
-      ? (existing.data.order_number || existing.data.orderNumber || null)
-      : null;
-  } catch { /* row missing or cloud unreachable — mint below */ }
-  const fromRow = pickSalesOrderNumber({ payload: {}, rowNumber });
-  if (fromRow) return fromRow;
-  const rows = await listRows('sales_orders');
-  return nextSalesOrderNumber(rows);
-}
-
 /**
  * Read the current server row and compare it against the version the client
  * based its edit on. Returns either the matched row (the write can proceed)
  * or a structured conflict payload so the client can field-merge immediately.
- *
- * NOTE: This function is retained for backward compatibility with any code
- * that still calls it directly. The primary upsert path now uses atomic
- * conditional PATCH (see upsertRow / softDeleteRow) which eliminates the
- * race window between this read and the subsequent write.
  */
 async function checkVersion(table, id, incomingVersion) {
   if (!Number.isFinite(incomingVersion)) return { ok: true, serverVersion: 0 };
@@ -287,130 +206,54 @@ function conflictServerPayload(id, existing, serverVersion) {
  * Upsert a row: `{ id, data: <domain fields>, updated_at }`.
  * Numeric `version` is the optimistic-lock precondition.
  *
- * B6: The version check and write are now a SINGLE atomic database operation.
- * When the payload carries a base version, we issue:
- *   PATCH /rest/v1/<table>?id=eq.<id>&version=eq.<expected>
- *   Body: { data, version: expected+1, updated_at }
- * If zero rows are updated, the version moved → conflict. No separate read.
+ * When the payload carries a base version, the gateway reads the current row
+ * and rejects the write with a conflict payload if the stored version moved
+ * (concurrent edit from another device). Accepted writes bump the stored
+ * version monotonically (server-stamped), so a stale client can never
+ * silently overwrite a newer row — it gets a mergeable conflict instead.
  *
  * Writes WITHOUT a version are only allowed as genuine creates (no existing
  * row): the server stamps `version: 1` so later edits have a base. If the row
  * already exists — including a soft-deleted tombstone — the write is rejected
- * as a `version_required` conflict.
+ * as a `version_required` conflict. This closes the two legacy hazards of
+ * unconditional last-write-wins: a stale client clobbering newer server state,
+ * and a bare payload re-animating a row another device soft-deleted.
  */
 async function upsertRow(table, id, payload, serverNow = new Date().toISOString()) {
   const domain = sanitizeRecord(payload);
   const incomingVersion = Number(payload._version ?? payload.version);
 
-  console.log(`[SYNC-FORENSIC] STAGE-13 cloudSyncStore.upsertRow()`, {
-    table, id, incomingVersion, hasDomain: !!domain,
-  });
-
-  // B6: Atomic versioned write — single PATCH with WHERE version = expected.
   if (Number.isFinite(incomingVersion)) {
+    const gate = await checkVersion(table, id, incomingVersion);
+    if (!gate.ok) {
+      return { id, conflicted: true, conflictType: gate.conflictType, server: gate.server };
+    }
     const row = {
+      id,
       data: domain,
       updated_at: serverNow,
-      version: incomingVersion + 1,
+      version: gate.serverVersion + 1,
     };
-    try {
-      const res = await cloudHttp.patch(`${SUPABASE_URL}/rest/v1/${table}`, row, {
-        headers: adminHeaders(),
-        params: { id: `eq.${id}`, version: `eq.${incomingVersion}` },
-        timeout: 20000,
-      });
-      // PostgREST returns the updated rows as an array. Empty = conflict.
-      const updated = Array.isArray(res.data) ? res.data : [];
-      if (updated.length === 0) {
-        // Version mismatch — another client changed the row. Fetch current
-        // snapshot so the client can field-merge without an extra round-trip.
-        const existing = await getRow(table, id);
-        const serverVersion = existing?.version != null ? Number(existing.version) : 0;
-
-        // The row does not exist at all — this is a CREATE, not an update.
-        // An atomic PATCH cannot match a non-existent row (WHERE version = N
-        // matches nothing), so without this a brand-new row stamped with an
-        // initial version would be misreported as a version conflict and never
-        // inserted. Insert it with the initial version, mirroring the
-        // tombstone-resurrection / unversioned-create POST below.
-        if (!existing) {
-          const createdRow = { id, data: domain, updated_at: serverNow, version: 1 };
-          console.log(`[SYNC-FORENSIC] STAGE-13 atomic PATCH 0 rows + row absent → INSERT (create)`, {
-            table, id,
-          });
-          const created = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, createdRow, {
-            headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
-            params: { on_conflict: 'id' },
-            timeout: 20000,
-          });
-          const saved = Array.isArray(created.data) ? (created.data[0] || null) : created.data;
-          return {
-            id: saved?.id || id,
-            updatedAt: saved?.updated_at || serverNow,
-            createdAt: saved?.created_at || null,
-            version: saved?.version != null ? Number(saved.version) : 1,
-          };
-        }
-
-        console.log(`[SYNC-FORENSIC] STAGE-13 OCC conflict (atomic PATCH, 0 rows)`, {
-          table, id, incomingVersion, serverVersion,
-        });
-        return {
-          id,
-          conflicted: true,
-          conflictType: 'version_conflict',
-          serverVersion,
-          server: conflictServerPayload(id, existing, serverVersion),
-        };
-      }
-      const saved = updated[0];
-      console.log(`[SYNC-FORENSIC] STAGE-13 atomic PATCH OK`, {
-        table, id, savedVersion: saved?.version, savedId: saved?.id,
-      });
-      return {
-        id: saved?.id || id,
-        updatedAt: saved?.updated_at || serverNow,
-        createdAt: saved?.created_at || null,
-        version: saved?.version != null ? Number(saved.version) : (incomingVersion + 1),
-      };
-    } catch (err) {
-      // axios throws on non-2xx; a 0-row PATCH returns 200 (not thrown).
-      // Any thrown error here is a real transport/cloud failure.
-      throw err;
-    }
+    const res = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, row, {
+      headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
+      params: { on_conflict: 'id' },
+      timeout: 20000,
+    });
+    const saved = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
+    return {
+      id: saved?.id || id,
+      updatedAt: saved?.updated_at || serverNow,
+      createdAt: saved?.created_at || null,
+      version: saved?.version != null ? Number(saved.version) : (gate.serverVersion + 1),
+    };
   }
 
   // No version supplied. An existing row — live or tombstoned — must not be
   // overwritten unconditionally; return it as a `version_required` conflict
   // so the client merges against the current snapshot and retries with a base.
-  // Exception: tombstoned rows with a version are treated as resurrection intent.
   const existing = await getRow(table, id);
   if (existing) {
-    const isTombstone = existing.data && typeof existing.data === 'object'
-      && (existing.data.deleted === true || existing.data.deletedAt);
     const serverVersion = existing.version != null ? Number(existing.version) : 0;
-
-    if (isTombstone && Number.isFinite(incomingVersion)) {
-      // Tombstone resurrection with version: overwrite the tombstone.
-      const row = { id, data: domain, updated_at: serverNow, version: serverVersion + 1 };
-      console.log(`[SYNC-FORENSIC] STAGE-13 cloudSyncStore.upsertRow() TOMBSTONE RESURRECT`, {
-        table, id, serverVersion, newVersion: serverVersion + 1,
-      });
-      const res = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, row, {
-        headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
-        params: { on_conflict: 'id' },
-        timeout: 20000,
-      });
-      const saved = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
-      return {
-        id: saved?.id || id,
-        updatedAt: saved?.updated_at || serverNow,
-        createdAt: saved?.created_at || null,
-        version: saved?.version != null ? Number(saved.version) : (serverVersion + 1),
-      };
-    }
-
-    // Unversioned write on existing row (live or tombstone) → version_required.
     return {
       id,
       conflicted: true,
@@ -422,18 +265,12 @@ async function upsertRow(table, id, payload, serverNow = new Date().toISOString(
 
   // Genuine create: no row exists, so stamp the initial version.
   const row = { id, data: domain, updated_at: serverNow, version: 1 };
-  console.log(`[SYNC-FORENSIC] STAGE-13 Supabase upsert NEW RECORD (no version)`, {
-    table, id,
-  });
   const res = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, row, {
     headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
     params: { on_conflict: 'id' },
     timeout: 20000,
   });
   const saved = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
-  console.log(`[SYNC-FORENSIC] STAGE-13 Supabase upsert OK (new record v1)`, {
-    table, id, savedVersion: saved?.version, savedId: saved?.id,
-  });
   return {
     id: saved?.id || id,
     updatedAt: saved?.updated_at || serverNow,
@@ -446,61 +283,33 @@ async function upsertRow(table, id, payload, serverNow = new Date().toISOString(
  * Soft-delete a row by writing a tombstone into `data`. The physical row is
  * kept so realtime subscribers on other devices observe the deletion as an
  * UPDATE and can reconcile their local caches.
- *
- * B6: The read-then-write is now a single atomic PATCH with a version
- * precondition. The base data is preserved in the `data` JSONB column while
- * tombstone flags are merged in and the version is bumped.
  */
 async function softDeleteRow(table, id, serverNow = new Date().toISOString()) {
-  // Read the current row to preserve its data payload under the tombstone.
-  // This read is for data preservation only; the version check is enforced
-  // atomically by the subsequent conditional PATCH.
   const existing = await getRow(table, id);
-  const base = existing && existing.data && typeof existing.data === 'object' ? { ...existing.data } : {};
-  const baseVersion = existing?.version != null ? Number(existing.version) : 0;
+  const base = existing && existing.data && typeof existing.data === 'object' ? existing.data : {};
 
-  const tombstoneData = { ...base, deleted: true, deletedAt: serverNow };
-
-  // B6: Atomic conditional PATCH — version must still match.
   const row = {
     id,
-    data: tombstoneData,
+    data: { ...base, deleted: true, deletedAt: serverNow, ...(existing?.data ? {} : {}) },
     updated_at: serverNow,
-    version: baseVersion + 1,
   };
-  try {
-    const res = await cloudHttp.patch(`${SUPABASE_URL}/rest/v1/${table}`, row, {
-      headers: adminHeaders(),
-      params: { id: `eq.${id}`, version: `eq.${baseVersion}` },
-      timeout: 20000,
-    });
-    const updated = Array.isArray(res.data) ? res.data : [];
-    if (updated.length === 0) {
-      // Version mismatch — another client changed the row. Surface as conflict.
-      return { id, conflicted: true, conflictType: 'version_conflict', serverVersion: baseVersion };
-    }
-    const saved = updated[0];
-    return {
-      id: saved?.id || id,
-      updatedAt: saved?.updated_at || serverNow,
-      deleted: true,
-    };
-  } catch (err) {
-    // Fallback: if the atomic PATCH fails for a reason other than version
-    // mismatch (e.g. row was hard-deleted), fall through to the legacy
-    // upsert path so tombstones can still be written.
-    const res = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, row, {
-      headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
-      params: { on_conflict: 'id' },
-      timeout: 20000,
-    });
-    const saved = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
-    return {
-      id: saved?.id || id,
-      updatedAt: saved?.updated_at || serverNow,
-      deleted: true,
-    };
-  }
+  // Deletes win: stamp the next version so any concurrently queued upsert on a
+  // stale base is rejected and the client re-merges (or observes the tombstone).
+  const baseVersion = existing?.version != null ? Number(existing.version) : 0;
+  row.version = baseVersion + 1;
+
+  const res = await cloudHttp.post(`${SUPABASE_URL}/rest/v1/${table}`, row, {
+    headers: { ...adminHeaders(), Prefer: 'resolution=merge-duplicates,return=representation' },
+    params: { on_conflict: 'id' },
+    timeout: 20000,
+  });
+
+  const saved = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
+  return {
+    id: saved?.id || id,
+    updatedAt: saved?.updated_at || serverNow,
+    deleted: true,
+  };
 }
 
 // ─── tombstone lifecycle ────────────────────────────────────────────────────
@@ -607,11 +416,6 @@ async function purgeTombstones(table, retentionDays, archiveFn = null) {
  */
 async function applyOp(op) {
   const { operationId, table, recordId, operation, payload } = op || {};
-  console.log(`[SYNC-FORENSIC] STAGE-12 cloudSyncStore.applyOp()`, {
-    table, recordId, operation, operationId,
-    hasPayload: !!payload,
-    payloadKeys: payload ? Object.keys(payload).slice(0, 10) : [],
-  });
   if (!table || typeof table !== 'string') {
     return { operationId, ok: false, error: 'table is required', retryable: false };
   }
@@ -647,19 +451,6 @@ async function applyOp(op) {
       if (!id) {
         return { operationId, ok: false, error: 'recordId or payload.id is required for upsert', retryable: false };
       }
-      if (table === 'sales_orders' && payload && typeof payload === 'object') {
-        try {
-          const officialNumber = await ensureSalesOrderNumber(payload);
-          if (officialNumber) {
-            payload.order_number = officialNumber;
-            console.log(`[cloudSyncStore] sales_orders ${id} official number: ${officialNumber}`);
-          }
-        } catch (mintErr) {
-          // Numbering must never block the business write — the row is saved
-          // without an official number and the next push re-runs the mint.
-          console.warn(`[cloudSyncStore] sales_orders ${id} number mint skipped:`, mintErr?.message || mintErr);
-        }
-      }
       result = await upsertRow(table, id, payload);
     }
 
@@ -690,29 +481,9 @@ async function applyOp(op) {
     const status = err?.response?.status;
     const detail = err?.response?.data ? (typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data)) : '';
     const message = err?.message || String(err);
+    const isRetryable = status === 409 || status >= 500 || !status;
+    // Harden: any cloud-side rejection surfaces a stable, short error string.
     const normalized = detail && detail.length < 300 ? detail : message;
-
-    // B8: Granular error classification. Only genuinely transient failures are
-    // retryable; schema/authorization/constraint errors are dead-lettered.
-    let isRetryable;
-    if (!status) {
-      // No HTTP status → network-level failure (DNS, timeout, connection reset)
-      isRetryable = true;
-    } else if (status === 429) {
-      // Rate limiting — caller should back off and retry
-      isRetryable = true;
-    } else if (status >= 500) {
-      // Server-side error — may be transient (overload, restart, etc.)
-      isRetryable = true;
-    } else if (status === 409) {
-      // Conflict — OCC version mismatch or unique constraint
-      isRetryable = true;
-    } else {
-      // 4xx (except 409/429): schema errors (PGRST204/PGRST205), authorization
-      // failures, constraint violations, bad requests → non-retryable.
-      isRetryable = false;
-    }
-
     console.warn(`[cloudSyncStore] ${operation} ${table}/${recordId} failed (${status || 'network'}): ${normalized}`);
     return { operationId, ok: false, id: recordId, error: normalized, retryable: isRetryable };
   }
@@ -730,6 +501,4 @@ module.exports = {
   recordIdempotency,
   countTombstones,
   purgeTombstones,
-  pickSalesOrderNumber,
-  nextSalesOrderNumber,
 };

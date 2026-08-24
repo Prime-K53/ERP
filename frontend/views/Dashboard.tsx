@@ -14,7 +14,7 @@ import {
   Briefcase, Users, ChevronDown, User,
   MessageSquare, Calculator, FileText, Zap, ArrowRight, ChevronRight,
   Sparkles, Database, BarChart2, X, ArrowUp, ArrowDown, Building2,
-  Star, Inbox, Calendar, CalendarDays, Check, Download } from 'lucide-react';
+  Star, Sun, Calendar, CalendarDays, Check, Download } from 'lucide-react';
 import WhatsAppMarketingModal from '../components/WhatsAppMarketingModal';
 import { adminLifecycle } from '../services/adminPortalClient';
 
@@ -428,7 +428,6 @@ const SlidingInfoCard = ({ slides, compact, animDelay = 0 }: { slides: any[], co
   const routeMap: Record<string, string> = {
     'Active Jobs': '/industrial/shop-floor',
     'Subscription': '/sales-flow/subscriptions',
-    'Portal Requests': '/sales-flow/requests',
   };
 
   const handleCardClick = () => {
@@ -682,20 +681,24 @@ const DashboardContent: React.FC = () => {
   const displayCompanyName = rawCompanyName.split(' ').slice(0, 2).join(' ');
 
   const [isLoading, setIsLoading] = useState(true);
+  const [weather] = useState(() => {
+    const hour = new Date().getHours();
+    const isNight = hour < 6 || hour > 18;
+    const baseTemp = isNight ? 18 : 24;
+    const temp = baseTemp + Math.floor(Math.random() * 7);
+    const conditions = isNight ? ['Clear Skies', 'Cool Breeze', 'Quiet Night'] : ['Sunny', 'Partly Cloudy', 'Bright Day'];
+    return { temp: `${temp}°C`, cond: conditions[Math.floor(Math.random() * conditions.length)] };
+  });
   const [chartData, setChartData]   = useState<any[]>([]);
   const [activePeriod, setActivePeriod] = useState<string>('Year');
   const [requestAnalytics, setRequestAnalytics] = useState<any>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const loadAnalytics = () => {
-      adminLifecycle.analytics.get()
-        .then((data) => { if (!cancelled) setRequestAnalytics(data); })
-        .catch(() => {});
-    };
-    loadAnalytics();
-    const timer = setInterval(loadAnalytics, 60000);
-    return () => { cancelled = true; clearInterval(timer); };
+    adminLifecycle.analytics.get()
+      .then((data) => { if (!cancelled) setRequestAnalytics(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const finYearStart = companyConfig?.financialYearStart || 'January';
@@ -990,43 +993,28 @@ const DashboardContent: React.FC = () => {
       )
     },
     {
-      label: 'Portal Requests', color: '#0ea5e9', icon: <Inbox size={20} />,
-      render: (compact: boolean) => {
-        const r = requestAnalytics || {};
-        const reqs = r.requests || {};
-        // New/available requests from the customer portal awaiting action.
-        const pendingReview = (reqs.submitted || 0) + (reqs.assigned || 0) + (reqs.under_review || 0) + (reqs.waiting_for_customer || 0) + (reqs.ready_for_conversion || 0);
-        const types = r.requestTypes || {};
-        const openQuotations = types.quotation || 0;
-        const openOrders = types.order || 0;
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>PORTAL REQUESTS</div>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9', flexShrink: 0 }}><Inbox size={16} /></div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1 }}>{pendingReview}</div>
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500, marginTop: 4 }}>New requests awaiting review</div>
-            </div>
-            <div style={{ height: '1px', backgroundColor: 'rgba(0,0,0,0.06)', width: '100%', margin: '2px 0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#1e293b' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#0ea5e9' }} />
-                Quotation requests
-              </div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '1px 8px', borderRadius: 6 }}>{openQuotations}</div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#1e293b' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#f59e0b' }} />
-                Order requests
-              </div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#b45309', backgroundColor: '#fffbeb', padding: '1px 8px', borderRadius: 6 }}>{openOrders}</div>
-            </div>
+      label: `Weather · ${companyConfig?.city || 'Blantyre'}`, color: '#0ea5e9', icon: <Sun size={20} />,
+      render: (compact: boolean) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>WEATHER · {companyConfig?.city?.toUpperCase() || 'BLANTYRE'}</div>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9', flexShrink: 0 }}><Sun size={16} fill="currentColor" /></div>
           </div>
-        );
-      }
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1 }}>{weather.temp}</div>
+            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500, marginTop: 4 }}>{weather.cond} · {companyConfig?.city || 'Local area'}</div>
+          </div>
+          <div style={{ height: '1px', backgroundColor: 'rgba(0,0,0,0.06)', width: '100%', margin: '2px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Afternoon</div>
+            <div style={{ fontSize: 11, color: '#0f172a', fontWeight: 700 }}>{weather.temp} · High</div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Condition</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', backgroundColor: '#f0fdf4', padding: '1px 8px', borderRadius: 6 }}>Stable</div>
+          </div>
+        </div>
+      )
     },
   ];
 
@@ -1149,25 +1137,15 @@ const DashboardContent: React.FC = () => {
              <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 30, color: '#0b3e39', letterSpacing: '0.2px', lineHeight: 1.2, fontWeight: 400 }}>
                {format(new Date(), isMobile ? 'EEE, MMM d' : 'EEEE, MMMM d, yyyy')}
              </div>
-              <div style={{ fontSize: 13, color: '#5c6567', fontWeight: 500 }}>Here's what's happening with your business today.</div>
-            </div>
-           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-             {requestAnalytics && (() => {
-               const reqs = requestAnalytics.requests || {};
-               const pendingReview = (reqs.submitted || 0) + (reqs.assigned || 0) + (reqs.under_review || 0) + (reqs.waiting_for_customer || 0) + (reqs.ready_for_conversion || 0);
-               if (pendingReview === 0) return null;
-               return (
-                 <button onClick={() => navigate('/sales-flow/requests')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all .15s ease', whiteSpace: 'nowrap' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.transform = 'translateY(0)'; }}>
-                   <Inbox size={14} /> Needs Attention: {pendingReview} request{pendingReview !== 1 ? 's' : ''} awaiting review <ArrowRight size={14} />
-                 </button>
-               );
-             })()}
-             <button onClick={() => navigate('/reports')} style={{
-               background: 'linear-gradient(160deg, #3fa294, #0f544c)', color: '#fff', padding: '10px 20px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s ease', boxShadow: '0 1px 2px rgba(11,62,57,.15)', whiteSpace: 'nowrap',
-             }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(11,62,57,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,62,57,.15)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
-               {isMobile ? 'Reports' : 'View Detailed Reports'}
-             </button>
+             <div style={{ fontSize: 13, color: '#5c6567', fontWeight: 500 }}>Here's what's happening with your business today.</div>
            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => navigate('/reports')} style={{
+              background: 'linear-gradient(160deg, #3fa294, #0f544c)', color: '#fff', padding: '10px 20px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s ease', boxShadow: '0 1px 2px rgba(11,62,57,.15)', whiteSpace: 'nowrap',
+            }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(11,62,57,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }} onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,62,57,.15)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+              {isMobile ? 'Reports' : 'View Detailed Reports'}
+            </button>
+          </div>
         </div>
 
         <div style={{

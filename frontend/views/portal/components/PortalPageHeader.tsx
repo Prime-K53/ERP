@@ -28,7 +28,7 @@ const PortalPageHeader: React.FC<Props> = ({
 }) => {
   return (
     <div
-      className="glass-panel-premium rounded-2xl p-4 flex items-center justify-between flex-wrap gap-4 border border-slate-200/80 shadow-xs mb-5"
+      className="glass-panel-premium rounded-2xl p-5 md:p-6 flex items-center justify-between flex-wrap gap-4 border border-slate-200/80 shadow-xs mb-6"
       style={style}
     >
       <div className="flex items-center gap-3.5 min-w-0">

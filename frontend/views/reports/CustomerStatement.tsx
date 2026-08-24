@@ -10,7 +10,6 @@ import {
   ChevronDown, FileSpreadsheet, Landmark
 } from 'lucide-react';
 import { currencyService } from '../../services/currencyService';
-import { buildLedgerFromRecords } from '../../services/customerLedger';
 import { exportToCSV } from '../../utils/helpers';
 
 interface StatementTransaction {
@@ -72,58 +71,68 @@ const CustomerStatement: React.FC = () => {
       .reduce((sum: number, inv: any) => sum + (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0), 0);
   }, [customerInvoices]);
 
-  // Canonical ledger — single authoritative definition shared with the
-  // backend. Replaces the component-private totals/running-balance math.
-  const canonicalLedger = useMemo(
-    () => buildLedgerFromRecords({ customerId: selectedCustomerId, invoices: customerInvoices, payments: customerPaymentsList }),
-    [selectedCustomerId, customerInvoices, customerPaymentsList]
-  );
-
-  const outstandingBalance = useMemo(
-    () => canonicalLedger.outstandingBalance,
-    [canonicalLedger]
-  );
+  const outstandingBalance = useMemo(() => {
+    const totalInvoiced = customerInvoices
+      .filter((inv: any) => !['cancelled', 'void', 'draft'].includes((inv.status || '').toLowerCase()))
+      .reduce((sum: number, inv: any) => sum + (Number(inv.totalAmount) || 0), 0);
+    const totalPaid = customerPaymentsList
+      .filter((p: any) => p.status !== 'Cancelled' && p.status !== 'Void')
+      .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    return totalInvoiced - totalPaid;
+  }, [customerInvoices, customerPaymentsList]);
 
   const openingBalance = 0;
 
   const statementTransactions = useMemo(() => {
-    // Canonical ledger (services/customerLedger.ts): validated inclusion
-    // rules, debit−credit convention, deterministic ordering. Display rows
-    // are derived from it — never recomputed locally.
-    const invMeta = new Map(customerInvoices.map((inv: any) => [String(inv.id), inv]));
-    const payMeta = new Map(customerPaymentsList.map((p: any) => [String(p.id), p]));
+    const txs: StatementTransaction[] = [];
 
-    const txs: StatementTransaction[] = canonicalLedger.transactions.map(tx => {
-      const meta: any = tx.type === 'payment' ? payMeta.get(tx.id) : invMeta.get(tx.id);
-      const status = String(meta?.status || (tx.type === 'payment' ? 'completed' : '')).toLowerCase();
-      const payStatus = tx.type === 'payment'
-        ? (status === 'refund' ? 'REFUND' : 'PAYMENT')
-        : (tx.type === 'credit_note' ? 'CREDIT_NOTE' : 'INVOICE');
-      return {
-        id: tx.id,
-        date: tx.date || '',
-        docNumber: tx.type === 'payment'
-          ? (meta?.receiptNumber || tx.id)
-          : (meta?.invoiceNumber || tx.id),
-        reference: tx.type === 'payment' ? (meta?.invoiceId || meta?.reference || '') : (meta?.reference || meta?.orderNumber || ''),
-        description: tx.description,
-        debit: tx.debit,
-        credit: tx.credit,
-        runningBalance: tx.balance,
-        dueDate: meta?.dueDate,
+    customerInvoices.forEach((inv: any) => {
+      const invDate = inv.date || inv.createdAt || '';
+      if (dateCutoff && new Date(invDate) < dateCutoff) return;
+      const status = (inv.status || 'draft').toLowerCase();
+      txs.push({
+        id: inv.id,
+        date: invDate,
+        docNumber: inv.invoiceNumber || inv.id,
+        reference: inv.reference || inv.orderNumber || '',
+        description: inv.notes || inv.documentTitle || `Invoice ${inv.invoiceNumber || inv.id}`,
+        debit: Number(inv.totalAmount) || 0,
+        credit: 0,
+        runningBalance: 0,
+        dueDate: inv.dueDate,
         status: status.charAt(0).toUpperCase() + status.slice(1),
-        type: payStatus as StatementTransaction['type'],
-      };
+        type: status === 'credit_note' ? 'CREDIT_NOTE' : 'INVOICE',
+      });
     });
 
-    // The date range filters DISPLAY only — running balances stay true
-    // (computed over the full canonical history).
-    const visible = dateCutoff
-      ? txs.filter(tx => tx.date && new Date(tx.date) >= dateCutoff)
-      : txs;
+    customerPaymentsList.forEach((p: any) => {
+      const pDate = p.date || p.createdAt || '';
+      if (dateCutoff && new Date(pDate) < dateCutoff) return;
+      const status = (p.status || 'completed').toLowerCase();
+      txs.push({
+        id: p.id,
+        date: pDate,
+        docNumber: p.receiptNumber || p.id,
+        reference: p.invoiceId || p.reference || '',
+        description: p.description || p.notes || `Payment received`,
+        debit: 0,
+        credit: Number(p.amount) || 0,
+        runningBalance: 0,
+        status: status.charAt(0).toUpperCase() + status.slice(1),
+        type: status === 'refund' ? 'REFUND' : 'PAYMENT',
+      });
+    });
 
-    return visible.reverse();
-  }, [canonicalLedger, customerInvoices, customerPaymentsList, dateCutoff]);
+    txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let running = openingBalance;
+    txs.forEach(tx => {
+      running += tx.credit - tx.debit;
+      tx.runningBalance = running;
+    });
+
+    return txs.reverse();
+  }, [customerInvoices, customerPaymentsList, dateCutoff, openingBalance]);
 
   const filteredTx = useMemo(() => {
     let result = statementTransactions;
@@ -151,10 +160,7 @@ const CustomerStatement: React.FC = () => {
 
   const totalPayments = useMemo(() =>
     customerPaymentsList
-      .filter((p: any) => {
-        const s = String(p.status || '').toLowerCase();
-        return s !== 'cancelled' && s !== 'voided' && s !== 'void';
-      })
+      .filter((p: any) => p.status !== 'Cancelled' && p.status !== 'Void')
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0), [customerPaymentsList]);
 
   const totalCreditNotes = useMemo(() =>

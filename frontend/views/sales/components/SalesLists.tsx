@@ -5,15 +5,13 @@ import { DocLink } from '../../../components/DocLink';
 import { useDocumentPreview } from '../../../hooks/useDocumentPreview';
 import { useAuth } from '../../../context/AuthContext';
 import { Quotation, Invoice, JobOrder, RecurringInvoice, DeliveryNote, CartItem, SalesExchange, Order } from '../../../types';
-import { AdminQuotationRequest } from '../../../services/adminPortalClient';
 import { WhatsAppLogo } from '../../../components/Icons';
 import { usePagination } from '../../../hooks/usePagination';
 import Pagination from '../../../components/Pagination';
 import { OfflineImage } from '../../../components/OfflineImage';
 import { mapToInvoiceData } from '../../../utils/pdfMapper';
 import { resolveTransactionPricingSummary } from '../../../utils/pricingBreakdown';
-import { formatDate } from '../../../utils/formatters';
-import { Edit2, Trash2, Star, List, LayoutGrid, CheckCircle, Check, Clock, User, Calendar, Box, Eye, Send, Copy, Plus, Phone, ChevronRight, FileText, FileCheck, Briefcase, Mail, MessageCircle, Repeat, XCircle, Archive, History as HistoryIcon, Users, RefreshCw, ArrowUp, ArrowDown, Link as LinkIcon, Paperclip, CalendarClock, AlertTriangle, Download, Truck, MoreVertical, Play, Pause, Package, Globe, DollarSign, TrendingUp, Zap, Target, Share2, ExternalLink, PlayCircle, Coins, Wallet, ShoppingBag, Printer, Search, X, ArrowUpRight, MessageSquare } from 'lucide-react';
+import { Edit2, Trash2, Star, List, LayoutGrid, CheckCircle, Check, Clock, User, Calendar, Box, Eye, Send, Copy, Plus, Phone, ChevronRight, FileText, FileCheck, Briefcase, Mail, MessageCircle, Repeat, XCircle, Archive, History as HistoryIcon, Users, RefreshCw, ArrowUp, ArrowDown, Link as LinkIcon, Paperclip, CalendarClock, AlertTriangle, Download, Truck, MoreVertical, Play, Pause, Package, Globe, DollarSign, TrendingUp, Zap, Target, Share2, ExternalLink, PlayCircle, Coins, Wallet, ShoppingBag, Printer, Search, X } from 'lucide-react';
 import { TableEmptyState } from '../../../components/EmptyState';
 
 const paper = '#FEFDFB', ink = '#23282A', inkSoft = '#5c6567', hairline = '#e4ddd1';
@@ -276,16 +274,16 @@ export const SalesOrderList: React.FC<ListProps<JobOrder>> = (props) => {
                 </div>
             ) : (
                 <div className="bg-[#FEFDFB] border border-[#e4ddd1] rounded-2xl shadow-sm overflow-hidden flex-1 flex flex-col">
-                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
-                        <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        <table className="w-full min-w-[640px] text-left text-[13px] table-fixed">
                             <thead className="bg-[#eef7f6] text-[#5c6567] sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%]">Order No.</SortableTh>
-                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%] hidden sm:table-cell">Date</SortableTh>
-                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%]">Customer</SortableTh>
-                                    <SortableTh field="jobTitle" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%] hidden md:table-cell">Title</SortableTh>
-                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[16.66%]">Status</SortableTh>
-                                    <th className="table-header text-center md:w-[16.66%]">Actions</th>
+                                    <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Order No.</SortableTh>
+                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Date</SortableTh>
+                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Customer</SortableTh>
+                                    <SortableTh field="jobTitle" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Title</SortableTh>
+                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[16.66%]">Status</SortableTh>
+                                    <th className="table-header text-center w-[16.66%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#e4ddd1]/50">
@@ -308,14 +306,9 @@ export const SalesOrderList: React.FC<ListProps<JobOrder>> = (props) => {
                                                 currentPage={location.pathname}
                                             />
                                         </td>
-                                        <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{new Date(o.date).toLocaleDateString()}</td>
-                                        <td className="table-body-cell text-left font-medium text-[#23282A] truncate">
-                                            {o.customerName}
-                                            <span className="block text-[10px] font-normal text-[#5c6567] md:hidden mt-0.5 truncate">
-                                                {new Date(o.date).toLocaleDateString()} · {o.jobTitle}
-                                            </span>
-                                        </td>
-                                        <td className="table-body-cell text-left font-normal truncate hidden md:table-cell">{o.jobTitle}</td>
+                                        <td className="table-body-cell text-left font-normal truncate">{new Date(o.date).toLocaleDateString()}</td>
+                                        <td className="table-body-cell text-left font-medium text-[#23282A] truncate">{o.customerName}</td>
+                                        <td className="table-body-cell text-left font-normal truncate">{o.jobTitle}</td>
                                         <td className="table-body-cell text-center">
                                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${o.status === 'Completed' ? 'bg-[#d3ece9] text-[#0f544c] border-[#a6d9d3]' :
                                                 o.status === 'In Progress' ? 'bg-[#eef7f6] text-[#1f8577] border-[#a6d9d3]' :
@@ -324,15 +317,15 @@ export const SalesOrderList: React.FC<ListProps<JobOrder>> = (props) => {
                                                 }`}>{o.status}</span>
                                         </td>
                                         <td className="table-body-cell text-center" onClick={e => e.stopPropagation()}>
-                                            <div className="flex justify-center gap-0.5 md:gap-1 items-center shrink-0">
-                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('WORK_ORDER', o); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-[#1f8577] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all hidden sm:flex" title="Preview PDF">
+                                            <div className="flex justify-center gap-1 items-center shrink-0">
+                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('WORK_ORDER', o); }} className="p-1.5 text-[#5c6567] hover:text-[#1f8577] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all" title="Preview PDF">
                                                     <Eye size={14} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); props.onAction && props.onAction(o, 'download_pdf'); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-[#1f8577] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all hidden sm:flex" title="Download PDF">
+                                                <button onClick={(e) => { e.stopPropagation(); props.onAction && props.onAction(o, 'download_pdf'); }} className="p-1.5 text-[#5c6567] hover:text-[#1f8577] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all" title="Download PDF">
                                                     <Download size={14} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(o); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-[#b97e2b] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all hidden sm:flex" title="Edit"><Edit2 size={14} /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, o.id); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-[#23282A] rounded"><MoreVertical size={12} className="md:w-[14px] md:h-[14px]" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(o); }} className="p-1.5 text-[#5c6567] hover:text-[#b97e2b] bg-[#FEFDFB] hover:bg-white border border-transparent hover:border-[#e4ddd1] rounded transition-all" title="Edit"><Edit2 size={14} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, o.id); }} className="p-1.5 text-[#5c6567] hover:text-[#23282A] rounded"><MoreVertical size={14} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -429,11 +422,11 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-[#5c6567]">Total:</span>
-                                        <span className="font-bold text-[#23282A]">{companyConfig.currencySymbol}{(item.totalAmount || 0).toLocaleString()}</span>
+                                        <span className="font-bold text-[#23282A]">{companyConfig.currencySymbol}{item.totalAmount.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-[#5c6567]">Paid:</span>
-                                        <span className="font-bold text-[#1f8577]">{companyConfig.currencySymbol}{(item.paidAmount || 0).toLocaleString()}</span>
+                                        <span className="font-bold text-[#1f8577]">{companyConfig.currencySymbol}{item.paidAmount.toLocaleString()}</span>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
@@ -469,17 +462,17 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                             </div>
                         </div>
                     )}
-                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
-                        <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        <table className="w-full min-w-[640px] text-left text-[13px] table-fixed">
                             <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <SortableTh field="orderNumber" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14.28%]">Order No.</SortableTh>
-                                    <SortableTh field="orderDate" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14.28%] hidden sm:table-cell">Date</SortableTh>
-                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14.28%]">Customer</SortableTh>
-                                    <SortableTh field="totalAmount" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right md:w-[14.28%] hidden sm:table-cell">Total</SortableTh>
-                                    <SortableTh field="paidAmount" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right md:w-[14.28%] hidden lg:table-cell">Paid</SortableTh>
-                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%]">Status</SortableTh>
-                                    <th className="table-header text-center md:w-[14.28%]">Actions</th>
+                                    <SortableTh field="orderNumber" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[14.28%]">Order No.</SortableTh>
+                                    <SortableTh field="orderDate" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[14.28%]">Date</SortableTh>
+                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[14.28%]">Customer</SortableTh>
+                                    <SortableTh field="totalAmount" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right w-[14.28%]">Total</SortableTh>
+                                    <SortableTh field="paidAmount" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right w-[14.28%]">Paid</SortableTh>
+                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Status</SortableTh>
+                                    <th className="table-header text-center w-[14.28%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100/50">
@@ -499,15 +492,10 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                                                 currentPage={location.pathname}
                                             />
                                         </td>
-                                        <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{new Date(o.orderDate).toLocaleDateString()}</td>
-                                        <td className="table-body-cell text-left font-medium text-slate-900 truncate">
-                                            {o.customerName}
-                                            <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">
-                                                {companyConfig.currencySymbol}{(o.totalAmount || 0).toLocaleString()} · {new Date(o.orderDate).toLocaleDateString()}
-                                            </span>
-                                        </td>
-                                        <td className="table-body-cell text-right font-bold finance-nums truncate hidden sm:table-cell">{companyConfig.currencySymbol}{(o.totalAmount || 0).toLocaleString()}</td>
-                                        <td className="table-body-cell text-right font-bold text-emerald-600 finance-nums truncate hidden lg:table-cell">{companyConfig.currencySymbol}{(o.paidAmount || 0).toLocaleString()}</td>
+                                        <td className="table-body-cell text-left font-normal truncate">{new Date(o.orderDate).toLocaleDateString()}</td>
+                                        <td className="table-body-cell text-left font-medium text-slate-900 truncate">{o.customerName}</td>
+                                        <td className="table-body-cell text-right font-bold finance-nums truncate">{companyConfig.currencySymbol}{o.totalAmount.toLocaleString()}</td>
+                                        <td className="table-body-cell text-right font-bold text-emerald-600 finance-nums truncate">{companyConfig.currencySymbol}{o.paidAmount.toLocaleString()}</td>
                                         <td className="table-body-cell text-center">
                                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${o.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                                 o.status === 'Paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
@@ -518,12 +506,12 @@ export const OrdersList: React.FC<ListProps<Order>> = (props) => {
                                                 }`}>{o.status}</span>
                                         </td>
                                         <td className="table-body-cell text-center" onClick={e => e.stopPropagation()}>
-                                            <div className="flex justify-center gap-0.5 md:gap-1 items-center shrink-0">
-                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('ORDER', o); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all hidden sm:flex" title="Preview PDF">
+                                            <div className="flex justify-center gap-1 items-center shrink-0">
+                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('ORDER', o); }} className="p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="Preview PDF">
                                                     <Eye size={14} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(o); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-amber-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all hidden sm:flex" title="Edit"><Edit2 size={14} /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, o.id); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={12} className="md:w-[14px] md:h-[14px]" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(o); }} className="p-1.5 text-[#5c6567] hover:text-amber-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="Edit"><Edit2 size={14} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, o.id); }} className="p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={14} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -774,11 +762,11 @@ export const SalesExchangeList: React.FC<ListProps<SalesExchange>> = (props) => 
             {hoveredId && hoverPos && hoveredExchange && <HoverActionMenu id={hoveredId.toString()} type="SalesExchange" pos={hoverPos} data={hoveredExchange} onAction={props.onAction} />}
 
             <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-sm border border-white/60 overflow-hidden flex-1 flex flex-col">
-                <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
-                    <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <table className="w-full min-w-[640px] text-left text-[13px] table-fixed">
                         <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="table-header text-center hidden md:table-cell md:w-[14.28%]">
+                                <th className="table-header text-center w-[14.28%]">
                                     <input
                                         type="checkbox"
                                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -796,12 +784,12 @@ export const SalesExchangeList: React.FC<ListProps<SalesExchange>> = (props) => 
                                         }}
                                     />
                                 </th>
-                                <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%]">Exchange No.</SortableTh>
-                                <SortableTh field="exchange_date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%] hidden sm:table-cell">Date</SortableTh>
-                                <SortableTh field="customer_name" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%]">Customer</SortableTh>
-                                <SortableTh field="reason" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%] hidden md:table-cell">Reason</SortableTh>
-                                <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14.28%]">Status</SortableTh>
-                                <th className="table-header text-center md:w-[14.28%]">Actions</th>
+                                <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Exchange No.</SortableTh>
+                                <SortableTh field="exchange_date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Date</SortableTh>
+                                <SortableTh field="customer_name" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Customer</SortableTh>
+                                <SortableTh field="reason" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Reason</SortableTh>
+                                <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[14.28%]">Status</SortableTh>
+                                <th className="table-header text-center w-[14.28%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/50">
@@ -816,7 +804,7 @@ export const SalesExchangeList: React.FC<ListProps<SalesExchange>> = (props) => 
                                     onMouseMove={onMouseMove}
                                     onMouseLeave={onMouseLeave}
                                 >
-                                    <td className="table-body-cell text-center hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+                                    <td className="table-body-cell text-center" onClick={(e) => e.stopPropagation()}>
                                         <input
                                             type="checkbox"
                                             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -832,14 +820,9 @@ export const SalesExchangeList: React.FC<ListProps<SalesExchange>> = (props) => 
                                             currentPage={location.pathname}
                                         />
                                     </td>
-                                    <td className="table-body-cell text-center font-normal truncate hidden sm:table-cell">{new Date(ex.exchange_date).toLocaleDateString()}</td>
-                                    <td className="table-body-cell text-center font-medium text-slate-900 truncate">
-                                        {ex.customer_name}
-                                        <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">
-                                            {new Date(ex.exchange_date).toLocaleDateString()} · {ex.reason}
-                                        </span>
-                                    </td>
-                                    <td className="table-body-cell text-center font-normal truncate hidden md:table-cell">{ex.reason}</td>
+                                    <td className="table-body-cell text-center font-normal truncate">{new Date(ex.exchange_date).toLocaleDateString()}</td>
+                                    <td className="table-body-cell text-center font-medium text-slate-900 truncate">{ex.customer_name}</td>
+                                    <td className="table-body-cell text-center font-normal truncate">{ex.reason}</td>
                                     <td className="table-body-cell text-center">
                                         <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${ex.status === 'Completed' || ex.status === 'Approved' || ex.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                             ex.status === 'Pending' || ex.status === 'pending' ? 'bg-amber-100 text-amber-700 border-amber-200' :
@@ -1113,7 +1096,7 @@ export const InvoiceList: React.FC<ListProps<Invoice>> = (props) => {
                             </div>
                         </div>
                     )}
-                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
+                    <div className="flex-1 overflow-auto custom-scrollbar">
                         <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
                             <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
                                 <tr>
@@ -1374,16 +1357,16 @@ export const QuotationList: React.FC<ListProps<Quotation>> = (props) => {
                             </div>
                         </div>
                     )}
-                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
-                        <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        <table className="w-full min-w-[640px] text-left text-[13px] table-fixed">
                             <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%]">Quote No.</SortableTh>
-                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%] hidden sm:table-cell">Date</SortableTh>
-                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[16.66%]">Customer</SortableTh>
-                                    <SortableTh field="total" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right md:w-[16.66%] hidden sm:table-cell">Total</SortableTh>
-                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[16.66%]">Status</SortableTh>
-                                    <th className="table-header text-center md:w-[16.66%]">Actions</th>
+                                    <SortableTh field="id" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Quote No.</SortableTh>
+                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Date</SortableTh>
+                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left w-[16.66%]">Customer</SortableTh>
+                                    <SortableTh field="total" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right w-[16.66%]">Total</SortableTh>
+                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center w-[16.66%]">Status</SortableTh>
+                                    <th className="table-header text-center w-[16.66%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100/50">
@@ -1406,14 +1389,9 @@ export const QuotationList: React.FC<ListProps<Quotation>> = (props) => {
                                                 currentPage={location.pathname}
                                             />
                                         </td>
-                                        <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{new Date(q.date).toLocaleDateString()}</td>
-                                        <td className="table-body-cell text-left font-medium text-slate-900 truncate">
-                                            {q.customerName}
-                                            <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">
-                                                {companyConfig.currencySymbol} {(q.total || 0).toLocaleString()} · {new Date(q.date).toLocaleDateString()}
-                                            </span>
-                                        </td>
-                                        <td className="table-body-cell text-right font-medium finance-nums truncate hidden sm:table-cell">{companyConfig.currencySymbol} {(q.total || 0).toLocaleString()}</td>
+                                        <td className="table-body-cell text-left font-normal truncate">{new Date(q.date).toLocaleDateString()}</td>
+                                        <td className="table-body-cell text-left font-medium text-slate-900 truncate">{q.customerName}</td>
+                                        <td className="table-body-cell text-right font-medium finance-nums truncate">{companyConfig.currencySymbol} {(q.total || 0).toLocaleString()}</td>
                                         <td className="table-body-cell text-center">
                                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${q.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                                 q.status === 'Sent' ? 'bg-blue-100 text-blue-700 border-blue-200' :
@@ -1422,15 +1400,15 @@ export const QuotationList: React.FC<ListProps<Quotation>> = (props) => {
                                                 }`}>{q.status}</span>
                                         </td>
                                         <td className="table-body-cell text-center" onClick={e => e.stopPropagation()}>
-                                            <div className="flex justify-center gap-0.5 md:gap-1 items-center shrink-0">
-                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('QUOTATION', q); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all hidden sm:flex" title="Preview PDF">
+                                            <div className="flex justify-center gap-1 items-center shrink-0">
+                                                <button onClick={(e) => { e.stopPropagation(); handlePreview('QUOTATION', q); }} className="p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="Preview PDF">
                                                     <Eye size={14} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); props.onAction && props.onAction(q, 'download_pdf'); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all hidden sm:flex" title="Download PDF">
+                                                <button onClick={(e) => { e.stopPropagation(); props.onAction && props.onAction(q, 'download_pdf'); }} className="p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="Download PDF">
                                                     <Download size={14} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(q); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-amber-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all hidden sm:flex" title="Edit"><Edit2 size={14} /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, q.id); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={12} className="md:w-[14px] md:h-[14px]" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); props.onEdit(q); }} className="p-1.5 text-[#5c6567] hover:text-amber-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="Edit"><Edit2 size={14} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, q.id); }} className="p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={14} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1611,195 +1589,6 @@ export const RecurringList: React.FC<ListProps<RecurringInvoice>> = (props) => {
                 </div>
                 <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
             </div>
-        </div>
-    );
-};
-
-export const QuotationRequestList: React.FC<ListProps<AdminQuotationRequest> & { onAction?: (item: AdminQuotationRequest, action: string) => void; customerNameMap?: Record<string, string> }> = (props) => {
-    const { companyConfig } = useAuth();
-    const { openMenuId, menuPos, menuRef, handleContextMenu, handleRowClick, setOpenMenuId } = useContextMenu();
-    const { hoveredId, hoverPos, onMouseEnter, onMouseMove, onMouseLeave } = useHoverTimer(2000);
-
-    const { currentItems, currentPage, maxPage, totalItems, next, prev, first, last, setItemsPerPage, itemsPerPage } = usePagination(props.data, props.viewMode === 'Card' ? CARD_ITEMS_PER_PAGE : LIST_ITEMS_PER_PAGE);
-
-    const currentRequest = (props.data || []).find((d: any) => d.id === openMenuId);
-    const hoveredRequest = (props.data || []).find((d: any) => d.id === hoveredId);
-
-    const requestStatusMeta: Record<string, { label: string; color: string; bg: string }> = {
-        draft: { label: 'Draft', color: '#64748b', bg: '#f1f5f9' },
-        submitted: { label: 'Submitted', color: '#1d4ed8', bg: '#eff6ff' },
-        assigned: { label: 'Assigned', color: '#0f766e', bg: '#f0fdfa' },
-        under_review: { label: 'Under Review', color: '#b45309', bg: '#fffbeb' },
-        waiting_for_customer: { label: 'Waiting', color: '#7c3aed', bg: '#f5f3ff' },
-        ready_for_conversion: { label: 'Ready', color: '#047857', bg: '#ecfdf5' },
-        converted: { label: 'Converted', color: '#0f766e', bg: '#f0fdfa' },
-        rejected: { label: 'Rejected', color: '#b91c1c', bg: '#fef2f2' },
-        cancelled: { label: 'Cancelled', color: '#64748b', bg: '#f1f5f9' },
-    };
-
-    const renderMenu = (r: AdminQuotationRequest) => {
-        const menuWidth = 256;
-        const menuHeight = 400;
-        let x = menuPos!.x;
-        let y = menuPos!.y;
-        if (x + menuWidth > window.innerWidth) x = Math.max(0, window.innerWidth - menuWidth);
-        if (y + menuHeight > window.innerHeight) y = Math.max(0, window.innerHeight - menuHeight);
-
-        return (
-            <div
-                ref={menuRef}
-                className="fixed w-64 bg-[#FEFDFB]/95 backdrop-blur-xl shadow-2xl border border-[#e4ddd1] z-[70] animate-in fade-in zoom-in-95 duration-100 flex flex-col text-left overflow-y-auto custom-scrollbar"
-                style={{ top: y, left: x, maxHeight: '90vh', borderRadius: 10, borderWidth: '1.4px', borderColor: '#e4ddd1', boxShadow: '0 16px 36px -12px rgba(0,0,0,.28)' }}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div style={{ height: 4, background: 'linear-gradient(90deg, #146b60, #3fa294 40%, #d99a3f 100%)' }} />
-                <div className="px-4 py-2 text-[10px] font-bold text-[#5c6567] uppercase tracking-tight bg-[#eef7f6] shrink-0" style={{ borderBottom: '1px solid #e4ddd1' }}>Request Actions</div>
-                <div className="overflow-y-auto custom-scrollbar flex-1">
-                    <button onClick={() => { setOpenMenuId(null); props.onView(r); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#23282A] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                        <FileText size={14} style={{ color: '#146b60' }} /> View Detail
-                    </button>
-                    {r.status !== 'converted' && r.request_type !== 'order' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_quote'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                            <FileCheck size={14} /> Generate Quotation
-                        </button>
-                    )}
-                    {r.status === 'ready_for_conversion' && r.request_type === 'order' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'generate_order'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-bold text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                            <Truck size={14} /> Generate Sales Order
-                        </button>
-                    )}
-                    {r.status !== 'converted' && r.status !== 'rejected' && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'reject'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#b5493f] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                            <XCircle size={14} /> Reject Request
-                        </button>
-                    )}
-                    <div className="my-1 border-t border-[#e4ddd1]"></div>
-                    {r.quotation_number && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_quotation'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                            <ArrowUpRight size={14} /> View Quotation {r.quotation_number}
-                        </button>
-                    )}
-                    {r.sales_order_number && (
-                        <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'view_order'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#eef7f6'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs font-medium text-[#1f8577] flex items-center gap-3 transition-colors" style={{ borderBottom: '1px solid rgba(228,221,209,.6)' }}>
-                            <ArrowUpRight size={14} /> View Order {r.sales_order_number}
-                        </button>
-                    )}
-                    <div className="my-1 border-t border-[#e4ddd1]"></div>
-                    <button onClick={() => { setOpenMenuId(null); props.onAction?.(r, 'delete'); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} className="w-full px-4 py-2 text-xs text-[#b5493f] flex items-center gap-3 transition-colors">
-                        <Trash2 size={14} /> Delete
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
-    return (
-        <div className="flex flex-col h-full w-full">
-            {openMenuId && menuPos && currentRequest && renderMenu(currentRequest)}
-
-            {props.viewMode === 'Card' ? (
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
-                        {(currentItems || []).map((item: any) => {
-                            const meta = requestStatusMeta[item.status] || { label: item.status, color: '#475569', bg: '#f8fafc' };
-                            const subtotal = (item.items || []).reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
-                            return (
-                                <div key={item.id} onClick={() => props.onView(item)} onMouseEnter={(e) => onMouseEnter(item.id, e)} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}
-                                    className="bg-[#FEFDFB] border border-[#e4ddd1] rounded-2xl p-4 cursor-pointer hover:shadow-md hover:border-[#a6d9d3] transition-all group">
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-2 rounded-lg bg-[#eef7f6] text-[#1f8577]"><MessageSquare size={16} /></div>
-                                            <div>
-                                                <p className="text-xs font-bold text-[#23282A] font-mono">{item.request_number}</p>
-                                                <p className="text-[10px] text-[#5c6567]">{item.request_type || 'quotation'}</p>
-                                            </div>
-                                        </div>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '33' }}>{meta.label}</span>
-                                    </div>
-                                    <p className="text-xs text-[#5c6567] mb-2 truncate">{props.customerNameMap?.[item.customer_id] || item.customer_name || 'Unknown Customer'}</p>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-[#23282A] font-mono">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        <span className="text-[10px] text-[#5c6567]">{formatDate(item.created_at)}</span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="mt-3">
-                        <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
-                    </div>
-                </div>
-            ) : (
-                <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-sm border border-white/60 overflow-hidden w-full flex flex-col">
-                    {(props.searchTerm !== undefined || props.onSearchChange) && (
-                        <div className="p-3 border-b border-slate-200/60 flex justify-between items-center bg-slate-50/30 shrink-0">
-                            <div className="relative w-full max-w-md">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5c6567]" size={14} />
-                                <input type="text" placeholder="Search requests..." value={props.searchTerm || ''} onChange={e => props.onSearchChange?.(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-1.5 border border-slate-200/80 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/50 font-normal" />
-                                {props.searchTerm && props.onSearchClear && (
-                                    <button onClick={props.onSearchClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5c6567] hover:text-slate-600"><X size={14} /></button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    <div className="flex-1 overflow-auto custom-scrollbar sales-list-scroll">
-                        <table className="w-full text-left text-[11px] md:text-[13px] table-auto md:table-fixed">
-                            <thead className="bg-slate-50/80 backdrop-blur text-slate-500 sticky top-0 z-10 shadow-sm">
-                                <tr>
-                                    <SortableTh field="request_number" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%]">Request No.</SortableTh>
-                                    <SortableTh field="date" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%] hidden sm:table-cell">Date</SortableTh>
-                                    <SortableTh field="customerName" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%]">Customer</SortableTh>
-                                    <SortableTh field="request_type" sortConfig={props.sortConfig} onSort={props.onSort} className="text-left md:w-[14%] hidden md:table-cell">Type</SortableTh>
-                                    <SortableTh field="total" sortConfig={props.sortConfig} onSort={props.onSort} className="text-right md:w-[14%] hidden sm:table-cell">Total</SortableTh>
-                                    <SortableTh field="status" sortConfig={props.sortConfig} onSort={props.onSort} className="text-center md:w-[14%]">Status</SortableTh>
-                                    <th className="table-header text-center md:w-[16%]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100/50">
-                                {(currentItems || []).length === 0 ? (
-                                    <tr><td colSpan={7} className="text-center py-12 text-[#5c6567] text-xs">No quotation requests found.</td></tr>
-                                ) : (currentItems || []).map((r: any) => {
-                                    const meta = requestStatusMeta[r.status] || { label: r.status, color: '#475569', bg: '#f8fafc' };
-                                    const subtotal = (r.items || []).reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
-                                    const isSelected = props.selectedId === r.id;
-                                    return (
-                                        <tr key={r.id} className={`transition-colors cursor-pointer group ${isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-blue-50/50 border-l-4 border-l-transparent'}`}
-                                            onClick={() => props.onView(r)} onContextMenu={(e) => handleContextMenu(e, r.id)}
-                                            onMouseEnter={(e) => onMouseEnter(r.id, e)} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
-                                            <td className="table-body-cell text-left font-mono text-slate-500 font-bold truncate">{r.request_number}</td>
-                                            <td className="table-body-cell text-left font-normal truncate hidden sm:table-cell">{formatDate(r.created_at)}</td>
-                                            <td className="table-body-cell text-left font-medium text-slate-900 truncate">
-                                                {props.customerNameMap?.[r.customer_id] || r.customer_name || 'Unknown Customer'}
-                                                <span className="block text-[10px] font-normal text-slate-400 md:hidden mt-0.5 truncate">K {subtotal.toLocaleString()} · {formatDate(r.created_at)}</span>
-                                            </td>
-                                            <td className="table-body-cell text-left text-xs capitalize hidden md:table-cell">{r.request_type || 'quotation'}</td>
-                                            <td className="table-body-cell text-right font-medium finance-nums truncate hidden sm:table-cell">K {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                            <td className="table-body-cell text-center">
-                                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap" style={{ color: meta.color, background: meta.bg, borderColor: meta.color + '33' }}>{meta.label}</span>
-                                            </td>
-                                            <td className="table-body-cell text-center" onClick={e => e.stopPropagation()}>
-                                                <div className="flex justify-center gap-0.5 md:gap-1 items-center shrink-0">
-                                                    <button onClick={(e) => { e.stopPropagation(); props.onView(r); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-blue-600 bg-slate-50 hover:bg-white border border-transparent hover:border-slate-200 rounded transition-all" title="View Detail">
-                                                        <ChevronRight size={12} className="md:w-[14px] md:h-[14px]" />
-                                                    </button>
-                                                    {r.status !== 'converted' && r.request_type !== 'order' && (
-                                                        <button onClick={(e) => { e.stopPropagation(); props.onAction?.(r, 'generate_quote'); }} className="p-1 md:p-1.5 text-[#1f8577] hover:text-[#0f544c] bg-slate-50 hover:bg-[#eef7f6] border border-transparent hover:border-[#a6d9d3] rounded transition-all hidden sm:flex" title="Generate Quotation">
-                                                            <FileCheck size={12} className="md:w-[14px] md:h-[14px]" />
-                                                        </button>
-                                                    )}
-                                                    <button onClick={(e) => { e.stopPropagation(); handleRowClick(e, r.id); }} className="p-1 md:p-1.5 text-[#5c6567] hover:text-slate-600 rounded"><MoreVertical size={12} className="md:w-[14px] md:h-[14px]" /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                    <Pagination currentPage={currentPage} maxPage={maxPage} totalItems={totalItems} itemsPerPage={itemsPerPage} onNext={next} onPrev={prev} onFirst={first} onLast={last} onItemsPerPageChange={setItemsPerPage} />
-                </div>
-            )}
         </div>
     );
 };

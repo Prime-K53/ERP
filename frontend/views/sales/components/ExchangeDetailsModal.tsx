@@ -66,11 +66,17 @@ export const ExchangeDetailsModal: React.FC<ExchangeDetailsModalProps> = ({ exch
   };
 
   return (
-    <div className="sales-modal-backdrop" style={{
-      fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15, 23, 42, 0.6)',
+      padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
     }}>
-      <div className="sales-modal-panel" style={{
-        maxWidth: 960,
+      <div style={{
+        width: 960, maxWidth: '100%', maxHeight: '92vh',
+        background: paper, borderRadius: 14,
+        boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
       }}>
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 4,
@@ -121,11 +127,11 @@ export const ExchangeDetailsModal: React.FC<ExchangeDetailsModalProps> = ({ exch
         </div>
 
         <div style={{ padding: '24px 28px 8px', overflowY: 'auto', flex: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24 }} className="md:grid md:grid-cols-[2fr_1fr]">
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
             {/* Left Column: Details & Items */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Info Cards */}
-              <div style={{ display: 'grid', gap: 14 }} className="grid-cols-1 sm:grid-cols-2">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div style={{ padding: 16, background: paper, borderRadius: 12, border: `1px solid ${hairline}` }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: inkSoft, textTransform: 'uppercase', letterSpacing: 0.06, marginBottom: 8 }}>Customer</div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: ink }}>{exchange.customer_name}</div>

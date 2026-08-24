@@ -3,7 +3,6 @@ import { MoreHorizontal, Copy, Archive, Trash2, Barcode, QrCode, Package, Edit3,
 import type { Item } from '../../../../types';
 import { RowIndicators } from './RowIndicators';
 import { resolveMinimumMarkup } from '../../../../services/pricingValidationService';
-import { getFloatingMenuStyle } from '../../../../utils/actionMenu';
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   'Raw Material': <Layers size={16} />,
@@ -73,7 +72,6 @@ interface ActionRowProps extends Props {
 
 const ActionRow: React.FC<ActionRowProps> = ({ item, ...p }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,12 +96,12 @@ const ActionRow: React.FC<ActionRowProps> = ({ item, ...p }) => {
   const low = (item.stock || 0) <= (item.reorderPoint || 0) && (item.reorderPoint || 0) > 0;
   return (
     <tr className={`transition-colors cursor-pointer ${low ? 'ref-inv-row-warn' : ''}`} onClick={() => p.onView(item)}>
-      <td className="table-body-cell w-10 px-1 text-center" data-label="" onClick={e => e.stopPropagation()}>
+      <td className="table-body-cell w-10 px-1 text-center" onClick={e => e.stopPropagation()}>
         <input type="checkbox" checked={p.selectedIds.has(item.id)} onChange={() => p.onToggleSelect(item.id)}
           className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
       </td>
       {p.columns.map(col => (
-        <td key={col} className="table-body-cell whitespace-nowrap" data-label={col}>
+        <td key={col} className="table-body-cell whitespace-nowrap">
           {col === 'Name' ? (
             <div className="flex items-center gap-2">
               <span className="text-slate-500 shrink-0">{TYPE_ICONS[item.type || ''] || <Package size={16} />}</span>
@@ -113,16 +111,14 @@ const ActionRow: React.FC<ActionRowProps> = ({ item, ...p }) => {
           ) : renderCell(item, col)}
         </td>
       ))}
-      <td className="table-body-cell w-16 text-right" data-label="Actions" onClick={e => e.stopPropagation()}>
+      <td className="table-body-cell w-16 text-right" onClick={e => e.stopPropagation()}>
         <div className="relative inline-flex" ref={menuRef}>
-          <button onClick={(e) => { setMenuAnchor(e.currentTarget.getBoundingClientRect()); setMenuOpen(v => !v); }}
+          <button onClick={() => setMenuOpen(v => !v)}
             className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
             <MoreHorizontal size={16} />
           </button>
           {menuOpen && (
-            <div
-              style={{ ...getFloatingMenuStyle(menuAnchor, { minWidth: 176, estimatedHeight: 340 }) }}
-              className="bg-[#FEFDFB] rounded-[14px] shadow-[0_30px_70px_-20px_rgba(0,0,0,.55),0_8px_24px_-8px_rgba(0,0,0,.35),0_0_0_1px_rgba(255,255,255,.04)] border border-[#e4ddd1] py-1">
+            <div className="absolute right-0 top-full mt-1 w-44 bg-[#FEFDFB] rounded-[14px] shadow-[0_30px_70px_-20px_rgba(0,0,0,.55),0_8px_24px_-8px_rgba(0,0,0,.35),0_0_0_1px_rgba(255,255,255,.04)] border border-[#e4ddd1] z-50 py-1">
               {actions.map((a, i) => (
                 <button key={i} onClick={a.onClick}
                   className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm transition-all ${a.danger ? 'text-red-500 hover:bg-red-50' : 'text-[#23282A] hover:bg-[#eef7f6]'}`}>

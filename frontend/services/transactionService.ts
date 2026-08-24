@@ -23,7 +23,6 @@ import {
     CustomerReceiptInvoiceInput
 } from './receiptCalculationService';
 import { logger } from './logger';
-import { salesOrderService } from './salesOrderService';
 
 import {
     getCompanyConfig, getGLConfig, generateId, calculateBankBalance,
@@ -926,9 +925,13 @@ export const transactionService = {
                     }
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed — views use canonicalLedger via
-                // customerLedger.ts instead of this stale cache field.
+                if (outstandingAmount > 0 && sale.customerId) {
+                    const customer = await customerStore.get(sale.customerId);
+                    if (customer) {
+                        customer.balance = toMoney((customer.balance || 0) + outstandingAmount);
+                        await customerStore.put(customer);
+                    }
+                }
 
                 // If sale has specific payments, reflect retained amounts in GL.
                 for (const payment of normalizedPayments) {
@@ -1331,9 +1334,14 @@ export const transactionService = {
                     await ledgerStore.put(cogsReversal);
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed — views use canonicalLedger via
-                // customerLedger.ts instead of this stale cache field.
+                // 3. Update Customer Balance if applicable
+                if (refund.customerId) {
+                    const customer = await customerStore.get(refund.customerId);
+                    if (customer) {
+                        customer.balance = (customer.balance || 0) - refund.totalAmount;
+                        await customerStore.put(customer);
+                    }
+                }
 
                 // 4. Ledger Entry for Refund
                 const gl = getGLConfig();
@@ -1618,9 +1626,15 @@ export const transactionService = {
                 // Update invoice with adjustment data
                 await invoiceStore.put(invoice);
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed — views use canonicalLedger via
-                // customerLedger.ts instead of this stale cache field.
+                // 5. Update Customer Balance (only outstanding amount)
+                if (invoice.customerId) {
+                    const customer = await customerStore.get(invoice.customerId);
+                    if (customer) {
+                        const outstanding = Math.max(0, totalAmount - paidAmount);
+                        customer.balance = (customer.balance || 0) + outstanding;
+                        await customerStore.put(customer);
+                    }
+                }
 
                 // 6. Ledger Entry
                 const gl = getGLConfig();
@@ -1785,7 +1799,7 @@ export const transactionService = {
             );
             if (dup) return null;
 
-            const orderId = salesOrderService.generateProvisionalOrderId(existing, 'SO');
+            const orderId = generateNextId('SO', existing, getCompanyConfig());
 
             const items: SalesOrderItem[] = (invoice.items || []).map((it: CartItem, idx: number) => {
                 const quantity = Number(it.quantity ?? it.qty ?? 1);
@@ -2047,8 +2061,13 @@ export const transactionService = {
                     }
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
+                // 4. Update Customer Balance (only outstanding amount)
+                const customer = await customerStore.get(invoice.customerId);
+                if (customer) {
+                    const outstanding = Math.max(0, totalAmount - paidAmount);
+                    customer.balance = (customer.balance || 0) + outstanding;
+                    await customerStore.put(customer);
+                }
 
                 // 5. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2377,8 +2396,15 @@ export const transactionService = {
                     }
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
+                // 5. Update Customer Balance (only outstanding amount)
+                if (invoiceData.customerId) {
+                    const customer = await customerStore.get(invoiceData.customerId);
+                    if (customer) {
+                        const outstanding = Math.max(0, (invoiceData.totalAmount || 0) - (invoiceData.paidAmount || 0));
+                        customer.balance = (customer.balance || 0) + outstanding;
+                        await customerStore.put(customer);
+                    }
+                }
 
                 // 6. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2509,8 +2535,15 @@ export const transactionService = {
 
                 await invoiceStore.put(invoiceData);
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
+                // 5. Update Customer Balance (only outstanding amount)
+                if (invoiceData.customerId) {
+                    const customer = await customerStore.get(invoiceData.customerId);
+                    if (customer) {
+                        const outstanding = Math.max(0, (invoiceData.totalAmount || 0) - (invoiceData.paidAmount || 0));
+                        customer.balance = (customer.balance || 0) + outstanding;
+                        await customerStore.put(customer);
+                    }
+                }
 
                 // 6. Create Ledger Entry
                 const gl = getGLConfig();
@@ -2646,13 +2679,12 @@ export const transactionService = {
                     await invoiceStore.put(invoice);
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
-
-                // Load customer record for wallet operations below.
-                let customer = null as any;
-                if (customerId) {
-                    customer = await customerStore.get(customerId);
+                // 5. Update Customer Balance
+                const customer = customerId ? await customerStore.get(customerId) : null;
+                if (customer) {
+                    // AR is reduced only by amount applied to invoices.
+                    customer.balance = Math.max(0, toMoney((customer.balance || 0) - snapshot.amountApplied));
+                    await customerStore.put(customer);
                 }
 
                 // 6a. Handle wallet DEPOSIT (overpayment credited to wallet).
@@ -2856,13 +2888,15 @@ export const transactionService = {
                 }
 
                 // 2. Reverse Customer Balance
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
-
-                // Load customer for wallet reversal below.
-                let customer = null as any;
-                if (payment.customerId) {
-                    customer = await customerStore.get(payment.customerId);
+                const amountApplied = toMoney(
+                    payment.amountApplied ??
+                    payment.receiptSnapshot?.amountApplied ??
+                    (payment.allocations || []).reduce((sum: number, allocation: any) => sum + Number(allocation.amount || 0), 0)
+                );
+                const customer = await customerStore.get(payment.customerId);
+                if (customer) {
+                    customer.balance = toMoney((customer.balance || 0) + amountApplied);
+                    await customerStore.put(customer);
                 }
 
                 // 3. Reverse Wallet (if wallet deposit was posted)
@@ -2995,23 +3029,6 @@ export const transactionService = {
         );
     },
 
-    /**
-     * Permanently remove a Voided customer payment record.
-     * Only payments whose status is 'Voided' may be purged — active
-     * transactions must go through voidCustomerPayment first. The record is
-     * removed locally and a cloud delete op is enqueued so other devices
-     * reconcile (standard dbService.delete tombstone flow).
-     */
-    async purgeVoidedCustomerPayment(paymentId: string) {
-        const payment = await dbService.get<CustomerPayment>('customerPayments', paymentId);
-        if (!payment) throw new Error("Payment not found");
-        if (String(payment.status || '').toLowerCase() !== 'voided') {
-            throw new Error("Only voided payments can be deleted permanently. Void the payment first.");
-        }
-        await dbService.delete('customerPayments', paymentId);
-        return { success: true };
-    },
-
     async saveCustomer(customer: Customer, oldCustomer?: Customer) {
         return dbService.executeAtomicOperation(
             ['customers'],
@@ -3084,13 +3101,11 @@ export const transactionService = {
                     }
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
-
-                // Load customer for wallet reversal below.
-                let customer = null as any;
-                if (invoice.customerId) {
-                    customer = await customerStore.get(invoice.customerId);
+                // 2. Reverse Customer Balance — subtract full totalAmount since payment voids (step 3) will add back their allocations independently
+                const customer = await customerStore.get(invoice.customerId);
+                if (customer) {
+                    customer.balance = toMoney((customer.balance || 0) - (invoice.totalAmount || 0));
+                    await customerStore.put(customer);
                 }
 
                 const allPayments = await paymentStore.getAll();
@@ -3297,25 +3312,33 @@ export const transactionService = {
                     }
                 }
 
-                // [LEDGER] customer.balance is now derived from the authoritative ledger.
-                // Independent balance mutation removed.
-
-                // Reverse wallet deposits if any
+                // 2. Reverse Customer Balance if there was outstanding amount
                 if (sale.customerId && sale.customerId !== 'walk-in') {
                     const customer = await customerStore.get(sale.customerId);
-                    if (customer && sale.walletDeposit > 0) {
-                        customer.walletBalance = toMoney((customer.walletBalance || 0) - sale.walletDeposit);
-                        await customerStore.put(customer);
+                    if (customer) {
+                        const totalAmount = sale.totalAmount || sale.total || 0;
+                        const paidAmount = sale.paidAmount || 0;
+                        const outstanding = Math.max(0, totalAmount - paidAmount);
+                        if (outstanding > 0) {
+                            customer.balance = toMoney((customer.balance || 0) - outstanding);
+                            await customerStore.put(customer);
+                        }
 
-                        const walletTx: WalletTransaction = {
-                            id: generateId('WLT-REV'),
-                            customerId: sale.customerId,
-                            amount: sale.walletDeposit,
-                            type: 'Deduction',
-                            date: new Date().toISOString(),
-                            description: `REVERSAL: Void Sale #${sale.id}`
-                        };
-                        await walletStore.put(walletTx);
+                        // Reverse wallet deposits if any
+                        if (sale.walletDeposit > 0) {
+                            customer.walletBalance = toMoney((customer.walletBalance || 0) - sale.walletDeposit);
+                            await customerStore.put(customer);
+
+                            const walletTx: WalletTransaction = {
+                                id: generateId('WLT-REV'),
+                                customerId: sale.customerId,
+                                amount: sale.walletDeposit,
+                                type: 'Deduction',
+                                date: new Date().toISOString(),
+                                description: `REVERSAL: Void Sale #${sale.id}`
+                            };
+                            await walletStore.put(walletTx);
+                        }
                     }
                 }
 
@@ -4469,14 +4492,12 @@ export const transactionService = {
     },
 
     async createOrder(order: Order) {
-        const canonical = salesOrderService.canonicalizeOrder(order);
         const result = await dbService.executeAtomicOperation(
-            ['salesOrders', 'inventory', 'ledger', 'customers', 'walletTransactions', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
+            ['orders', 'inventory', 'ledger', 'customers', 'walletTransactions', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
             async (tx) => {
-                const order = canonical;
                 await reserveIdempotencyKey(tx, 'order', order.id, order.idempotencyKey);
 
-                const orderStore = tx.objectStore('salesOrders');
+                const orderStore = tx.objectStore('orders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
@@ -4511,7 +4532,7 @@ export const transactionService = {
                 }
 
                 // 3. Status-based processing
-                if (order.status === 'Fulfilled' || order.status === 'Completed') {
+                if (order.status === 'Completed') {
                     // Deduct actual stock immediately if created as Completed
                     for (const item of order.items) {
                         const invItem = await inventoryStore.get(item.productId);
@@ -4674,11 +4695,11 @@ export const transactionService = {
 
     async recordOrderPayment(orderId: string, payment: OrderPayment) {
         const result = await dbService.executeAtomicOperation(
-            ['salesOrders', 'ledger', 'customers', 'walletTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
+            ['orders', 'ledger', 'customers', 'walletTransactions', 'bankAccounts', 'bankTransactions', 'idempotencyKeys'],
             async (tx) => {
                 await reserveIdempotencyKey(tx, 'order_payment', `${orderId}:${payment.id || payment.paymentDate}:${payment.amountPaid}`);
 
-                const orderStore = tx.objectStore('salesOrders');
+                const orderStore = tx.objectStore('orders');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
                 const walletStore = tx.objectStore('walletTransactions');
@@ -4688,21 +4709,17 @@ export const transactionService = {
                 const order = await orderStore.get(orderId);
                 if (!order) throw new Error("Order not found");
 
-                // Terminal status protection: cannot record payment on a Cancelled order
-                const orderCanonical = salesOrderService.canonicalizeStatus(order.status);
-                if (orderCanonical === 'Cancelled') {
-                    throw new Error("Cannot record payment on a cancelled sales order");
-                }
-
                 // 1. Update Order
                 order.payments = [...(order.payments || []), payment];
                 order.paidAmount += payment.amountPaid;
                 order.remainingBalance = order.totalAmount - order.paidAmount;
 
-                const isTerminal = order.status === 'Fulfilled' || order.status === 'Completed'
-                    || order.status === 'Cancelled' || order.status === 'Converted';
-                if (!isTerminal) {
-                    order.paymentStatus = order.paidAmount >= order.totalAmount ? 'Paid' : 'Partially Paid';
+                if (order.status !== 'Completed') {
+                    if (order.paidAmount >= order.totalAmount) {
+                        order.status = 'Paid';
+                    } else if (order.paidAmount > 0) {
+                        order.status = 'Partially Paid';
+                    }
                 }
 
                 await orderStore.put(order);
@@ -4777,12 +4794,10 @@ export const transactionService = {
     },
 
     async updateOrderStatus(orderId: string, status: Order['status']) {
-        const incoming = salesOrderService.canonicalizeStatus(status);
-        const incomingLegacyPayment = salesOrderService.legacyPaymentStatus(status);
         const result = await dbService.executeAtomicOperation(
-            ['salesOrders', 'inventory', 'ledger', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions'],
+            ['orders', 'inventory', 'ledger', 'bomTemplates', 'marketAdjustments', 'marketAdjustmentTransactions'],
             async (tx) => {
-                const orderStore = tx.objectStore('salesOrders');
+                const orderStore = tx.objectStore('orders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const bomTemplatesStore = tx.objectStore('bomTemplates');
@@ -4795,36 +4810,17 @@ export const transactionService = {
                     const found = allOrders.find((o: Order) => o.id === orderId);
                     if (!found) {
                         console.warn(`[Orders.UpdateStatus] Order ${orderId} not found locally — skipping status update. Invoice was already created.`);
-                        return { success: true, message: 'Order not found locally — no-op' };
+                        return { success: true, message: 'Order not found locally — status unchanged' };
                     }
                     orderStore.put(found);
                     return { success: true, message: 'Order re-synced locally, no status change applied' };
                 }
 
                 const oldStatus = order.status;
-                const oldCanonical = salesOrderService.canonicalizeStatus(oldStatus);
-
-                // Idempotency: if the order is already in the target canonical status, no-op
-                if (!incomingLegacyPayment && incoming === oldCanonical) {
-                    return { success: true, message: `Order already in status ${incoming}` };
-                }
-
-                // Terminal status protection: cannot transition FROM a terminal status
-                // (except specific allowed transitions like Fulfilled/Converted are both terminal)
-                if (salesOrderService.isTerminalStatus(oldCanonical) && !salesOrderService.isTerminalStatus(incoming) && incoming !== 'Cancelled') {
-                    throw new Error(`Cannot transition from terminal status ${oldCanonical} to ${incoming}`);
-                }
-
-                if (incoming === 'Converted' && !incomingLegacyPayment) {
-                    order.invoiceStatus = 'Invoiced';
-                } else if (incomingLegacyPayment) {
-                    order.paymentStatus = incomingLegacyPayment;
-                } else {
-                    order.status = incoming;
-                }
+                order.status = status;
 
                 // Fulfillment logic
-                if (incoming === 'Fulfilled' && oldCanonical !== 'Fulfilled') {
+                if (status === 'Completed' && oldStatus !== 'Completed') {
                     // 1. Pre-fetch data for adjustment processing
                     const inventory = await inventoryStore.getAll();
                     const bomTemplates: BOMTemplate[] = await bomTemplatesStore.getAll();
@@ -4935,9 +4931,9 @@ export const transactionService = {
 
     async cancelOrder(orderId: string, reason: string) {
         const result = await dbService.executeAtomicOperation(
-            ['salesOrders', 'inventory', 'ledger', 'customers', 'walletTransactions'],
+            ['orders', 'inventory', 'ledger', 'customers', 'walletTransactions'],
             async (tx) => {
-                const orderStore = tx.objectStore('salesOrders');
+                const orderStore = tx.objectStore('orders');
                 const inventoryStore = tx.objectStore('inventory');
                 const ledgerStore = tx.objectStore('ledger');
                 const customerStore = tx.objectStore('customers');
@@ -4946,12 +4942,7 @@ export const transactionService = {
                 const order = await orderStore.get(orderId);
                 if (!order) throw new Error("Order not found");
 
-                const orderCanonical = salesOrderService.canonicalizeStatus(order.status);
-                // Idempotency: if already cancelled, no-op
-                if (orderCanonical === 'Cancelled') {
-                    return { success: true, message: 'Order already cancelled' };
-                }
-                if (orderCanonical === 'Fulfilled' || orderCanonical === 'Converted') throw new Error("Cannot cancel a completed order");
+                if (order.status === 'Completed') throw new Error("Cannot cancel a completed order");
 
                 // 1. Release Reserved Stock
                 for (const item of order.items) {

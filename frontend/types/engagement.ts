@@ -343,170 +343,33 @@ export interface AffiliateCommission {
   updatedAt?: string
 }
 
-export type PromotionChannel = 'ERP' | 'PORTAL' | 'BOTH'
-export type PromotionStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'expired' | 'cancelled'
-export type PromotionDiscountType =
-  | 'percentage' | 'fixed_amount' | 'fixed_price' | 'buy_x_get_y' | 'tiered'
-  | 'category' | 'brand' | 'bundle' | 'coupon' | 'campaign' | 'fixed'
-export type PromotionCustomerScope = 'all' | 'customers' | 'tiers' | 'new_customers' | 'existing_customers'
-export type PromotionApplicableTo = 'all' | 'products' | 'categories' | 'tiers'
-
 export interface Promotion {
   id: string
   name: string
   description?: string
-  companyId?: string
-  // Legacy aliases (kept for backwards compatibility with the engagement module)
-  type?: 'percentage' | 'fixed' | 'category' | 'brand' | 'bundle' | 'buy_x_get_y' | 'tier' | 'campaign' | 'coupon'
-  value?: number
+  type: 'percentage' | 'fixed' | 'category' | 'brand' | 'bundle' | 'buy_x_get_y' | 'tier' | 'campaign' | 'coupon'
+  value: number
   categoryId?: string
   brand?: string
   bundleItems?: any[]
   buyXQty?: number
   getYQty?: number
-  getYDiscount?: number
-  minPurchase?: number
-  maxDiscount?: number
-  maxUses?: number
-  currentUses?: number
-  customerIds?: string[]
-  tierIds?: string[]
+  getYDiscount: number
+  minPurchase: number
+  maxDiscount: number
+  maxUses: number
+  currentUses: number
+  customerIds: string[]
+  tierIds: string[]
   campaignId?: string
-  stackingRule?: 'best_only' | 'stackable' | 'exclusive'
-  priority?: number
-  startsAt?: string
-  endsAt?: string
+  stackingRule: 'best_only' | 'stackable' | 'exclusive'
+  priority: number
+  startsAt: string
   expiresAt?: string
+  status: 'draft' | 'active' | 'paused' | 'expired' | 'cancelled'
+  createdBy?: string
   createdAt?: string
   updatedAt?: string
-  createdBy?: string
-  // Canonical promotion-engine fields
-  code?: string
-  promotionCode?: string
-  channel?: PromotionChannel
-  discountType?: PromotionDiscountType
-  discountValue?: number
-  valueType?: 'percentage' | 'fixed'
-  status?: PromotionStatus
-  isActive?: boolean
-  isAutoApply?: boolean
-  minimumOrderAmount?: number
-  maximumDiscountAmount?: number
-  usageLimit?: number
-  usageLimitPerCustomer?: number
-  per_customer_limit?: number
-  applicableTo?: PromotionApplicableTo
-  productIds?: string[]
-  categoryIds?: string[]
-  customerScope?: PromotionCustomerScope
-  customerScopeIds?: string[]
-  stackable?: boolean
-  pausedAt?: string
-  cancelledAt?: string
-  usedCount?: number
-  _effectiveStatus?: PromotionStatus
-}
-
-export interface PromotionLine {
-  productId: string | null
-  name: string
-  quantity: number
-  unitPrice: number
-  originalUnitPrice: number
-  discountPercent: number
-  discountAmount: number
-  netUnitPrice: number
-  lineTotal: number
-  promotionId: string | null
-  promotionCode: string | null
-  category?: string | null
-}
-
-export interface PromotionAppliedInfo {
-  id: string
-  name: string
-  code: string | null
-  discountType: PromotionDiscountType
-  discountValue: number
-  discountAmount: number
-  channel: PromotionChannel
-  priority: number
-  stackable: boolean
-}
-
-export interface PromotionCalculationResult {
-  applied: boolean
-  promotions: PromotionAppliedInfo[]
-  lines: PromotionLine[]
-  subtotal: number
-  discountTotal: number
-  subtotalBeforeDiscount: number
-  subtotalAfterDiscount: number
-  taxableSubtotal: number
-  grandTotal: number
-  metadata: Record<string, any>
-}
-
-export interface PromotionSnapshot {
-  id: string
-  code: string | null
-  name: string
-  discountType: PromotionDiscountType
-  discountValue: number
-  discountAmount: number
-  discountPercent: number
-  channel: PromotionChannel
-  appliedAt: string
-}
-
-export interface PromotionRedemption {
-  id: string
-  promotionId: string
-  customerId: string | null
-  sourceType: 'request' | 'quotation' | 'sales_order' | 'invoice'
-  sourceId: string
-  sourceNumber: string | null
-  discountAmount: number
-  subtotalBefore: number
-  subtotalAfter: number
-  promotionSnapshot: Record<string, any>
-  createdAt: string
-}
-
-export interface PromotionAnalyticsEntry {
-  id: string
-  name: string
-  code: string | null
-  status: PromotionStatus
-  channel: PromotionChannel
-  discountType: PromotionDiscountType
-  discountValue: number
-  orders: number
-  customers: number
-  grossSales: number
-  discountAmount: number
-  netSales: number
-  averageOrderValue: number
-}
-
-export interface PromotionAnalytics {
-  totals: {
-    orders: number
-    customers: number
-    grossSales: number
-    discountAmount: number
-    netSales: number
-    averageOrderValue: number
-  }
-  byPromotion: PromotionAnalyticsEntry[]
-  /** Daily redemption activity for the last 30 days (admin charts). */
-  trend?: {
-    date: string
-    orders: number
-    grossSales: number
-    discountAmount: number
-    netSales: number
-  }[]
 }
 
 export interface CustomerReward {

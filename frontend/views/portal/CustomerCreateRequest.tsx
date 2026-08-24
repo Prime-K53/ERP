@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Search, Plus, Trash2, ShoppingCart, FileText,
-  Loader2, CheckCircle2, Minus, Package, Link2, BadgePercent
+  Loader2, CheckCircle2, Minus, Package, Link2
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { portalLifecycle, PortalOrderPreview, PortalPromotionInfo } from '../../services/portalApiClient';
+import { portalLifecycle } from '../../services/portalApiClient';
 import ErrorBanner from './components/ErrorBanner';
 import { formatK } from './constants';
 import { F } from './portalStyles';
@@ -66,11 +66,6 @@ const CustomerCreateRequest: React.FC = () => {
   const [successId, setSuccessId] = useState<string | null>(null);
   const [reorderRef, setReorderRef] = useState<string | null>(searchParams.get('ref'));
   const [reorderOf, setReorderOf] = useState<string | null>(searchParams.get('order_id'));
-  const [promotionCode, setPromotionCode] = useState('');
-  const [preview, setPreview] = useState<PortalOrderPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [activePromotions, setActivePromotions] = useState<PortalPromotionInfo[]>([]);
 
   useEffect(() => {
     if (!reorderOf) return;
@@ -84,7 +79,6 @@ const CustomerCreateRequest: React.FC = () => {
             id: item.id || Math.random().toString(36).substr(2, 9),
             productId: item.productId || null,
             name: item.name || item.description || 'Item',
-            unit: item.unit || '',
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || item.price || 0),
           }));
@@ -137,45 +131,6 @@ const CustomerCreateRequest: React.FC = () => {
   }, [catalog, search]);
 
   const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
-  const activeAutoPromos = activePromotions.filter((p) => p.isAutoApply);
-
-  // Server-authoritative promotion preview: the backend re-calculates with
-  // authoritative ERP master prices whenever the cart or code changes.
-  useEffect(() => {
-    if (lines.length === 0) {
-      setPreview(null);
-      setPreviewError(null);
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setPreviewLoading(true);
-      try {
-        const result = await portalLifecycle.orders.preview({
-          items: lines.map((l) => ({ productId: l.productId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
-          promotionCode: promotionCode.trim() || null,
-        });
-        if (!cancelled) {
-          setPreview(result);
-          setPreviewError(null);
-        }
-      } catch (err: any) {
-        if (!cancelled) setPreviewError(err?.message || 'Promotion preview unavailable');
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
-      }
-    }, 450);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [lines, promotionCode]);
-
-  // Active PORTAL promotions for display (badges / banners) — display only.
-  useEffect(() => {
-    let cancelled = false;
-    portalLifecycle.promotions.list()
-      .then((p) => { if (!cancelled) setActivePromotions(p || []); })
-      .catch(() => { /* display-only, non-fatal */ });
-    return () => { cancelled = true; };
-  }, []);
 
   const addLine = (item: any) => {
     setLines((prev) => {
@@ -249,7 +204,6 @@ const CustomerCreateRequest: React.FC = () => {
         requestedDeliveryDate: deliveryDate || null,
         reorderOf: reorderOf || null,
         reorderOfNumber: reorderRef || null,
-        promotionCode: promotionCode.trim() || null,
       });
       setSuccessId(created.request_number || created.id);
     } catch (err: any) {
@@ -333,7 +287,7 @@ const CustomerCreateRequest: React.FC = () => {
   }
 
   return (
-    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B', maxWidth: 720, margin: '0 auto', paddingBottom: 120 }}>
+    <div style={{ fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748', maxWidth: 720, margin: '0 auto', paddingBottom: 120 }}>
       <style>{spinKeyframes}</style>
       <div style={{
         position: 'sticky', top: 0, zIndex: 20, background: 'rgba(255,253,250,.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
@@ -535,7 +489,7 @@ const CustomerCreateRequest: React.FC = () => {
             <h2 style={{ fontSize: 14, fontWeight: 600, color: '#1A202C', margin: 0 }}>
               Selected Items ({lines.length})
             </h2>
-            <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>{customerName}</span>
+            <span style={{ fontSize: 10.5, color: '#8A94A6', fontWeight: 600 }}>{customerName}</span>
           </div>
           {lines.length === 0 ? (
             <div style={{ padding: '36px 14px', textAlign: 'center' }}>
@@ -554,10 +508,10 @@ const CustomerCreateRequest: React.FC = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #E9EDF3' }}>
-                    <th style={{ textAlign: 'left', padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569' }}>Item</th>
-                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569', width: 90 }}>Qty</th>
-                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569', width: 110 }}>Price</th>
-                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569', width: 110 }}>Total</th>
+                    <th style={{ textAlign: 'left', padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.08 }}>Item</th>
+                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.08, width: 90 }}>Qty</th>
+                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.08, width: 110 }}>Price</th>
+                    <th style={{ textAlign: 'right', padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.08, width: 110 }}>Total</th>
                     <th style={{ width: 44 }}></th>
                   </tr>
                 </thead>
@@ -620,76 +574,6 @@ const CustomerCreateRequest: React.FC = () => {
           )}
         </div>
 
-        {/* ── Promotions (display) — server is the authority ── */}
-        {(activeAutoPromos.length > 0 || preview?.applied) && (
-          <div style={{ background: '#fff', borderRadius: 12, border: preview?.applied ? '1.4px solid #008A4C' : '1px solid #E9EDF3', padding: '12px 14px', marginBottom: 10, overflow: 'hidden' }}>
-            {preview?.applied && preview.promotion ? (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800,
-                    padding: '3px 9px', borderRadius: 6, letterSpacing: 0.04,
-                    background: 'linear-gradient(135deg,#047857,#008A4C)', color: '#fff', textTransform: 'uppercase',
-                  }}>
-                    Portal Exclusive Offer
-                  </span>
-                  {preview.promotion.code && (
-                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 8px', borderRadius: 6, letterSpacing: 0.08 }}>{preview.promotion.code}</span>
-                  )}
-                </div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#065f46', lineHeight: 1.4 }}>
-                  {preview.promotion.name} — {preview.promotion.discountType === 'percentage' ? `${preview.promotion.discountValue}% off` : `MWK ${preview.promotion.discountValue} off`}
-                </p>
-                <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-                  <div>
-                    <span style={{ fontSize: 10.5, color: '#8A94A6', display: 'block' }}>You Save</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: '#047857', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>− {formatK(preview.discountTotal)}</span>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 10.5, color: '#8A94A6', display: 'block' }}>Your Price</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: '#065f46', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>{formatK(preview.grandTotal)}</span>
-                  </div>
-                </div>
-              </div>
-            ) : activeAutoPromos.length > 0 ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>🎉</span>
-                <div>
-                  <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#065f46', lineHeight: 1.4 }}>
-                    A Portal promotion is available
-                  </p>
-                  <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#4A5568', lineHeight: 1.4 }}>
-                    {activeAutoPromos.map((ap) => ap.name).join(', ')} — applied automatically at checkout when your order qualifies.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        {/* ── Promo code (for code-based promotions) ── */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E9EDF3', padding: '12px 14px', marginBottom: 10 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#4A5568', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.06 }}>
-            Promotion Code
-          </label>
-          <div style={{ position: 'relative' }}>
-            <BadgePercent size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6' }} />
-            <input
-              value={promotionCode}
-              onChange={(e) => setPromotionCode(e.target.value.toUpperCase())}
-              placeholder={activeAutoPromos.length > 0 ? 'Optional — promotions apply automatically' : 'Enter promo code e.g. AUGUST10'}
-              style={{ ...fieldBase, paddingLeft: 36, height: 42, textTransform: 'uppercase', fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.06 }}
-            />
-            {previewLoading && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, borderRadius: '50%', border: '2px solid #a6d9d3', borderTopColor: '#146b60', animation: 'spin 0.8s linear infinite' }} />}
-          </div>
-          {promotionCode.trim() && preview && !preview.applied && !previewLoading && (
-            <p style={{ margin: '6px 0 0', fontSize: 11.5, fontWeight: 600, color: '#B91C1C', lineHeight: 1.4 }}>
-              “{promotionCode.trim()}” is not applicable to this order. Check the code or your cart meets its conditions.
-            </p>
-          )}
-          {previewError && <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#B91C1C', lineHeight: 1.4 }}>{previewError}</p>}
-        </div>
-
         <div style={{
           background: '#fff', borderRadius: 12, border: '1px solid #E9EDF3',
           padding: '12px 14px', marginBottom: 10
@@ -735,25 +619,17 @@ const CustomerCreateRequest: React.FC = () => {
           borderRadius: 12, border: '1px solid #E9EDF3',
           padding: '12px 14px', marginBottom: 10
         }}>
-          <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#4A5568', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.06 }}>Order Summary</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: '#4A5568' }}>Subtotal ({lines.length} item{lines.length === 1 ? '' : 's'})</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#2D3748', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>{formatK(subtotal)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#4A5568', lineHeight: 1.4 }}>Estimated Total</p>
+              <p style={{ margin: '3px 0 0', fontSize: 10.5, color: '#8A94A6', lineHeight: 1.4 }}>
+                {lines.length} item{lines.length === 1 ? '' : 's'}
+              </p>
             </div>
-            {preview?.applied && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#047857' }}>
-                  Portal Promotion {preview.promotion?.code ? `(${preview.promotion.code})` : ''}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#047857', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>− {formatK(preview.discountTotal)}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #E9EDF3', paddingTop: 8, marginTop: 2 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1A202C' }}>Estimated Total</span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: '#2D3748', fontFamily: F, letterSpacing: 0.15, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
-                {formatK(preview?.grandTotal ?? subtotal)}
-              </span>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 600, color: '#2D3748', fontFamily: F, letterSpacing: 0.15, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
+                {formatK(subtotal)}
+              </p>
             </div>
           </div>
         </div>

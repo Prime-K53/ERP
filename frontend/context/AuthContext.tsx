@@ -76,7 +76,7 @@ interface AuthContextType {
   notify: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
   clearNotification: () => void;
   login: (username: string, password?: string, mfaCode?: string) => Promise<'SUCCESS' | 'INVALID' | 'MFA_REQUIRED' | 'EXPIRED'>;
-  loginWithApi: (user: User, token: string, tokenExpiry: string, credentials?: { email: string; password: string }) => Promise<void>;
+  loginWithApi: (user: User, token: string, tokenExpiry: string) => void;
   logout: () => void;
   checkPermission: (permissionId: string) => boolean;
   validatePasswordStrength: (password: string) => { valid: boolean; errors: string[] };
@@ -439,7 +439,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadInitData = async () => {
       initAudit();
       audit('boot', 'loadInitData start', { SUPABASE_ENABLED });
-      console.log(`[SYNC-FORENSIC] AUTH loadInitData() START`, { SUPABASE_ENABLED });
       const failsafe = setTimeout(() => {
         if (!isInitialized) {
           setIsInitialized(true);
@@ -513,12 +512,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Start it explicitly whenever a valid Supabase session is restored.
           if (session?.user && !requiresSupabaseSetup) {
             audit('auth', 'cold boot: starting sync engine from loadInitData', { hasSession: true });
-            console.log(`[SYNC-FORENSIC] AUTH loadInitData() cold boot sync start`, {
-              hasSession: true,
-              requiresSetup: requiresSupabaseSetup,
-            });
             import('../services/syncService').then(({ startPeriodicSync }) => {
-              console.log(`[SYNC-FORENSIC] AUTH loadInitData() calling startPeriodicSync()`);
               startPeriodicSync();
             }).catch(() => {});
           }
@@ -712,14 +706,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    if (!SUPABASE_ENABLED) {
-      console.log(`[SYNC-FORENSIC] AUTH onAuthStateChange SKIPPED — SUPABASE_ENABLED=false`);
-      return;
-    }
+    if (!SUPABASE_ENABLED) return;
 
-    console.log(`[SYNC-FORENSIC] AUTH onAuthStateChange effect registered`);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      console.log(`[SYNC-FORENSIC] AUTH onAuthStateChange event: ${event}`, { requiresSetup });
       audit('auth', 'onAuthStateChange', { event, requiresSetup });
       if (event === 'SIGNED_OUT') {
         import('../services/syncService').then(({ stopPeriodicSync }) => {
@@ -732,10 +721,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && !requiresSetup) {
-        console.log(`[SYNC-FORENSIC] AUTH onAuthStateChange starting sync for ${event}`);
         audit('auth', 'starting periodic sync from auth event', { event, requiresSetup });
         import('../services/syncService').then(({ startPeriodicSync }) => {
-          console.log(`[SYNC-FORENSIC] AUTH onAuthStateChange calling startPeriodicSync()`);
           startPeriodicSync();
         }).catch(() => {});
       }
@@ -774,21 +761,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => clearInterval(id);
   }, [user]);
-
-  // Safety net: ensure the sync engine starts whenever a user becomes
-  // authenticated, regardless of which auth path was taken. This catches
-  // edge cases where loginWithApi / onAuthStateChange / loadInitData
-  // each missed the timing window to start the sync engine.
-  const prevUserRef = useRef<User | null>(null);
-  useEffect(() => {
-    if (user && !prevUserRef.current && SUPABASE_ENABLED) {
-      console.log(`[SYNC-FORENSIC] AUTH safety-net: user transition null→authenticated, ensuring sync started`);
-      import('../services/syncService').then(({ startPeriodicSync }) => {
-        startPeriodicSync();
-      }).catch(() => {});
-    }
-    prevUserRef.current = user;
-  }, [user, SUPABASE_ENABLED]);
 
   const notify = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning') => {
     setNotification({ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, message, type });
@@ -958,15 +930,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           sessionStorage.setItem('nexus_user', sessionPayload);
           localStorage.setItem('nexus_cached_user_session', sessionPayload);
-          console.log(`[SYNC-FORENSIC] AUTH login() supabase path — starting sync engine`);
-          import('../services/syncService').then(({ startPeriodicSync }) => {
-            console.log(`[SYNC-FORENSIC] AUTH login() supabase path — calling startPeriodicSync()`);
-            startPeriodicSync();
-          }).catch((err) => {
-            console.error(`[SYNC-FORENSIC] AUTH login() supabase path — FAILED to start sync`, {
-              error: err?.message || err,
-            });
-          });
           await updateLoginDiagnostic(email, {
             errorCode: '',
             errorMessage: '',
@@ -1068,14 +1031,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [addAuditLog, companyConfig, requiresSetup, SUPABASE_ENABLED, syncSupabaseUserToLocal, updateLoginDiagnostic]);
 
-  const loginWithApi = useCallback(async (apiUser: User, token: string, tokenExpiry: string, credentials?: { email: string; password: string }) => {
-    console.log(`[SYNC-FORENSIC] AUTH loginWithApi() called`, {
-      userId: apiUser.id,
-      username: apiUser.username,
-      hasToken: !!token,
-      SUPABASE_ENABLED,
-      hasCredentials: !!credentials,
-    });
+  const loginWithApi = useCallback((apiUser: User, token: string, tokenExpiry: string) => {
     setRequiresSetup(false);
     setUser(apiUser);
     sessionStorage.setItem('nexus_user', JSON.stringify({
@@ -1084,43 +1040,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       accessToken: token,
       tokenExpiry,
     }));
-    console.log(`[SYNC-FORENSIC] AUTH loginWithApi() user state set, checking sync init`, {
-      SUPABASE_ENABLED,
-    });
-    if (SUPABASE_ENABLED) {
-      // Establish a real Supabase session so that supabase.from() calls
-      // can pass RLS policies (authenticated role). The backend JWT stored
-      // in sessionStorage.nexus_user is NOT a Supabase session — it only
-      // works for /api/sync/ops push calls via the backend gateway.
-      if (credentials) {
-        try {
-          console.log(`[SYNC-FORENSIC] AUTH loginWithApi() establishing Supabase session`);
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: credentials.email,
-            password: credentials.password,
-          });
-          if (error) {
-            console.error(`[SYNC-FORENSIC] AUTH loginWithApi() Supabase session failed:`, error.message);
-          } else if (data?.session) {
-            console.log(`[SYNC-FORENSIC] AUTH loginWithApi() supabase session OK`, { userId: data.session.user?.id });
-          }
-        } catch (err) {
-          console.error(`[SYNC-FORENSIC] AUTH loginWithApi() Supabase session error:`, err);
-        }
-      } else {
-        console.warn(`[SYNC-FORENSIC] AUTH loginWithApi() no credentials provided — sync will rely on existing Supabase session`);
-      }
-      console.log(`[SYNC-FORENSIC] AUTH loginWithApi() starting sync engine`);
-      import('../services/syncService').then(({ startPeriodicSync }) => {
-        console.log(`[SYNC-FORENSIC] AUTH loginWithApi() calling startPeriodicSync()`);
-        startPeriodicSync();
-      }).catch((err) => {
-        console.error(`[SYNC-FORENSIC] AUTH loginWithApi() FAILED to start sync`, {
-          error: err?.message || err,
-        });
-      });
-    }
-  }, [SUPABASE_ENABLED]);
+  }, []);
 
   const logout = useCallback(() => {
     if (user) {

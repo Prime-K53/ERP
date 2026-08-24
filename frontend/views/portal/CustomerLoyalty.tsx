@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Gift, Star, Wallet } from 'lucide-react';
 import { portalLifecycle } from '../../services/portalApiClient';
-
 import PortalPageHeader from './components/PortalPageHeader';
 import ErrorBanner from './components/ErrorBanner';
 import EmptyState from './components/EmptyState';
@@ -27,12 +26,11 @@ const CustomerLoyalty: React.FC = () => {
   const [data, setData] = useState<LoyaltyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   useEffect(() => {
     portalLifecycle.loyalty.get()
-      .then((result) => { setData(result && result.points ? result : null); setRefreshError(null); })
-      .catch(() => { if (!data) setError('Failed to load loyalty data'); else setRefreshError('Unable to refresh — data may be stale'); })
+      .then(setData)
+      .catch((err) => setError(err.message || 'Failed to load loyalty data'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -44,8 +42,8 @@ const CustomerLoyalty: React.FC = () => {
         onEvent: (type, payload) => {
           if (type === 'entity_changed' && (payload?.docType === 'invoice' || payload?.event === 'payment_allocated') && !cancelled) {
             portalLifecycle.loyalty.get()
-              .then((result) => { setData(result && result.points ? result : data); setRefreshError(null); })
-              .catch(() => { if (!cancelled) setRefreshError('Unable to refresh — data may be stale'); });
+              .then(setData)
+              .catch(() => {});
           }
         },
       });
@@ -60,10 +58,11 @@ const CustomerLoyalty: React.FC = () => {
   if (loading) return <div style={{ padding: 16, maxWidth: 560, marginInline: 'auto' }}><PortalLoadingSkeleton type="card" count={3} /></div>;
 
   return (
-    <div style={{ fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B' }}>
+    <div style={{ fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748' }}>
+      <PortalPageHeader title="Loyalty Program" subtitle="Your rewards and membership benefits" icon={Gift} />
+
       <div style={{ padding: '20px 28px 8px' }}>
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-        {refreshError && <ErrorBanner message={refreshError} onDismiss={() => setRefreshError(null)} />}
 
         {data && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 18 }}>
@@ -72,7 +71,7 @@ const CustomerLoyalty: React.FC = () => {
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eef7f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#146b60' }}>
                   <Gift size={18} />
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06 }}>Points Balance</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06 }}>Points Balance</span>
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: '#0b3e39', fontFamily: "'JetBrains Mono', monospace" }}>
                 {data.points?.toLocaleString() || 0}
@@ -84,7 +83,7 @@ const CustomerLoyalty: React.FC = () => {
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eef7f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#146b60' }}>
                   <Wallet size={18} />
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06 }}>Cashback Available</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06 }}>Cashback Available</span>
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: '#0b3e39', fontFamily: "'JetBrains Mono', monospace" }}>
                 {formatK(data.cashback || 0)}
@@ -96,7 +95,7 @@ const CustomerLoyalty: React.FC = () => {
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eef7f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#146b60' }}>
                   <Star size={18} />
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06 }}>Membership Tier</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06 }}>Membership Tier</span>
               </div>
               <div style={{
                 display: 'inline-block', padding: '6px 14px', borderRadius: 20,

@@ -1,6 +1,5 @@
 const express = require('express');
 const crypto = require('crypto');
-const multer = require('multer');
 const router = express.Router();
 const repo = require('../services/supabaseRepository.cjs');
 const portalAuthService = require('../services/portalAuthService.cjs');
@@ -8,7 +7,6 @@ const portalLifecycleService = require('../services/portalLifecycleService.cjs')
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { canUseHeaderAuth, getHeaderAuthUser } = require('../middleware/auth.cjs');
-const { BannerImageError, processBannerImage } = require('../services/bannerImageService.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -240,28 +238,6 @@ router.get('/requests', async (req, res) => {
   } catch (err) {
     console.error('[PortalAdmin] List requests error:', err);
     res.status(500).json({ error: 'Failed to load requests' });
-  }
-});
-
-router.get('/requests/inbox', async (req, res) => {
-  try {
-    const data = await portalLifecycleService.getInboxRequests();
-    res.json(data);
-  } catch (err) {
-    console.error('[PortalAdmin] Inbox requests error:', err);
-    res.status(500).json({ error: 'Failed to load inbox requests' });
-  }
-});
-
-// Opening the Quotation Requests command hub clears its notification badge:
-// request-pipeline admin notifications are marked read (scoped to hub links).
-router.post('/requests/inbox/read-all', async (req, res) => {
-  try {
-    const result = await portalLifecycleService.markRequestNotificationsRead();
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error('[PortalAdmin] Mark inbox read error:', err);
-    res.status(500).json({ error: 'Failed to mark inbox notifications as read' });
   }
 });
 
@@ -842,13 +818,13 @@ router.post('/users/auto-create', async (req, res) => {
         for (const word of words) {
           const sanitized = word.toLowerCase().replace(/[^a-z0-9]/g, '');
           if (sanitized) {
-            const candidate = `${sanitized}@pps.co`;
+            const candidate = `${sanitized}@primeportal.com`;
             const existing = await portalAuthService.getPortalUserByEmail(candidate);
             if (!existing) return candidate;
           }
         }
       }
-      return `${customer_id.toLowerCase()}@pps.co`;
+      return `${customer_id.toLowerCase()}@primeportal.com`;
     })();
     const user = await portalAuthService.registerPortalUser({
       customer_id,
@@ -910,7 +886,7 @@ router.post('/users/:id/regenerate-password', async (req, res) => {
         user = await portalAuthService.registerPortalUser({
           id: portalUserId,
           customer_id: customerId,
-          email: email || info.email || `${customerId}@pps.co`,
+          email: email || info.email || `${customerId}@primeportal.com`,
           password: crypto.randomBytes(9).toString('base64url'),
           full_name: name || info.name || '',
           phone: phone || info.phone || '',
@@ -957,82 +933,6 @@ router.post('/users/:id/invite', async (req, res) => {
   } catch (err) {
     console.error('[PortalAdmin] Invite user error:', err);
     res.status(500).json({ error: 'Failed to create invite' });
-  }
-});
-
-// ─── Portal Banner Ad Image Upload ─────────────────────────────────────────
-// Smart Operations Hub → Ads. Every banner is prepared for the customer
-// portal's 4:1 banner area by bannerImageService (validate → exact 4:1 crop
-// → 1600 × 400 WebP). The ERP UI performs an interactive 4:1 crop before
-// uploading; this endpoint enforces the same spec server-side (defense in
-// depth) so the stored asset is always a 4:1, never stretched.
-// The optimized image is stored in the PUBLIC Supabase Storage bucket
-// `prime-erp-public` (banner images are public marketing content shown to
-// every portal customer) and the stable public URL plus final metadata is
-// returned to persist on the ad record (portal_ads.data.imageUrl / .imageMeta).
-const uploadAdImage = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ok = /^image\/(png|jpe?g|webp)$/i.test(file.mimetype || '');
-    cb(ok ? null : new Error('Only WebP, JPG or PNG images are allowed'), ok);
-  },
-});
-
-router.post('/ads/upload', (req, res, next) => {
-  uploadAdImage.single('file')(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ error: err.message || 'Failed to process image upload' });
-    }
-    next();
-  });
-}, async (req, res) => {
-  try {
-    const serviceKey = process.env.SUPABASE_SECRET_KEY;
-    if (!SUPABASE_URL || SUPABASE_URL.includes('placeholder') || !serviceKey) {
-      return res.status(503).json({ error: 'Supabase is not configured on this server' });
-    }
-    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
-      return res.status(400).json({ error: 'No image file provided' });
-    }
-
-    // Validate → crop to exact 4:1 → optimize to 1600 × 400 WebP.
-    let prepared;
-    try {
-      prepared = await processBannerImage(req.file.buffer);
-    } catch (err) {
-      if (err instanceof BannerImageError) {
-        return res.status(err.status || 400).json({ error: err.message, code: err.code });
-      }
-      throw err;
-    }
-
-    const bucket = 'prime-erp-public';
-    const safeName = String(req.file.originalname || 'ad.png')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(-80)
-      .replace(/\.(png|jpe?g|webp|gif|avif)$/i, '')
-      .slice(0, 76);
-    const objectPath = `ads/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}.webp`;
-    const base = SUPABASE_URL.replace(/\/+$/, '');
-
-    const uploadHeaders = {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'image/webp',
-      'x-upsert': 'false',
-    };
-    await axios.post(`${base}/storage/v1/object/${bucket}/${objectPath}`, prepared.buffer, {
-      headers: uploadHeaders,
-      timeout: 30000,
-      maxBodyLength: Infinity,
-    });
-
-    const url = `${base}/storage/v1/object/public/${bucket}/${objectPath}`;
-    res.status(201).json({ url, path: objectPath, meta: prepared.meta });
-  } catch (err) {
-    console.error('[PortalAdmin] Ad image upload error:', err?.response?.status, err?.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to upload image', detail: err?.response?.data?.message || err.message });
   }
 });
 

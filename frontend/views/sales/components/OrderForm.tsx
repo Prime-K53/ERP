@@ -35,14 +35,6 @@ import { OfflineImage } from '../../../components/OfflineImage';
 import { currencyService } from '../../../services/currencyService';
 import { AIGeneratorCard } from '../../../components/AIGeneratorCard';
 
-export interface OrderFormSaveSuccessDoc {
-    type: string;
-    docNumber: string;
-    totalAmount: number;
-    customerName: string;
-    data?: any;
-}
-
 interface OrderFormProps {
     type: string;
     initialData?: any;
@@ -50,11 +42,6 @@ interface OrderFormProps {
     onCancel: () => void;
     onPreview?: () => void;
     saving?: boolean;
-    /** Fired right after a non-draft document has been created, so the parent
-     * can surface a "saved successfully" modal (POS-style). Required for the
-     * Order path because OrderForm finalises orders itself and then calls
-     * onCancel() directly. */
-    onSaveSuccess?: (doc: OrderFormSaveSuccessDoc) => void;
 }
 
 const RECURRING_STATUSES = ['Draft', 'Active', 'Paused', 'Cancelled', 'Expired'] as const;
@@ -126,7 +113,7 @@ const normalizeOtherCharges = (items: any[] = []): { items: any[]; otherChargesC
     return { items: normalized, otherChargesCalculated: roundToCurrency(totalAdj) };
 };
 
-export const OrderForm: React.FC<OrderFormProps> = ({ type, initialData, onSave, onCancel, onPreview, saving, onSaveSuccess }) => {
+export const OrderForm: React.FC<OrderFormProps> = ({ type, initialData, onSave, onCancel, onPreview, saving }) => {
     const { companyConfig, notify, user } = useAuth();
     const { invoices, recurringInvoices, accounts, ledger } = useFinance();
     const { quotations, customerPayments, customers, addCustomer } = useSales();
@@ -1109,7 +1096,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ type, initialData, onSave,
                 reference: `Initial payment for Order #${formData.id}`
             }] : [] as OrderPayment[];
 
-            const orderPayload = {
+            await createOrder({
                 id: formData.id,
                 orderNumber: formData.id,
                 customerId: resolvedCustomerId,
@@ -1138,8 +1125,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ type, initialData, onSave,
                 tax: totalTax,
                 taxRate: effectiveTaxRate,
                 otherCharges: otherCharges
-            };
-            await createOrder(orderPayload);
+            });
             const allAppliedDiscounts = processedItems.flatMap((i: any) => i.discountDetails || []);
             for (const d of allAppliedDiscounts) {
                 await incrementDiscountUsage(d.ruleId || d.id).catch(() => {});
@@ -1158,18 +1144,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({ type, initialData, onSave,
                         console.error('[REFERRAL] register from order form (order path) failed:', err)
                     )
                 );
-            }
-
-            // Save & Finalise → close the form and let the parent celebrate with
-            // a POS-style success modal.
-            if (!asDraft) {
-                onSaveSuccess?.({
-                    type: 'Order',
-                    docNumber: orderPayload.orderNumber,
-                    totalAmount: finalTotalAmount,
-                    customerName: resolvedCustomerName,
-                    data: orderPayload,
-                });
             }
 
             onCancel();
@@ -1959,7 +1933,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
             padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: '#23282A',
         }}>
             <style>{scrollStyle}</style>
-            <div className="order-form-grid" style={{
+            <div style={{
                 width: '100%', maxWidth: 1040,
                 height: 'calc(100vh - 80px)',
                 background: '#FEFDFB', borderRadius: 14,
@@ -1973,7 +1947,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                 }} />
 
                 {/* DOCKET SIDEBAR */}
-                <aside className="order-form-sidebar bg-[#FBF8F2] p-[20px_20px_14px] flex flex-col relative overflow-y-visible rounded-l-[14px] after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-[1px] after:bg-[repeating-linear-gradient(#FEFDFB_50%,transparent_0%)] after:bg-[length:1px_14px] after:opacity-50">
+                <aside className="bg-[#FBF8F2] p-[20px_20px_14px] flex flex-col relative overflow-y-visible rounded-l-[14px] after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-[1px] after:bg-[repeating-linear-gradient(#FEFDFB_50%,transparent_0%)] after:bg-[length:1px_14px] after:opacity-50">
                     <div className="text-[10.5px] font-bold tracking-[1.6px] uppercase text-[#666F6C] mb-[4px]">Sales Flow</div>
                     <div className="font-['DM_Serif_Display',serif] text-[27px] leading-[1.15] text-[#23282A] mb-[2px]">{type}</div>
                     <div className="font-['JetBrains_Mono',monospace] text-[13px] text-[#666F6C] tracking-[0.5px] mb-[12px]">#{formData.id}</div>
@@ -2112,7 +2086,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                 </aside>
 
                 {/* MAIN CONTENT */}
-                <div className="order-form-main flex flex-col min-w-0 min-h-0 h-full rounded-r-[14px]">
+                <div className="flex flex-col min-w-0 min-h-0 h-full rounded-r-[14px]">
                     <div className="flex justify-end items-center px-[26px] pt-[16px]">
                         <div className="flex items-center gap-2">
                             {isPriceLocked && (
@@ -2496,7 +2470,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                                                 const qty = Number(item.quantity) || 0;
                                                 return (
                                                     <tr key={idx} className="hover:bg-[#eef7f6] transition-colors border-b border-[#E4DFD1] last:border-b-0">
-                                                        <td data-label="Item" className="px-[12px] py-[4px] text-[13px] text-[#23282A] font-medium flex items-center gap-[6px]">
+                                                        <td className="px-[12px] py-[4px] text-[13px] text-[#23282A] font-medium flex items-center gap-[6px]">
                                                             {invItem?.image ? (
                                                                 <button onClick={e => { e.stopPropagation(); setPhotoViewItem(invItem); }} className="shrink-0 w-7 h-7 rounded border border-teal-200 bg-teal-50 hover:border-teal-400 hover:shadow-sm transition-all flex items-center justify-center" title="View Details">
                                                                     <Package size={14} className="text-emerald-700"/>
@@ -2508,7 +2482,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                                                             )}
                                                             <span>{item.name || invItem?.name || item.productName || 'Item'}</span>
                                                         </td>
-                                                        <td data-label="Qty" className="px-2 py-1 text-center text-sm text-slate-800">
+                                                        <td className="px-2 py-1 text-center text-sm text-slate-800">
                                                             {item.id?.startsWith('QUICK-')
                                                                 ? `${item.serviceDetails?.pages || item.pages || 0} pages`
                                                                 : <input
@@ -2520,7 +2494,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                                                                     disabled={isPriceLocked}
                                                                 />}
                                                         </td>
-                                                        <td data-label="Price" className="px-2 py-1 text-right text-sm text-slate-800">
+                                                        <td className="px-2 py-1 text-right text-sm text-slate-800">
                                                             {item.id?.startsWith('QUICK-')
                                                                 ? (() => { const sheets = Math.ceil((item.serviceDetails?.pages || 1) / 2) * (item.serviceDetails?.copies || 1); return `${currency}${((item.price || 0) / sheets).toFixed(2)}/sheet`; })()
                                                                 : <input
@@ -2536,10 +2510,10 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                                                                     disabled={isPriceLocked}
                                                                 />}
                                                         </td>
-                                                        <td data-label="Amount" className="px-2 py-1 text-right text-sm font-semibold text-indigo-700">
+                                                        <td className="px-2 py-1 text-right text-sm font-semibold text-indigo-700">
                                                             {currency}{((Number(item.price) || 0) * qty).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                         </td>
-                                                        <td data-label="" className="px-2 py-1 text-center">
+                                                        <td className="px-2 py-1 text-center">
                                                             <button
                                                                 onClick={() => handleRemoveItem(idx)}
                                                                 disabled={isPriceLocked}
@@ -2719,7 +2693,7 @@ const handleVariantSelect = async (variant: ProductVariant) => {
                         </div>
                         </div>
                     </div>
-                    <div className="order-form-footer border-t border-[#E4DFD1] bg-[#FEFDFB] px-[26px] py-[16px] flex items-center justify-end gap-[10px] shrink-0">
+                    <div className="border-t border-[#E4DFD1] bg-[#FEFDFB] px-[26px] py-[16px] flex items-center justify-end gap-[10px] shrink-0">
                         <button onClick={handleCancelForm}
                             className="px-[14px] py-[7px] text-[13px] font-semibold text-[#23282A] bg-[#FEFDFB] border border-[#E4DFD1] rounded-[9px] hover:border-[#72c0b7] flex items-center gap-[7px] transition-colors">
                             <X size={14} /> Close

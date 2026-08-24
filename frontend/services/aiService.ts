@@ -14,15 +14,6 @@ export interface SmartReplySuggestion {
   label: string;
 }
 
-export interface GeneratedAdCopy {
-  title: string;
-  subtitle: string;
-  badge: string;
-  ctaLabel: string;
-  emoji: string;
-  gradient: string;
-}
-
 const DEFAULT_CONFIG: AIConfig = {
   provider: 'openai',
   apiKey: '',
@@ -108,11 +99,6 @@ Format: {"name":"...","content":"...","category":"...","variables":["name","comp
 
       analyzeSentiment: `Analyze the sentiment of this customer message and return a JSON object with keys: "sentiment" (one of: positive, neutral, negative, urgent), "priority" (one of: high, normal, low), "summary" (one sentence describing the message), and "suggestedTags" (array of 1-3 tag strings).
 Format: {"sentiment":"...","priority":"...","summary":"...","suggestedTags":["..."]}`,
-
-      generateAdCopy: `You are a creative marketing copywriter for a print shop / ERP company's customer portal.
-Generate ONE compelling banner ad for the customer portal based on the user's brief.
-Return a JSON object with keys: "title" (short, punchy headline, max 6 words), "subtitle" (one supporting sentence, max 14 words), "badge" (2-4 word label like "Limited Time" or "New Offer"), "ctaLabel" (short button text like "Order Now" or "Learn More"), "emoji" (a single relevant emoji), and "gradient" (a CSS linear-gradient using rich colors, e.g. linear-gradient(135deg, #0b3e39 0%, #1f8577 100%)).
-Format: {"title":"...","subtitle":"...","badge":"...","ctaLabel":"...","emoji":"...","gradient":"..."}`,
     };
     return prompts[context] || prompts.smartReply;
   }
@@ -264,106 +250,6 @@ Format: {"title":"...","subtitle":"...","badge":"...","ctaLabel":"...","emoji":"
       // Return null if generation fails
     }
     return null;
-  }
-
-  async generateAdCopy(brief: { description: string; audience?: string; tone?: string }): Promise<GeneratedAdCopy | null> {
-    await this.ensureLoaded();
-    if (!this.config.enabled || !this.config.apiKey) {
-      return this.fallbackAdCopy(brief);
-    }
-
-    try {
-      const audience = brief.audience || 'all customers';
-      const tone = brief.tone || 'friendly';
-      const response = await this.callAPI([
-        { role: 'system', content: this.buildSystemPrompt('generateAdCopy') },
-        { role: 'user', content: `Brief: ${brief.description}\nAudience: ${audience}\nTone: ${tone}` },
-      ]);
-
-      const cleaned = response.replace(/```json?/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      if (parsed && parsed.title) {
-        return {
-          title: parsed.title,
-          subtitle: parsed.subtitle || '',
-          badge: parsed.badge || 'Special Offer',
-          ctaLabel: parsed.ctaLabel || 'Order Now',
-          emoji: parsed.emoji || '🎯',
-          gradient: parsed.gradient || 'linear-gradient(135deg, #0b3e39 0%, #1f8577 100%)',
-        };
-      }
-    } catch {
-      // Fall through to template-based copy
-    }
-    return this.fallbackAdCopy(brief);
-  }
-
-  private fallbackAdCopy(brief: { description: string; audience?: string; tone?: string }): GeneratedAdCopy | null {
-    const desc = (brief.description || '').trim();
-    const tone = brief.tone || 'friendly';
-    const lower = desc.toLowerCase();
-
-    // Pick gradient by tone
-    const gradients: Record<string, string> = {
-      friendly: 'linear-gradient(135deg, #0b3e39 0%, #1f8577 100%)',
-      urgent: 'linear-gradient(135deg, #7C2D12 0%, #D97706 100%)',
-      premium: 'linear-gradient(135deg, #312E81 0%, #7C5CF0 100%)',
-      festive: 'linear-gradient(135deg, #831843 0%, #DB2777 100%)',
-      fresh: 'linear-gradient(135deg, #065F46 0%, #059669 100%)',
-    };
-
-    if (lower.includes('%') || lower.includes('off') || lower.includes('discount') || lower.includes('sale')) {
-      return {
-        title: desc.split(/\s+/).slice(0, 6).join(' ') || 'Big Savings Inside',
-        subtitle: 'Limited-time offer — grab yours before it ends.',
-        badge: 'Limited Time',
-        ctaLabel: 'Shop Now',
-        emoji: '🏷️',
-        gradient: gradients.urgent,
-      };
-    }
-    if (lower.includes('new') || lower.includes('launch') || lower.includes('introducing')) {
-      return {
-        title: 'Fresh & New — Just Arrived',
-        subtitle: desc || 'Discover our latest products and services.',
-        badge: 'New Arrival',
-        ctaLabel: 'Explore',
-        emoji: '✨',
-        gradient: gradients.fresh,
-      };
-    }
-    if (lower.includes('refer') || lower.includes('friend') || lower.includes('earn')) {
-      return {
-        title: 'Refer & Earn Rewards',
-        subtitle: 'Invite a friend and both of you earn rewards.',
-        badge: 'Referral Bonus',
-        ctaLabel: 'Refer Now',
-        emoji: '🎁',
-        gradient: gradients.premium,
-      };
-    }
-    if (lower.includes('member') || lower.includes('loyalty') || lower.includes('tier')) {
-      return {
-        title: 'Unlock Member Perks',
-        subtitle: 'Enjoy exclusive benefits at every loyalty tier.',
-        badge: 'Members Only',
-        ctaLabel: 'View Benefits',
-        emoji: '👑',
-        gradient: gradients.premium,
-      };
-    }
-    return {
-      title: tone === 'professional'
-        ? (desc.split(/\s+/).slice(0, 5).join(' ') || 'Quality You Can Trust')
-        : (desc.split(/\s+/).slice(0, 6).join(' ') || 'Great Deals Await'),
-      subtitle: desc
-        ? 'Take advantage of this special offer today.'
-        : 'Explore premium services tailored just for you.',
-      badge: 'Special Offer',
-      ctaLabel: 'Order Now',
-      emoji: '🎯',
-      gradient: gradients[tone] || gradients.friendly,
-    };
   }
 
   async analyzeSentiment(text: string): Promise<{ sentiment: string; priority: string; summary: string; suggestedTags: string[] } | null> {

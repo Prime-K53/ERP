@@ -301,7 +301,7 @@ export const JobTickets: React.FC = () => {
 
   return (
     <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 12px 24px',
+      height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 24px',
       maxWidth: 1600, margin: '0 auto', width: '100%', fontFamily: "'Inter', sans-serif",
       fontWeight: 400, overflowY: 'auto', background: paper,
     }}>
@@ -323,9 +323,9 @@ export const JobTickets: React.FC = () => {
             </div>
             <div>
               <h1 style={{
-                fontFamily: "'DM Serif Display', serif", fontSize: 20, fontWeight: 400,
+                fontFamily: "'DM Serif Display', serif", fontSize: 22, fontWeight: 400,
                 color: teal[800], letterSpacing: 0.2, lineHeight: 1.2, margin: 0,
-              }} className="md:!text-[22px]">Job Tickets</h1>
+              }}>Job Tickets</h1>
               <p style={{ fontSize: 13.5, color: inkSoft, fontWeight: 500, lineHeight: 1.6, marginTop: 4 }}>Manage print jobs and service orders</p>
             </div>
           </div>

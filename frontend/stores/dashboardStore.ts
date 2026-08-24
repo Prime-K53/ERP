@@ -21,7 +21,7 @@ interface DashboardState {
 const STORAGE_KEY = 'prime_erp_dashboard_widgets';
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
-  { id: 'info-card', label: 'Info Card (Jobs/Portal)', visible: true, order: 0 },
+  { id: 'info-card', label: 'Info Card (Jobs/Weather)', visible: true, order: 0 },
   { id: 'collection', label: "Today's Collection", visible: true, order: 1 },
   { id: 'revenue', label: 'Revenue', visible: true, order: 2 },
   { id: 'unpaid', label: 'Unpaid Invoices', visible: true, order: 3 },

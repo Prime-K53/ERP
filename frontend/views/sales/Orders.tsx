@@ -17,7 +17,7 @@ import { useOrders } from '../../context/OrdersContext';
 import { useInventory } from '../../context/InventoryContext';
 import { useProduction } from '../../context/ProductionContext';
 import { Quotation, Invoice, DeliveryNote, RecurringInvoice, CartItem, Order, JobOrder } from '../../types';
-import { OrderForm, OrderFormSaveSuccessDoc } from './components/OrderForm';
+import { OrderForm } from './components/OrderForm';
 import { InvoiceDetails } from './components/InvoiceDetails';
 import { JobOrderDetails } from './components/JobOrderDetails';
 import { QuotationDetails } from './components/QuotationDetails';
@@ -205,9 +205,6 @@ const Orders: React.FC = () => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const lastRefreshAtRef = useRef(0);
 
-    // POS-style "document saved" celebration shown after Save & Finalise.
-    const [successDoc, setSuccessDoc] = useState<OrderFormSaveSuccessDoc | null>(null);
-
     // Communication State
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
     const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
@@ -366,6 +363,7 @@ const Orders: React.FC = () => {
             else if (location.state.customer) setEditingItem({ customerName: location.state.customer });
             else setEditingItem(null);
             setIsFormOpen(true);
+            window.history.replaceState({}, document.title);
         }
         if (location.state?.action === 'view' && location.state.id) {
             if (location.state.type === 'Invoice') {
@@ -376,14 +374,6 @@ const Orders: React.FC = () => {
         if ((location.state)?.filterInvoiceId) {
             setActiveTab('Invoices');
             setSearchTerm(String((location.state).filterInvoiceId));
-        }
-
-        // Consume the deep-link state through the router. (window.history
-        // .replaceState does NOT update react-router's location, so this effect
-        // used to re-fire whenever `invoices` changed after a save/refresh and
-        // re-open the blank order form without any selection.)
-        if (location.state) {
-            navigate(location.pathname, { replace: true, state: null });
         }
     }, [location, invoices]);
 
@@ -493,21 +483,7 @@ const Orders: React.FC = () => {
             }
             setIsFormOpen(false);
             setEditingItem(null);
-
-            // Save & Finalise → the POS-style success modal is the primary
-            // feedback (avoids a redundant toast + modal). Drafts close
-            // quietly with just the toast.
-            if (asDraft) {
-                notify("Draft saved successfully", "success");
-            } else {
-                setSuccessDoc({
-                    type: activeView,
-                    docNumber: data?.orderNumber || data?.id || '',
-                    totalAmount: Number(data?.totalAmount || data?.total || 0),
-                    customerName: data?.customerName || '',
-                    data,
-                });
-            }
+            notify("Document saved successfully", "success");
 
             if (data?.referredBy) {
                 import('../../services/referralService').then(({ referralService }) =>
@@ -1494,7 +1470,7 @@ const Orders: React.FC = () => {
         <div className="p-4 md:p-6 max-w-screen-2xl mx-auto h-[calc(100vh-4rem)] flex flex-col relative w-full text-sm font-normal">
             {isFormOpen && (
                 <div className="absolute inset-0 z-50 bg-slate-50 overflow-y-auto custom-scrollbar p-4 md:p-6">
-                    <OrderForm type={formType} initialData={editingItem} onSave={handleSave} onCancel={() => setIsFormOpen(false)} saving={isSaving} onSaveSuccess={(doc) => setSuccessDoc(doc)} />
+                    <OrderForm type={formType} initialData={editingItem} onSave={handleSave} onCancel={() => setIsFormOpen(false)} saving={isSaving} />
                 </div>
             )}
             {analysisInvoice && (<ProfitAnalysisModal invoice={analysisInvoice} onClose={() => setAnalysisInvoice(null)} />)}
@@ -1740,24 +1716,24 @@ const Orders: React.FC = () => {
                              </div>
                          ))}
                      </>
-                  ) : activeView === 'Orders' ? (
-                      <>
-                          {[
-                              { label: 'Total Orders', value: `${currency}${orderStats.totalOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: '#1f8577', bg: '#eef7f6' },
-                              { label: 'Completed', value: `${orderStats.completedCount} orders`, icon: CheckCircle, color: '#1f8577', bg: '#eef7f6' },
-                              { label: 'Pending Value', value: `${currency}${orderStats.pendingValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Clock, color: '#1f8577', bg: '#eef7f6' },
-                              { label: 'Outstanding', value: `${currency}${orderStats.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, color: '#1f8577', bg: '#eef7f6' }
-                          ].map((item, idx) => (
-                              <div key={idx} onClick={() => {}} style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 14, background: '#FEFDFB', border: '1.4px solid #e4ddd1', borderLeft: '4px solid ' + item.color, boxShadow: '0 1px 3px rgba(0,0,0,.04)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'transform .15s ease, box-shadow .15s ease' }}>
-                                  <div style={{ padding: 10, borderRadius: 10, background: item.bg, color: item.color, display: 'inline-flex' }}><item.icon size={20} /></div>
-                                  <div style={{ minWidth: 0 }}>
-                                      <p style={{ fontSize: 10, fontWeight: 700, color: '#5c6567', textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{item.label}</p>
-                                      <p style={{ fontSize: 18, fontWeight: 700, color: '#23282A', margin: 0, fontFamily: "'JetBrains Mono', monospace", letterSpacing: -0.2 }}>{item.value}</p>
-                                  </div>
-                              </div>
-                          ))}
-                      </>
-                  ) : null}
+                 ) : activeView === 'Orders' ? (
+                     <>
+                         {[
+                             { label: 'Total Orders', value: `${currency}${orderStats.totalOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: '#1f8577', bg: '#eef7f6' },
+                             { label: 'Completed', value: `${orderStats.completedCount} orders`, icon: CheckCircle, color: '#1f8577', bg: '#eef7f6' },
+                             { label: 'Pending Value', value: `${currency}${orderStats.pendingValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Clock, color: '#1f8577', bg: '#eef7f6' },
+                             { label: 'Outstanding', value: `${currency}${orderStats.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, color: '#1f8577', bg: '#eef7f6' }
+                         ].map((item, idx) => (
+                             <div key={idx} onClick={() => {}} style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 14, background: '#FEFDFB', border: '1.4px solid #e4ddd1', borderLeft: '4px solid ' + item.color, boxShadow: '0 1px 3px rgba(0,0,0,.04)', display: 'flex', alignItems: 'flex-start', gap: 14, transition: 'transform .15s ease, box-shadow .15s ease' }}>
+                                 <div style={{ padding: 10, borderRadius: 10, background: item.bg, color: item.color, display: 'inline-flex' }}><item.icon size={20} /></div>
+                                 <div style={{ minWidth: 0 }}>
+                                     <p style={{ fontSize: 10, fontWeight: 700, color: '#5c6567', textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{item.label}</p>
+                                     <p style={{ fontSize: 18, fontWeight: 700, color: '#23282A', margin: 0, fontFamily: "'JetBrains Mono', monospace", letterSpacing: -0.2 }}>{item.value}</p>
+                                 </div>
+                             </div>
+                         ))}
+                     </>
+                 ) : null}
              </div>
 
             {activeView === 'Invoices' && showVisualDashboard && (
@@ -1781,7 +1757,7 @@ const Orders: React.FC = () => {
                                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#5c6567' }} tickFormatter={(val) => `${currency}${val / 1000} k`} />
                                     <Tooltip
                                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }}
-                                        formatter={(val) => [`${currency}${(val || 0).toLocaleString()} `]}
+                                        formatter={(val) => [`${currency}${val.toLocaleString()} `]}
                                     />
                                     <Bar dataKey="revenue" fill="#1f8577" radius={[4, 4, 0, 0]} barSize={30} />
                                     <Bar dataKey="profit" fill="#3fa294" radius={[4, 4, 0, 0]} barSize={30} />
@@ -1847,7 +1823,6 @@ const Orders: React.FC = () => {
                 {selectedInvoiceForDetail && (
                     <InvoiceDetails
                         invoice={selectedInvoiceForDetail}
-                        isSubscription={activeView === 'Subscriptions'}
                         onClose={() => setSelectedInvoiceForDetail(null)}
                         onEdit={(inv) => {
                             handleEdit(inv);
@@ -1986,95 +1961,6 @@ const Orders: React.FC = () => {
                     onClose={() => setSelectedExchangeForDetail(null)}
                 />
             )}
-            {successDoc && (() => {
-                const typeLabelMap: Record<string, string> = {
-                    Invoices: 'Invoice', Quotations: 'Quotation', Subscriptions: 'Recurring Invoice',
-                    Orders: 'Order', SalesOrders: 'Sales Order',
-                    Invoice: 'Invoice', Quotation: 'Quotation', Recurring: 'Recurring Invoice', Order: 'Order',
-                };
-                const previewTypeMap: Record<string, string> = {
-                    Invoices: 'INVOICE', Quotations: 'QUOTATION', Subscriptions: 'SUBSCRIPTION',
-                    Orders: 'ORDER', SalesOrders: 'SALES_ORDER',
-                    Invoice: 'INVOICE', Quotation: 'QUOTATION', Recurring: 'SUBSCRIPTION', Order: 'ORDER',
-                };
-                const typeLabel = typeLabelMap[successDoc.type] || 'Document';
-                const previewType = previewTypeMap[successDoc.type] || 'INVOICE';
-                const previewData = successDoc.data
-                    || orders.find((o: Order) => o.id === successDoc.docNumber)
-                    || { id: successDoc.docNumber };
-                return (
-                    <div style={{
-                      position: 'fixed', inset: 0, zIndex: 120,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(15, 23, 42, 0.6)', padding: '40px 20px',
-                      fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: '#23282A', lineHeight: 1.5
-                    }}>
-                        <div style={{
-                          width: 420, maxWidth: '100%', maxHeight: '92vh',
-                          background: '#FEFDFB', borderRadius: 14,
-                          boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
-                          display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
-                        }}>
-                            {/* Header */}
-                            <div style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              padding: '14px 20px 12px',
-                              borderBottom: '1px solid #e4ddd1',
-                              background: '#eef7f6'
-                            }}>
-                                <h2 style={{ fontSize: 13.5, fontWeight: 700, color: '#23282A', margin: 0, display: 'flex', alignItems: 'center', gap: 8, letterSpacing: 0.01 }}>
-                                    <CheckCircle size={16} style={{ color: '#1f8577' }} /> {typeLabel} Saved
-                                </h2>
-                                <button onClick={() => setSuccessDoc(null)} style={{ color: '#5c6567', background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color .15s ease' }}
-                                  onMouseEnter={e => { e.currentTarget.style.color = '#b5493f'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.color = '#5c6567'; }}
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-
-                            {/* Body */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 8px', textAlign: 'center' }}>
-                                <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#eef7f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', border: '1px solid #a6d9d3' }}>
-                                    <CheckCircle size={26} style={{ color: '#1f8577' }} />
-                                </div>
-                                <p style={{ fontSize: 11, fontWeight: 700, color: '#5c6567', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.08 }}>{typeLabel} number</p>
-                                <h3 style={{ fontSize: 20, fontWeight: 700, color: '#23282A', margin: '0 0 16px', fontVariantNumeric: 'tabular-nums', letterSpacing: 0.2 }}>{successDoc.docNumber || '—'}</h3>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                                        <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Customer</span>
-                                        <span style={{ fontSize: 13, fontWeight: 600, color: '#23282A' }}>{successDoc.customerName || 'Walk-in'}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#FEFDFB', borderRadius: 8, border: '1px solid #e4ddd1' }}>
-                                        <span style={{ fontSize: 12, color: '#5c6567', fontWeight: 500 }}>Total Amount</span>
-                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: '#23282A', fontVariantNumeric: 'tabular-nums' }}>{companyConfig?.currencySymbol || '$'}{(successDoc.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Footer */}
-                            <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid #e4ddd1', background: '#eef7f6' }}>
-                                <button
-                                    onClick={() => { setSuccessDoc(null); handlePreview(previewType as any, previewData); }}
-                                    style={{ flex: 1, padding: '8px 12px', background: 'linear-gradient(155deg, #1f8577, #0f544c)', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, boxShadow: '0 6px 16px -6px rgba(15,84,76,.55)', transition: 'all .15s ease' }}
-                                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 20px -6px rgba(15,84,76,.65)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 16px -6px rgba(15,84,76,.55)'; }}
-                                >
-                                    <FileText size={15} /> Preview PDF
-                                </button>
-                                <button
-                                    onClick={() => setSuccessDoc(null)}
-                                    style={{ flex: 1, padding: '8px 12px', background: '#FEFDFB', border: '1.4px solid #e4ddd1', color: '#5c6567', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease' }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#eef7f6'; e.currentTarget.style.color = '#0f544c'; e.currentTarget.style.borderColor = '#a6d9d3'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = '#FEFDFB'; e.currentTarget.style.color = '#5c6567'; e.currentTarget.style.borderColor = '#e4ddd1'; }}
-                                >
-                                    Done
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
             <ConfirmDialogComponent />
             <ConfirmDialog
                 open={confirmState.open}

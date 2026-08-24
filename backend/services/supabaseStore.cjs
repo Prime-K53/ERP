@@ -146,7 +146,7 @@ function mapInvoice(row) {
     other_charges: num(d.otherCharges ?? d.other_charges),
     notes: d.notes || null,
     document_title: d.documentTitle || null,
-    line_items: mapInvoiceLineItems(d.items || d.line_items),
+    line_items: mapInvoiceLineItems(d.items),
     _customerId: d.customerId || null,
   };
 }

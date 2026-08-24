@@ -12,7 +12,6 @@ function generatePortalToken(user) {
     id: user.id,
     customer_id: user.customer_id,
     email: user.email,
-    full_name: user.full_name || null,
     role: 'portal_customer'
   };
   return jwt.sign(payload, JWT_SECRET, { expiresIn: portalAuthService.ACCESS_TOKEN_EXPIRY });
@@ -42,7 +41,7 @@ const verifyPortalToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (!decoded.role || decoded.role !== 'portal_customer') {
+    if (decoded.role && decoded.role !== 'portal_customer') {
       return res.status(403).json({
         error: 'Invalid token role',
         message: 'This token is not valid for portal access'
@@ -51,8 +50,7 @@ const verifyPortalToken = (req, res, next) => {
     req.portalUser = {
       customer_id: decoded.customer_id,
       email: decoded.email,
-      full_name: decoded.full_name || null,
-      role: decoded.role,
+      role: decoded.role || 'portal_customer',
       id: decoded.id,
     };
     next();

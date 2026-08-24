@@ -31,7 +31,7 @@ const SALES_ORDER_STATUS = Object.freeze({
 
 const REQUEST_NUMBER_PREFIXES = Object.freeze({
   quotation: 'QTR',
-  order: 'SO',
+  order: 'ODR',
 });
 
 function requestNumberPrefix(requestType) {
@@ -57,26 +57,15 @@ function parseJson(value, fallback = null) {
 
 async function nextYearScopedNumber(table, column, prefix) {
   const year = new Date().getFullYear();
-  // NOTE: repo.getAll returns flat domain rows (the JSONB `data` is spread onto
-  // the row — never a nested `{ data: ... }` envelope) and the repository only
-  // supports flat string operators for PostgREST filters. A `{ like: ... }`
-  // object cannot be serialized by axios into PostgREST syntax, so the prefix
-  // match is done in JS (the same JS-side filtering used across the portal).
-  let rows = [];
-  try {
-    rows = await repo.getAll(table);
-  } catch {
-    rows = [];
-  }
-  const prefixToken = `${prefix}-${year}-`;
+  const rows = await repo.getAll(table, { [`data->>${column}`]: { like: `${prefix}-${year}-%` } });
   let maxSeq = 0;
   for (const row of rows) {
-    const value = String(row[column] || '');
-    if (!value.startsWith(prefixToken)) continue;
-    const num = parseInt(value.slice(prefixToken.length), 10);
+    const data = row.data || row;
+    const suffix = String(data[column] || '').slice(prefix.length + 1 + String(year).length + 1);
+    const num = parseInt(suffix, 10);
     if (Number.isFinite(num) && num > maxSeq) maxSeq = num;
   }
-  return `${prefixToken}${String(maxSeq + 1).padStart(6, '0')}`;
+  return `${prefix}-${year}-${String(maxSeq + 1).padStart(6, '0')}`;
 }
 
 function assertSalesOrderTransition(order, toStatus) {

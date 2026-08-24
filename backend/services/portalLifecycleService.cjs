@@ -15,8 +15,6 @@ const repo = require('./supabaseRepository.cjs');
 const { auditService } = require('../auditService.cjs');
 const emailService = require('./emailService.cjs');
 const workflowEngine = require('./workflowEngine.cjs');
-const promotionEngine = require('./promotionEngine.cjs');
-const promotionService = require('./promotionService.cjs');
 
 // ─── Centralized status enums ────────────────────────────────────────────────
 const REQUEST_STATUS = Object.freeze({
@@ -106,31 +104,6 @@ const NOTIFICATION_TYPES = Object.freeze({
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// Portal tables with REAL flat columns (not {id, data} JSONB envelopes).
-// WHERE-clause shims must filter these by column name, never `data->>`.
-const FLAT_SHIM_TABLES = new Set([
-  'portal_users',
-  'portal_sessions',
-  'portal_password_resets',
-  'portal_login_history',
-]);
-
-function snakeToCamel(field) {
-  return String(field || '').replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-// Extract positional WHERE conditions: `WHERE [alias.]col = ? [AND col = ? ...]`.
-// Each condition binds to params in order, exactly like the SQL it mirrors.
-function whereConditions(trimmed) {
-  return [...trimmed.matchAll(/(?:WHERE|\bAND\b)\s+(?:\w+\.)?(\w+)\s*=\s*\?/gi)]
-    .map((m) => m[1]);
-}
-
-function shimFilter(table, field, value) {
-  return { [FLAT_SHIM_TABLES.has(table) ? field : `data->>${field}`]: `eq.${value}` };
-}
-
 async function getOne(query, params = []) {
   const trimmed = String(query || '').trim();
   const countMatch = trimmed.match(/SELECT\s+COUNT\s*\(\*\)\s+as\s+(\w+)\s+FROM\s+(\w+)/i);
@@ -138,54 +111,34 @@ async function getOne(query, params = []) {
     const rows = await repo.getAll(countMatch[2]);
     return { [countMatch[1]]: rows.length };
   }
-  const fromMatch = trimmed.match(/FROM\s+(\w+)/i);
-  if (!fromMatch) return null;
-  const table = fromMatch[1];
-  const conds = whereConditions(trimmed);
-
-  if (conds.length > 0 && params.length > 0) {
-    // id-first lookup: fetch the row, then verify every remaining condition
-    // in JS (dual-spelling aware: `customer_id` matches `data.customerId`).
-    if (conds[0].toLowerCase() === 'id') {
-      const row = await repo.getById(table, String(params[0]));
-      if (!row) return null;
-      for (let i = 1; i < conds.length; i++) {
-        const value = params[i];
-        if (value === undefined) break;
-        const field = conds[i];
-        const actual = row[field] ?? row[snakeToCamel(field)];
-        if (String(actual ?? '') !== String(value)) return null;
-      }
-      return row;
-    }
-    const filters = {};
-    for (let i = 0; i < conds.length; i++) {
-      const value = params[i];
-      if (value === undefined) break;
-      Object.assign(filters, shimFilter(table, conds[i], value));
-    }
-    const rows = await repo.getAll(table, filters);
+  const byIdMatch = trimmed.match(/FROM\s+(\w+)\s+WHERE\s+.*\bid\s*=\s*\?/i);
+  if (byIdMatch && params.length > 0) {
+    return repo.getById(byIdMatch[1], String(params[0]));
+  }
+  const byFieldMatch = trimmed.match(/FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?/i);
+  if (byFieldMatch && params.length > 0) {
+    const rows = await repo.getAll(byFieldMatch[1], { [`data->>${byFieldMatch[2]}`]: `eq.${params[0]}` });
     return rows[0] || null;
   }
-
-  const rows = await repo.getAll(table);
-  return rows[0] || null;
+  const fromMatch = trimmed.match(/FROM\s+(\w+)/i);
+  if (fromMatch) {
+    const rows = await repo.getAll(fromMatch[1]);
+    return rows[0] || null;
+  }
+  return null;
 }
 
 async function getAll(query, params = []) {
   const trimmed = String(query || '').trim();
-  const fromMatch = trimmed.match(/FROM\s+(\w+)/i);
-  if (!fromMatch) return [];
-  const table = fromMatch[1];
-  const conds = whereConditions(trimmed);
-  if (conds.length === 0) return repo.getAll(table);
-  const filters = {};
-  for (let i = 0; i < conds.length; i++) {
-    const value = params[i];
-    if (value === undefined) break;
-    Object.assign(filters, shimFilter(table, conds[i], value));
+  const byFieldMatch = trimmed.match(/FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?/i);
+  if (byFieldMatch && params.length > 0) {
+    return repo.getAll(byFieldMatch[1], { [`data->>${byFieldMatch[2]}`]: `eq.${params[0]}` });
   }
-  return repo.getAll(table, filters);
+  const fromMatch = trimmed.match(/FROM\s+(\w+)/i);
+  if (fromMatch) {
+    return repo.getAll(fromMatch[1]);
+  }
+  return [];
 }
 
 async function runQuery(query, params = []) {
@@ -208,57 +161,21 @@ async function runQuery(query, params = []) {
     if (/UPDATE/i.test(trimmed)) {
       const updateMatch = trimmed.match(/UPDATE\s+(\w+)\s+SET/i);
       if (updateMatch) {
-        const table = updateMatch[1];
-        // Bind the SET clause: `col = ?` positionally AND literal assignments
-        // (`col = 1`, `col = 'x'`, `col = NULL`). Previously ONLY placeholder
-        // bindings were applied, so statements like
-        // `UPDATE admin_notifications SET is_read = 1 WHERE id = ?` silently
-        // wrote NOTHING back.
-        const upper = trimmed.toUpperCase();
-        const setClause = trimmed.slice(upper.indexOf(' SET ') + 4);
-        const pairs = setClause.split(',');
-        const applySet = (target, params, skipLastParam) => {
-          let pIdx = 0;
-          const limit = skipLastParam ? params.length - 1 : params.length;
-          for (const pair of pairs) {
-            const m = pair.match(/(\w+)\s*=\s*(\?|NULL|-?\d+(?:\.\d+)?|'[^']*')/i);
-            if (!m) continue;
-            const tok = m[2];
-            if (tok === '?') {
-              if (pIdx >= limit) break;
-              target[m[1]] = params[pIdx++];
-            } else if (/^NULL$/i.test(tok)) {
-              target[m[1]] = null;
-            } else if (tok.startsWith("'")) {
-              target[m[1]] = tok.slice(1, -1);
-            } else {
-              target[m[1]] = Number(tok);
+        const id = String(params[params.length - 1]);
+        const row = await repo.getById(updateMatch[1], id);
+        if (row) {
+          const updates = { ...row };
+          const setMatch = trimmed.match(/SET\s+(.+?)\s+WHERE/is);
+          if (setMatch) {
+            const pairs = setMatch[1].split(',');
+            for (let i = 0; i < Math.min(pairs.length, params.length - 1); i++) {
+              const colMatch = pairs[i].match(/(\w+)\s*=\s*\?/);
+              if (colMatch) updates[colMatch[1]] = params[i];
             }
           }
-        };
-
-        if (/\sWHERE\s/is.test(setClause)) {
-          // Single-row update: the trailing param is the WHERE id.
-          const id = String(params[params.length - 1]);
-          const row = await repo.getById(table, id);
-          if (row) {
-            const updates = { ...row };
-            applySet(updates, params, true);
-            await repo.upsert(table, updates);
-          }
-          return { id, changes: 1 };
+          await repo.upsert(updateMatch[1], updates);
         }
-
-        // Bulk update without WHERE (e.g. mark-all-read).
-        const rows = await repo.getAll(table);
-        let changed = 0;
-        for (const row of rows || []) {
-          const updates = { ...row };
-          applySet(updates, [], false);
-          await repo.upsert(table, updates);
-          changed += 1;
-        }
-        return { changes: changed };
+        return { id, changes: 1 };
       }
       return { changes: 0 };
     }
@@ -294,8 +211,7 @@ function nowIso() {
 }
 
 function parseJson(value, fallback = null) {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value !== 'string') return value;
+  if (!value) return fallback;
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
@@ -308,25 +224,13 @@ function normalizeItems(items) {
   return items.map((item) => {
     const quantity = Math.max(1, Number(item.quantity ?? item.qty ?? 1) || 1);
     const unitPrice = round2(item.unitPrice ?? item.price ?? item.unit_price ?? 0);
-    const base = {
+    return {
       productId: item.productId || item.product_id || item.id || null,
       name: String(item.name || item.description || item.productName || 'Item'),
       quantity,
       unitPrice,
       lineTotal: round2(quantity * unitPrice),
     };
-    // Preserve promotion line metadata (audit trail: master price + discount).
-    if (item.originalUnitPrice !== undefined) base.originalUnitPrice = round2(item.originalUnitPrice);
-    if (item.discountPercent !== undefined) base.discountPercent = round2(item.discountPercent);
-    if (item.discountAmount !== undefined) base.discountAmount = round2(item.discountAmount);
-    if (item.netUnitPrice !== undefined) base.netUnitPrice = round2(item.netUnitPrice);
-    if (item.promotionId) base.promotionId = item.promotionId;
-    if (item.promotionCode) base.promotionCode = item.promotionCode;
-    // Preserve the selected variant identity end-to-end.
-    if (item.variantId) base.variantId = item.variantId;
-    // Preserve captured pricing evidence (material cost snapshot) verbatim.
-    if (item.pricingBreakdown) base.pricingBreakdown = item.pricingBreakdown;
-    return base;
   }).filter((item) => item.name && item.quantity > 0);
 }
 
@@ -335,342 +239,6 @@ function computeTotals(items, discount = 0, taxRate = 0, deliveryFee = 0) {
   const taxAmount = round2(subtotal * (Number(taxRate) || 0) / 100);
   const total = round2(subtotal - round2(discount) + taxAmount + round2(deliveryFee));
   return { subtotal, taxAmount, total };
-}
-
-// ─── Promotion helpers (server-authoritative pricing) ───────────────────────
-
-// ERP master catalog used to resolve authoritative prices. Browser-submitted
-// prices are display information only and are never trusted.
-//
-// The authoritative catalog lives in the cloud `products` table — the same
-// source the portal catalog is served from (portalService.getCatalog). The
-// cloud `inventory` table is never written by the sync gateway (the ERP
-// frontend maps its local inventory store to `products`, see
-// frontend/services/db.ts CLOUD_TABLE_MAP) and only holds placeholder rows,
-// so pricing must resolve from `products` or real order lines collapse to
-// price 0 / 'unknown_product'.
-async function getCatalogPriceMap() {
-  const cloud = await repo.getAll('products');
-  const map = {};
-  const { collectProductVariants } = require('./catalogVariants.cjs');
-  for (const item of cloud || []) {
-    // Mirror the portal catalog's deleted filter so a product that is no
-    // longer orderable is never silently priced from the master table.
-    if (String(item.status || '').toLowerCase() === 'deleted') continue;
-    map[item.id] = {
-      name: item.name || item.productName || null,
-      sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? item.price ?? 0) || 0,
-      // Authoritative unit cost resolved with the SAME alias policy the ERP
-      // uses everywhere else (frontend resolveStoredCost): smartPricing
-      // baseCost first, then the stored cost spellings.
-      costPrice: resolveCatalogUnitCost(item),
-      category: item.category || item.type || null,
-    };
-    // Variant entries are keyed by the SAME deterministic ids the portal
-    // catalog serves, so a customer-selected variant is re-priced from ITS
-    // OWN master price server-side (never flattened to the parent price).
-    for (const v of collectProductVariants(item, [])) {
-      if (!v.active) continue;
-      map[v.id] = {
-        name: v.name,
-        sellingPrice: v.sellingPrice === null ? (Number(item.sellingPrice ?? item.selling_price ?? item.price ?? 0) || 0) : v.sellingPrice,
-        costPrice: v.costPrice === null ? resolveCatalogUnitCost(item) : v.costPrice,
-        category: map[item.id].category,
-        parentProductId: item.id,
-      };
-    }
-  }
-  return map;
-}
-
-// Mirrors frontend/utils/pricing.ts resolveStoredCost — one source of truth
-// for what "the material cost of a catalog product" means.
-function resolveCatalogUnitCost(item) {
-  return round2(
-    Number(
-      item?.smartPricingSnapshot?.baseCost
-      ?? item?.cost_price
-      ?? item?.cost_per_unit
-      ?? item?.cost
-      ?? item?.costPrice
-      ?? 0
-    ) || 0
-  );
-}
-
-/**
- * Canonical line-level pricing-evidence snapshot for a portal-originated line.
- * Same schema the ERP Internal Pricing Breakdown renderer persists/reads
- * (frontend buildPricingBreakdownSnapshot). Portal lines carry no market
- * adjustments and no rounding at submission, so per the established pricing
- * policy profit margin = selling price − material cost − adjustments −
- * rounding. This records EVIDENCE captured from ERP master data; it never
- * derives cost from a total.
- */
-function buildLinePricingBreakdown(sellingPrice, costPrice) {
-  const selling = round2(sellingPrice);
-  const cost = round2(costPrice);
-  return {
-    baseMaterialCost: cost,
-    costPrice: cost,
-    sellingPrice: selling,
-    adjustmentTotal: 0,
-    adjustmentLines: [],
-    profitMarginAmount: round2(selling - cost),
-    roundingDifference: 0,
-    wasRounded: false,
-  };
-}
-
-// Order-level aggregates over line pricing evidence (same semantics as the
-// frontend summarizePricingBreakdown: quantity-scaled per line).
-function summarizePortalPricing(items) {
-  let materialTotal = 0;
-  let adjustmentTotal = 0;
-  let profitMarginTotal = 0;
-  let roundingTotal = 0;
-  for (const item of Array.isArray(items) ? items : []) {
-    const b = item && item.pricingBreakdown;
-    if (!b) continue;
-    const qty = Math.max(1, Number(item.quantity) || 1);
-    materialTotal += round2(b.baseMaterialCost ?? b.costPrice ?? 0) * qty;
-    adjustmentTotal += round2(b.adjustmentTotal ?? 0) * qty;
-    profitMarginTotal += round2(b.profitMarginAmount ?? ((Number(b.sellingPrice) || 0) - (Number(b.costPrice) || 0))) * qty;
-    roundingTotal += round2(b.roundingDifference ?? 0) * qty;
-  }
-  return {
-    materialTotal: round2(materialTotal),
-    adjustmentTotal: round2(adjustmentTotal),
-    profitMarginTotal: round2(profitMarginTotal),
-    roundingTotal: round2(roundingTotal),
-  };
-}
-
-function stripPromotionLineFields(item) {
-  const { originalUnitPrice, discountPercent, discountAmount, netUnitPrice, promotionId, promotionCode, ...rest } = item || {};
-  return rest;
-}
-
-// Exact normalized-name matching for conversion-time pricing: trim, lowercase,
-// collapse internal whitespace. NO fuzzy matching — "Scheme Pad" must never
-// auto-price a similarly-named item, and two distinct catalog entries sharing
-// one normalized name are treated as ambiguous (never auto-priced).
-function normalizeCatalogName(name) {
-  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-/**
- * Resolve requested lines to authoritative ERP prices at the CONVERSION
- * boundary (request -> official quotation / sales order prefill). The request
- * document itself is never rewritten; this only prices what flows into the
- * standard ERP editor.
- *
- * Matching strategy (in order):
- *   1. variantId  -> catalogMap by deterministic variant id   ('master_variant')
- *   2. productId  -> catalogMap by product id                 ('master')
- *   3. no/stale id -> EXACT normalized name against the ERP catalog,
- *      accepted only when exactly one catalog entry carries that name
- *      ('master_name_match')
- *   4. unmatched -> unitPrice stays 0                         ('unknown_product'
- *      when a stale id was supplied, 'custom_line' otherwise)
- *
- * Same authoritative source as submission pricing (getCatalogPriceMap ->
- * cloud `products` master + embedded/table variants). Browser prices are never
- * trusted: a submitted unitPrice is kept ONLY for genuine custom lines without
- * any catalog identity... which the ERP sales team must review before issuing
- * the quotation.
- */
-async function resolveRequestItemsAtConversion(items) {
-  const source = Array.isArray(items) ? items : [];
-  if (source.length === 0) return [];
-
-  const catalogMap = await getCatalogPriceMap();
-
-  // Normalized-name index across parents AND active variants. Distinct keys
-  // sharing one normalized name mark each other ambiguous.
-  const nameIndex = new Map();
-  for (const [key, entry] of Object.entries(catalogMap)) {
-    const norm = normalizeCatalogName(entry && entry.name);
-    if (!norm) continue;
-    const existing = nameIndex.get(norm);
-    if (!existing) {
-      nameIndex.set(norm, { key, entry, ambiguous: false });
-    } else if (existing.key !== key) {
-      existing.ambiguous = true;
-    }
-  }
-
-  return source.map((item) => {
-    if (!item) return item;
-    const originalUnit = Number(item.unitPrice ?? item.unit_price ?? 0) || 0;
-    const quantity = Math.max(1, Number(item.quantity ?? item.qty ?? 1) || 1);
-    const base = { ...item };
-
-    const variantId = item.variantId || item.variant_id || null;
-    const productId = item.productId || item.product_id || null;
-
-    let entry = null;
-    let priceSource = null;
-    if (variantId && catalogMap[String(variantId)]) {
-      entry = catalogMap[String(variantId)];
-      priceSource = 'master_variant';
-    } else if (productId && catalogMap[String(productId)]) {
-      entry = catalogMap[String(productId)];
-      priceSource = 'master';
-    }
-
-    if (!entry) {
-      // Exact normalized-name fallback (unambiguous matches only).
-      const norm = normalizeCatalogName(item.name);
-      const hit = norm ? nameIndex.get(norm) : null;
-      if (hit && !hit.ambiguous) {
-        entry = hit.entry;
-        priceSource = 'master_name_match';
-        // Link the resolved catalog identity so downstream pricing-evidence
-        // capture and editor behavior treat it as a catalog line.
-        base.productId = hit.key;
-      }
-    }
-
-    if (entry) {
-      const price = round2(Number(entry.sellingPrice ?? entry.selling_price ?? entry.price ?? 0) || 0);
-      base.unitPrice = price;
-      base.lineTotal = round2(price * quantity);
-      base.priceSource = priceSource;
-      base.pricingBreakdown = buildLinePricingBreakdown(price, Number(entry.costPrice ?? 0) || 0);
-    } else if (productId || variantId) {
-      // Stale/unknown catalog reference: never invent a price.
-      base.unitPrice = 0;
-      base.lineTotal = 0;
-      base.priceSource = 'unknown_product';
-    } else {
-      // Genuine custom line: keep 0 (submitted browser prices are not trusted).
-      base.unitPrice = 0;
-      base.lineTotal = 0;
-      base.priceSource = item.priceSource || 'custom_line';
-    }
-    return base;
-  });
-}
-
-/**
- * Run the promotion engine on an order context (portal). Resolves authoritative
- * master prices and evaluates eligibility server-side. Usage is recorded by the
- * caller (recordOrderPromotionRedemption) AFTER the source document is
- * persisted, so redemptions never reference a row that does not exist yet.
- */
-async function runOrderPromotion({ customerId, items, promotionCode }) {
-  const catalogMap = await getCatalogPriceMap();
-  const authoritativeItems = promotionEngine.resolveAuthoritativePrices(items, catalogMap);
-  const subtotal = round2(authoritativeItems.reduce((s, l) => s + Number(l.lineTotal || 0), 0));
-
-  const customer = await repo.getById('customers', customerId);
-  const companyId = (customer && (customer.companyId || customer.company_id)) || null;
-
-  const [active, usageByPromotion, customerUsageByPromotion] = await Promise.all([
-    promotionService.getActivePromotions({ companyId, channel: 'PORTAL' }),
-    promotionService.getUsageByPromotion({ companyId }),
-    promotionService.getUsageByPromotionForCustomer(customerId, { companyId }),
-  ]);
-
-  const calculation = promotionEngine.calculatePromotion({
-    companyId,
-    customer: { id: customerId, createdAt: (customer && (customer.createdAt || customer.created_at)) || null },
-    channel: 'PORTAL',
-    items: authoritativeItems,
-    subtotal,
-    promotionCode: promotionCode || null,
-    promotions: active,
-    usageByPromotion,
-    customerUsageByPromotion,
-  });
-
-  const primary = calculation.promotions[0] || null;
-  const promotion = primary
-    ? {
-        id: primary.id,
-        code: primary.code,
-        name: primary.name,
-        discountType: primary.discountType,
-        discountValue: primary.discountValue,
-        discountAmount: calculation.discountTotal,
-        discountPercent: subtotal > 0 ? round2((calculation.discountTotal / subtotal) * 100) : 0,
-        channel: 'PORTAL',
-        appliedAt: nowIso(),
-      }
-    : null;
-
-  // Line items keep the ERP master price PLUS explicit discount fields so the
-  // ERP always sees WHY the price differs — never a silently changed master.
-  const storedItems = calculation.lines.map((l) => {
-    const line = {
-      productId: l.productId,
-      name: l.name,
-      quantity: l.quantity,
-      unitPrice: l.originalUnitPrice,
-      originalUnitPrice: l.originalUnitPrice,
-      discountPercent: l.discountPercent,
-      discountAmount: l.discountAmount,
-      netUnitPrice: l.netUnitPrice,
-      lineTotal: round2(l.originalUnitPrice * l.quantity),
-      promotionId: l.promotionId,
-      promotionCode: l.promotionCode,
-      // Selected variant identity (deterministic catalog variant id).
-      ...(l.variantId ? { variantId: l.variantId } : {}),
-      // Price source audit flag: 'master' | 'master_variant' |
-      // 'unknown_product' | 'custom_line'. A line priced at 0 with source
-      // 'unknown_product' must be reviewed by sales before a quotation is
-      // issued.
-      priceSource: l.priceSource || 'master',
-    };
-    // Pricing-evidence capture: master-priced lines record the authoritative
-    // material cost alongside the authoritative selling price so the pricing
-    // breakdown survives request → order → invoice. Variant-priced lines use
-    // THEIR OWN variant's cost. Unknown/custom lines get NO fabricated
-    // evidence.
-    const catalogEntry = catalogMap[l.variantId || l.productId];
-    if ((line.priceSource === 'master' || line.priceSource === 'master_variant') && catalogEntry) {
-      line.pricingBreakdown = buildLinePricingBreakdown(l.originalUnitPrice, catalogEntry.costPrice);
-    }
-    return line;
-  });
-
-  return {
-    subtotal,
-    discountTotal: calculation.discountTotal,
-    total: calculation.subtotalAfterDiscount,
-    promotion,
-    promotionApplied: calculation.applied,
-    primary,
-    companyId,
-    items: storedItems,
-    calculation,
-  };
-}
-
-/**
- * Record promotion usage atomically (best-effort when the cloud RPC is
- * unavailable — checkout must never fail on usage bookkeeping). Call ONLY
- * after the source document has been persisted.
- */
-async function recordOrderPromotionRedemption({ primary, customerId, companyId, sourceId, sourceType = 'request', sourceNumber = null, discountTotal, subtotal, subtotalAfter, snapshot }) {
-  if (!primary || !sourceId) return;
-  try {
-    await promotionService.recordRedemption({
-      promotionId: primary.id,
-      customerId,
-      companyId,
-      sourceType,
-      sourceId,
-      sourceNumber,
-      discountAmount: discountTotal,
-      subtotalBefore: subtotal,
-      subtotalAfter,
-      snapshot,
-    });
-  } catch (err) {
-    console.warn('[Lifecycle] Promotion usage recording failed (non-fatal):', err.message);
-  }
 }
 
 // Normalizes request statuses from older database generations so the rest of the
@@ -900,8 +468,7 @@ async function assertDocAccess(docType, docId, { customerId}) {
   if (!table) throw new Error('Unknown document type');
   const row = await getOne(`SELECT id, customer_id FROM ${table} WHERE id = ?`, [docId]);
   if (!row) throw new Error('Document not found');
-  const rowCustomerId = row.customer_id ?? row.customerId;
-  if (customerId && String(rowCustomerId ?? '') !== String(customerId)) throw new Error('Document not found');
+  if (customerId && row.customer_id !== customerId) throw new Error('Document not found');
   return row;
 }
 
@@ -1022,9 +589,11 @@ const portalLifecycleService = {
     return { published: true, payload };
   },
 
-  async createQuotationRequest({ portalUserId, customerId, customerName, requestType, items, notes, requestedDeliveryDate, attachments, reorderOf, reorderOfNumber, promotionCode, context = {} }) {
-    if (!Array.isArray(items) || items.length === 0) throw new Error('At least one line item is required');
+  async createQuotationRequest({ portalUserId, customerId, customerName, requestType, items, notes, requestedDeliveryDate, attachments, reorderOf, reorderOfNumber, context = {} }) {
+    const normalized = normalizeItems(items);
+    if (normalized.length === 0) throw new Error('At least one line item is required');
     const requestTypeValue = requestType === 'order' ? 'order' : 'quotation';
+    const { subtotal } = computeTotals(normalized);
     const normalizedAttachments = Array.isArray(attachments) ? attachments.slice(0, 20).map((a) => ({
       name: String(a.name || a.fileName || 'Attachment'),
       url: String(a.url || ''),
@@ -1035,190 +604,47 @@ const portalLifecycleService = {
     const requestNumber = await workflowEngine.nextYearScopedNumber(
       'quotation_requests', 'request_number', workflowEngine.requestNumberPrefix(requestTypeValue)
     );
-
-    // Server-authoritative pricing + promotion calculation. Browser prices and
-    // any submitted discount are never trusted.
-    const promoResult = await runOrderPromotion({
-      customerId,
-      items,
-      promotionCode: promotionCode || null,
-    });
-    const storedItems = promoResult.items;
-    const subtotal = promoResult.subtotal;
-    const { discountTotal, total, promotion, promotionApplied } = promoResult;
-
     await runQuery(
       `INSERT INTO quotation_requests
          (id, request_number, customer_id, customer_name, request_type, items, subtotal,
-          discount_total, total, promotion, promotion_applied,
           notes, status, requested_delivery_date, attachments, reorder_of, reorder_of_number, created_by)
-       VALUES (?, ?, ?, ? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, requestNumber, customerId, customerName, requestTypeValue, JSON.stringify(storedItems), subtotal, discountTotal, total, promotion ? JSON.stringify(promotion) : null, promotionApplied ? 1 : 0, notes || null, REQUEST_STATUS.SUBMITTED, requestedDeliveryDate || null, normalizedAttachments.length ? JSON.stringify(normalizedAttachments) : null, reorderOf || null, reorderOfNumber || null, portalUserId]
+       VALUES (?, ?, ?, ? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, requestNumber, customerId, customerName, requestTypeValue, JSON.stringify(normalized), subtotal, notes || null, REQUEST_STATUS.SUBMITTED, requestedDeliveryDate || null, normalizedAttachments.length ? JSON.stringify(normalizedAttachments) : null, reorderOf || null, reorderOfNumber || null, portalUserId]
     );
-
-    // Usage is recorded only after the request row exists (atomic, best-effort).
-    await recordOrderPromotionRedemption({
-      primary: promoResult.primary,
-      customerId,
-      companyId: promoResult.companyId,
-      sourceId: id,
-      sourceType: 'request',
-      sourceNumber: requestNumber,
-      discountTotal,
-      subtotal,
-      subtotalAfter: total,
-      snapshot: promotion,
-    });
 
     await addTimeline( customerId, 'request', id, EVENT_TYPES.REQUEST_SUBMITTED,
       'Request submitted', `${customerName} submitted a ${requestTypeValue} request (${requestNumber}).`,
       { type: 'customer', id: portalUserId, name: customerName },
-      { requestNumber, itemCount: storedItems.length, subtotal, discountTotal, total, promotion: promotion ? { code: promotion.code, name: promotion.name, discountAmount: promotion.discountAmount } : null, requestedDeliveryDate: requestedDeliveryDate || null, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null });
+      { requestNumber, itemCount: normalized.length, subtotal, requestedDeliveryDate: requestedDeliveryDate || null, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null });
 
     await logAudit({
       actor: { id: portalUserId, name: customerName, role: 'portal_customer' },
       action: 'PORTAL_REQUEST_CREATE',
       entityType: 'quotation_request',
       entityId: id,
-      details: `${requestNumber} created via customer portal${promotion ? ` — promotion ${promotion.code || promotion.name} applied (${discountTotal})` : ''}${reorderOfNumber ? ` (reorder of ${reorderOfNumber})` : ''}`,
-      newValue: { requestNumber, requestType: requestTypeValue, items: storedItems, subtotal, discountTotal, total, promotion, requestedDeliveryDate: requestedDeliveryDate || null, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null },
+      details: `${requestNumber} created via customer portal${reorderOfNumber ? ` (reorder of ${reorderOfNumber})` : ''}`,
+      newValue: { requestNumber, requestType: requestTypeValue, items: normalized, subtotal, requestedDeliveryDate: requestedDeliveryDate || null, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null },
       context,
     });
 
     await notifyAdmin({
       type: NOTIFICATION_TYPES.REQUEST,
       title: requestTypeValue === 'order' ? 'New order request' : 'New quotation request',
-      body: `Customer: ${customerName} — Request: ${requestNumber} — Submitted just now.${promotion ? ` Promotion ${promotion.code || promotion.name} applied (${discountTotal} off).` : ''}${reorderOfNumber ? ` Reorder of ${reorderOfNumber}.` : ''}`,
+      body: `Customer: ${customerName} — Request: ${requestNumber} — Submitted just now.${reorderOfNumber ? ` Reorder of ${reorderOfNumber}.` : ''}`,
       link: '#/sales-flow/requests',
       customerId,
       customerName,
     });
 
-    emitEntityChange('portal', { customerId, docType: 'request', docId: id, status: REQUEST_STATUS.SUBMITTED, requestNumber, promotionApplied });
-    emitEntityChange('admin', { customerId, docType: 'request', docId: id, status: REQUEST_STATUS.SUBMITTED, requestNumber, promotionApplied });
+    emitEntityChange('portal', { customerId, docType: 'request', docId: id, status: REQUEST_STATUS.SUBMITTED, requestNumber });
+    emitEntityChange('admin', { customerId, docType: 'request', docId: id, status: REQUEST_STATUS.SUBMITTED, requestNumber });
 
-    return { id, requestNumber, status: REQUEST_STATUS.SUBMITTED, items: storedItems, subtotal, discountTotal, total, promotion, promotionApplied, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null };
-  },
-
-  // ─── Server-side order preview (no persistence, no usage consumption) ─────
-  // The Portal frontend may show an estimate; the backend is the final
-  // authority and re-calculates at submission time.
-  async previewOrder({ customerId, items, promotionCode = null }) {
-    const result = await runOrderPromotion({
-      customerId,
-      items,
-      promotionCode: promotionCode || null,
-    });
-    return {
-      applied: result.promotionApplied,
-      promotion: result.promotion,
-      lines: result.items,
-      subtotal: result.subtotal,
-      discountTotal: result.discountTotal,
-      subtotalBeforeDiscount: result.subtotal,
-      subtotalAfterDiscount: result.total,
-      taxableSubtotal: result.total,
-      grandTotal: result.total,
-      metadata: result.calculation.metadata || {},
-    };
-  },
-
-  // Active PORTAL promotions for display (badges / banners). Display only —
-  // the authoritative calculation happens server-side at submission.
-  async getActivePortalPromotions(customerId) {
-    const customer = await repo.getById('customers', customerId);
-    const companyId = (customer && (customer.companyId || customer.company_id)) || null;
-    const active = await promotionService.getActivePromotions({ companyId, channel: 'PORTAL' });
-    return active.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description || null,
-      code: p.code || p.promotionCode || null,
-      discountType: p.discountType || p.type || 'percentage',
-      discountValue: Number(p.discountValue ?? p.value ?? 0) || 0,
-      channel: p.channel || 'PORTAL',
-      isAutoApply: p.isAutoApply !== undefined ? !!p.isAutoApply : true,
-      applicableTo: p.applicableTo || p.applicable_to || 'all',
-      productIds: p.productIds || p.applicable_products || [],
-      categoryIds: p.categoryIds || p.applicable_categories || [],
-      minimumOrderAmount: Number(p.minimumOrderAmount ?? p.min_order_amount ?? 0) || 0,
-      endsAt: p.endsAt || p.ends_at || null,
-    }));
-  },
-
-  // Active PORTAL banner ads for display (display only). Managed in
-  // Smart Operations Hub → Ads. Ordered by priority (highest first).
-  async getActivePortalAds(customerId) {
-    let rows = [];
-    try {
-      rows = await repo.getAll('portal_ads');
-    } catch (err) {
-      console.warn('[Portal] portal_ads read failed:', err?.message || err);
-      rows = [];
-    }
-    if (!Array.isArray(rows) || rows.length === 0) return [];
-
-    // Multi-company safety: only serve ads belonging to the customer's company.
-    let companyId = null;
-    if (customerId) {
-      try {
-        const customer = await repo.getById('customers', customerId);
-        companyId = (customer && (customer.companyId || customer.company_id)) || null;
-      } catch {
-        companyId = null;
-      }
-    }
-    if (companyId) {
-      rows = rows.filter((ad) => {
-        const adCompany = ad.companyId || ad.company_id;
-        return !adCompany || String(adCompany) === String(companyId);
-      });
-    }
-
-    const now = Date.now();
-    return rows
-      .map((ad) => ({
-        id: ad.id,
-        title: ad.title || '',
-        subtitle: ad.subtitle || null,
-        badge: ad.badge || null,
-        ctaLabel: ad.ctaLabel || null,
-        ctaTarget: ad.ctaTarget || null,
-        imageUrl: ad.imageUrl || null,
-        gradient: ad.gradient || null,
-        emoji: ad.emoji || null,
-        isActive: ad.isActive !== false && ad.status !== 'paused' && ad.status !== 'draft' && ad.status !== 'expired',
-        startsAt: ad.startsAt || ad.starts_at || null,
-        endsAt: ad.endsAt || ad.ends_at || ad.expiresAt || null,
-        priority: Number(ad.priority ?? 0) || 0,
-      }))
-      .filter((ad) => {
-        if (!ad.isActive) return false;
-        const start = ad.startsAt ? new Date(ad.startsAt).getTime() : null;
-        const end = ad.endsAt ? new Date(ad.endsAt).getTime() : null;
-        if (start !== null && !Number.isNaN(start) && now < start) return false;
-        if (end !== null && !Number.isNaN(end) && now > end) return false;
-        return true;
-      })
-      .sort((a, b) => b.priority - a.priority)
-      .map((ad) => ({
-        id: ad.id,
-        title: ad.title,
-        subtitle: ad.subtitle,
-        badge: ad.badge,
-        ctaLabel: ad.ctaLabel,
-        ctaTarget: ad.ctaTarget,
-        imageUrl: ad.imageUrl,
-        imageMeta: ad.imageMeta || null,
-        gradient: ad.gradient,
-        emoji: ad.emoji,
-        endsAt: ad.endsAt,
-      }));
+    return { id, requestNumber, status: REQUEST_STATUS.SUBMITTED, items: normalized, subtotal, reorderOf: reorderOf || null, reorderOfNumber: reorderOfNumber || null };
   },
 
   async getRequests({ customerId, status } = {}) {
     let query = `
-      SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
+      SELECT q.*, c.name AS resolved_customer_name
       FROM quotation_requests q
       LEFT JOIN customers c ON c.id = q.customer_id
       WHERE 1=1`;
@@ -1231,28 +657,26 @@ const portalLifecycleService = {
     return rows.map((r) => ({
       ...r,
       status: r.quotation_id ? (r.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : r.status) : normalizeRequestStatus(r.status),
-      customer_name: r.resolved_customer_name || r.customer_email || r.customer_name,
+      customer_name: r.resolved_customer_name || r.customer_name,
       items: parseJson(r.items, []),
       attachments: parseJson(r.attachments, []),
-      promotion: parseJson(r.promotion, null),
     }));
   },
 
   async getRequestById(id, { customerId} = {}) {
     const request = await getOne(
-      `SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
+      `SELECT q.*, c.name AS resolved_customer_name
          FROM quotation_requests q
          LEFT JOIN customers c ON c.id = q.customer_id
         WHERE q.id = ?`,
       [id]
     );
     if (!request) return null;
-    if (customerId && String(request.customer_id ?? request.customerId ?? '') !== String(customerId)) return null;
+    if (customerId && request.customer_id !== customerId) return null;
     request.status = request.quotation_id ? (request.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : request.status) : normalizeRequestStatus(request.status);
-    request.customer_name = request.resolved_customer_name || request.customer_email || request.customer_name;
+    request.customer_name = request.resolved_customer_name || request.customer_name;
     request.items = parseJson(request.items, []);
     request.attachments = parseJson(request.attachments, []);
-    request.promotion = parseJson(request.promotion, null);
     return request;
   },
 
@@ -1288,68 +712,6 @@ const portalLifecycleService = {
   // ─── Admin: review requests ────────────────────────────────────────────────
   async adminListRequests({ status } = {}) {
     return this.getRequests({ status });
-  },
-
-  async getInboxRequests() {
-    // Customers with UNREAD request-pipeline admin notifications — computed in
-    // JS because the SQL read-shim only translates `col = ?` predicates; the
-    // previous `WHERE is_read = 0` was silently ignored, so the inbox (and its
-    // badge) never cleared even after every notification was marked read.
-    // Scoped to hub links ('#/sales-flow/requests'): unrelated streams (e.g.
-    // payment requests) must not keep this badge alive.
-    const notifications = await repo.getAll('admin_notifications');
-    const unreadCustomers = new Set();
-    for (const n of notifications || []) {
-      const raw = n && typeof n === 'object' ? n : {};
-      const isRead = Number(raw.is_read ?? raw.data?.is_read ?? 0) === 1;
-      const customerId = raw.customer_id ?? raw.data?.customer_id;
-      const link = raw.link ?? raw.data?.link;
-      if (!isRead && customerId && typeof link === 'string' && link.startsWith('#/sales-flow/requests')) {
-        unreadCustomers.add(String(customerId));
-      }
-    }
-    if (unreadCustomers.size === 0) return [];
-
-    const rows = await repo.getAll('quotation_requests');
-    return rows
-      .filter((q) => {
-        if (!q || q.deleted || q.deletedAt || q.deleted_at) return false;
-        if (!unreadCustomers.has(String(q.customer_id))) return false;
-        return !['rejected', 'cancelled', 'converted'].includes(String(q.status || ''));
-      })
-      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
-      .map((r) => ({
-        ...r,
-        status: r.quotation_id ? (r.status === 'quotation_ready' ? REQUEST_STATUS.CONVERTED : r.status) : normalizeRequestStatus(r.status),
-        items: parseJson(r.items, []),
-        attachments: parseJson(r.attachments, []),
-        promotion: parseJson(r.promotion, null),
-      }));
-  },
-
-  /**
-   * Mark the request-pipeline admin notifications as READ. Called when the
-   * Quotation Requests command hub is opened so the notification badge
-   * disappears there and on the dashboard. Scoped to links pointing at the
-   * hub ('#/sales-flow/requests') — other notification streams are untouched.
-   */
-  async markRequestNotificationsRead() {
-    const rows = await repo.getAll('admin_notifications');
-    let marked = 0;
-    for (const n of rows || []) {
-      if (!n || !n.id) continue;
-      const link = n.link ?? n.data?.link;
-      const isRead = Number(n.is_read ?? n.data?.is_read ?? 0) === 1;
-      if (isRead) continue;
-      if (typeof link === 'string' && link.startsWith('#/sales-flow/requests')) {
-        await this.markAdminNotificationRead(String(n.id));
-        marked += 1;
-      }
-    }
-    if (marked > 0) {
-      emitEntityChange('admin', { docType: 'request', docId: '__inbox_read__', status: 'read' });
-    }
-    return { marked };
   },
 
   async adminGetRequest(id) {
@@ -1608,11 +970,6 @@ const portalLifecycleService = {
     emitEntityChange('admin', { customerId: request.customer_id, docType: 'request', docId: requestId, status: REQUEST_STATUS.READY_FOR_CONVERSION });
 
     // Prefill payload for the ERP quotation editor. No quotation exists yet.
-    // Request lines are priced HERE from authoritative ERP master data so the
-    // official quotation opens with real prices; unmatched/custom lines stay
-    // K 0.00 for manual review. The stored request is never rewritten.
-    const resolvedItems = await resolveRequestItemsAtConversion(request.items);
-    const resolvedSubtotal = round2(resolvedItems.reduce((s, l) => s + Number(l.lineTotal || 0), 0));
     const customer = await getOne(
       `SELECT id, name, email, phone, address, city,
               segment, balance
@@ -1626,12 +983,8 @@ const portalLifecycleService = {
       requestType: request.request_type,
       customer_id: request.customer_id,
       customer_name: request.customer_name,
-      items: resolvedItems,
-      subtotal: resolvedSubtotal,
-      discountTotal: Number(request.discount_total ?? request.discountTotal ?? 0) || 0,
-      total: round2(resolvedSubtotal - (Number(request.discount_total ?? request.discountTotal ?? 0) || 0)),
-      promotion: request.promotion || null,
-      promotionApplied: !!request.promotion,
+      items: request.items,
+      subtotal: request.subtotal,
       notes: request.notes,
       requestedDeliveryDate: request.requested_delivery_date || null,
       attachments: request.attachments || [],
@@ -1670,16 +1023,7 @@ const portalLifecycleService = {
     const snapshotItems = Array.isArray(quotationSnapshot.items) ? quotationSnapshot.items : request.items;
     const normalizedItems = normalizeItems(snapshotItems);
     if (normalizedItems.length === 0) throw new Error('At least one line item is required');
-
-    // Promotion carry-through: the ERP quotation keeps the discount granted at
-    // the point of sale. Sales may override it, but it is never silently lost.
-    const requestPromotion = request.promotion || null;
-    const promotion = quotationSnapshot.promotion || requestPromotion || null;
-    const snapshotProvidedDiscount = quotationSnapshot.discountAmount !== undefined || quotationSnapshot.discount !== undefined;
-    let discount = round2(Number(quotationSnapshot.discountAmount ?? quotationSnapshot.discount) || 0);
-    if (!snapshotProvidedDiscount && requestPromotion && request.discount_total) {
-      discount = round2(Number(request.discount_total) || 0);
-    }
+    const discount = round2(Number(quotationSnapshot.discountAmount ?? quotationSnapshot.discount) || 0);
     const taxRate = Number(quotationSnapshot.taxRate ?? quotationSnapshot.tax_rate) || 0;
     const deliveryFee = round2(Number(quotationSnapshot.otherCharges ?? quotationSnapshot.deliveryFee ?? quotationSnapshot.delivery_fee) || 0);
     const { subtotal, taxAmount, total } = computeTotals(normalizedItems, discount, taxRate, deliveryFee);
@@ -1696,10 +1040,9 @@ const portalLifecycleService = {
         `INSERT INTO quotations
            (id, quotation_number, request_id, customer_id, customer_name, items,
             subtotal, discount, tax_rate, tax_amount, delivery_fee, total, currency,
-            payment_terms, valid_until, status, created_by, source_request_number, erp_quotation_id,
-            promotion, discount_total, promotion_applied)
-         VALUES (?, ?, ?, ?, ? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, number, requestId, request.customer_id, request.customer_name, JSON.stringify(normalizedItems), subtotal, discount, taxRate, taxAmount, deliveryFee, total, quotationSnapshot.currency || 'MWK', quotationSnapshot.paymentTerms || 'Net 7', quotationSnapshot.validUntil || null, QUOTATION_STATUS.READY, admin.id, request.request_number, erpQuotationId || null, promotion ? JSON.stringify(promotion) : null, discount, promotion ? 1 : 0]
+            payment_terms, valid_until, status, created_by, source_request_number, erp_quotation_id)
+         VALUES (?, ?, ?, ?, ? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, number, requestId, request.customer_id, request.customer_name, JSON.stringify(normalizedItems), subtotal, discount, taxRate, taxAmount, deliveryFee, total, quotationSnapshot.currency || 'MWK', quotationSnapshot.paymentTerms || 'Net 7', quotationSnapshot.validUntil || null, QUOTATION_STATUS.READY, admin.id, request.request_number, erpQuotationId || null]
       );
 
       await runQuery(
@@ -1726,7 +1069,6 @@ const portalLifecycleService = {
           paymentTerms: quotationSnapshot.paymentTerms || 'Net 7',
           validUntil: quotationSnapshot.validUntil || null,
           status: QUOTATION_STATUS.READY,
-          promotion,
         },
         reason: 'Original',
         actor: { id: admin.id, name: admin.name || 'Sales' },
@@ -1812,11 +1154,6 @@ const portalLifecycleService = {
 
     emitEntityChange('admin', { customerId: request.customer_id, docType: 'request', docId: requestId, status: REQUEST_STATUS.READY_FOR_CONVERSION });
 
-    // Same conversion-time pricing as the quotation boundary: authoritative
-    // prices for catalog-matched lines, K 0.00 for unmatched/custom lines.
-    const resolvedOrderItems = await resolveRequestItemsAtConversion(request.items);
-    const resolvedOrderSubtotal = round2(resolvedOrderItems.reduce((s, l) => s + Number(l.lineTotal || 0), 0));
-
     const customer = await getOne(
       `SELECT id, name, email, phone, address, city,
               segment, balance
@@ -1830,12 +1167,8 @@ const portalLifecycleService = {
       requestType: request.request_type,
       customer_id: request.customer_id,
       customer_name: request.customer_name,
-      items: resolvedOrderItems,
-      subtotal: resolvedOrderSubtotal,
-      discountTotal: Number(request.discount_total ?? request.discountTotal ?? 0) || 0,
-      total: round2(resolvedOrderSubtotal - (Number(request.discount_total ?? request.discountTotal ?? 0) || 0)),
-      promotion: request.promotion || null,
-      promotionApplied: !!request.promotion,
+      items: request.items,
+      subtotal: request.subtotal,
       notes: request.notes,
       deliveryDate: request.requested_delivery_date || null,
       reorderOf: request.reorder_of || null,
@@ -1878,130 +1211,37 @@ const portalLifecycleService = {
     const snapshotItems = Array.isArray(orderSnapshot.items) ? orderSnapshot.items : request.items;
     const normalizedItems = normalizeItems(snapshotItems);
     if (normalizedItems.length === 0) throw new Error('At least one line item is required');
-
-    // Promotion carry-through: the sales order preserves the discount granted
-    // at the point of sale (immutable unless legitimately edited).
-    const requestPromotion = request.promotion || null;
-    const promotion = orderSnapshot.promotion || requestPromotion || null;
-    const snapshotProvidedDiscount = orderSnapshot.discountAmount !== undefined || orderSnapshot.discount !== undefined;
-    let discount = round2(Number(orderSnapshot.discountAmount ?? orderSnapshot.discount) || 0);
-    if (!snapshotProvidedDiscount && requestPromotion && request.discount_total) {
-      discount = round2(Number(request.discount_total) || 0);
-    }
+    const discount = round2(Number(orderSnapshot.discountAmount ?? orderSnapshot.discount) || 0);
     const taxRate = Number(orderSnapshot.taxRate ?? orderSnapshot.tax_rate) || 0;
     const otherCharges = round2(Number(orderSnapshot.otherCharges ?? orderSnapshot.deliveryFee ?? orderSnapshot.delivery_fee) || 0);
     const { subtotal, taxAmount, total } = computeTotals(normalizedItems, discount, taxRate, otherCharges);
     const deliveryDate = orderSnapshot.deliveryDate || orderSnapshot.delivery_date || request.requested_delivery_date || null;
 
-    // When the ERP editor already wrote a row for this order (offline-first:
-    // it lands in IndexedDB and syncs to the cloud under its own id), the
-    // backend ADOPTS that row instead of creating a duplicate. The official
-    // number + request linkage are merged into the existing record so the ERP
-    // list, the portal and the document chain all reference ONE order. Without
-    // an erpOrderId a fresh canonical record is created as before.
-    const orderId = erpOrderId || genId('so');
-    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'ORD');
-
-    // Pricing-evidence preservation. Lines priced at submission already carry
-    // their pricingBreakdown; any master-priced line still missing one (e.g.
-    // requests created before evidence capture existed) is backfilled from the
-    // SAME authoritative catalog — never from the order total, never invented.
-    // Unknown/custom lines receive no fabricated evidence.
-    let catalogMap = null;
-    try { catalogMap = await getCatalogPriceMap(); } catch { catalogMap = null; }
-    const persistedItems = normalizedItems.map((item) => {
-      if (item.pricingBreakdown || !item.productId || !catalogMap) return item;
-      const catalogEntry = catalogMap[item.productId];
-      if (!catalogEntry) return item;
-      return {
-        ...item,
-        pricingBreakdown: buildLinePricingBreakdown(item.unitPrice, catalogEntry.costPrice),
-      };
-    });
-    const pricingTotals = summarizePortalPricing(persistedItems);
-
+    const orderId = genId('so');
+    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'SO');
     const itemsJson = JSON.stringify(
-      persistedItems.map((item) => ({
+      normalizedItems.map((item) => ({
         id: item.productId || genId('itm'),
         productId: item.productId || null,
         description: item.name,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         lineTotal: item.lineTotal,
-        originalUnitPrice: item.originalUnitPrice !== undefined ? item.originalUnitPrice : item.unitPrice,
-        discountPercent: item.discountPercent !== undefined ? item.discountPercent : 0,
-        discountAmount: item.discountAmount !== undefined ? item.discountAmount : 0,
-        netUnitPrice: item.netUnitPrice !== undefined ? item.netUnitPrice : item.unitPrice,
-        promotionId: item.promotionId || null,
-        promotionCode: item.promotionCode || null,
-        // Selected variant identity, preserved end-to-end.
-        ...(item.variantId ? { variantId: item.variantId } : {}),
-        // Captured pricing evidence (material cost snapshot) + flat cost
-        // mirrors so every downstream reader (order → invoice conversion)
-        // sees the same authoritative cost.
-        ...(item.pricingBreakdown ? {
-          pricingBreakdown: item.pricingBreakdown,
-          cost: item.pricingBreakdown.costPrice,
-          cost_price: item.pricingBreakdown.costPrice,
-          costPrice: item.pricingBreakdown.costPrice,
-        } : {}),
       }))
     );
     const now = nowIso();
 
     await runQuery('BEGIN TRANSACTION');
     try {
-      // Merge with the cloud row when the ERP record already exists so the
-      // version-aware cloud write gate is satisfied (repo.upsert bumps the
-      // version read from the existing row).
-      const erpExisting = erpOrderId ? await repo.getById('sales_orders', erpOrderId) : null;
-      const orderRecord = {
-        ...(erpExisting || {}),
-        id: orderId,
-        order_number: orderNumber,
-        source_request_id: requestId,
-        source_request_number: request.request_number,
-        reorder_of: request.reorder_of || null,
-        reorder_of_number: request.reorder_of_number || null,
-        // Dual key spelling: the ERP frontend store writes `customerId`, the
-        // backend shim writes `customer_id`. Writing BOTH guarantees the order
-        // is found by the admin list AND by the portal's customer scope.
-        customer_id: request.customer_id,
-        customerId: request.customer_id,
-        customer_name: request.customer_name || orderSnapshot.customerName || null,
-        orderDate: (erpExisting && erpExisting.orderDate) || now,
-        deliveryDate,
-        status: workflowEngine.SALES_ORDER_STATUS.CONFIRMED,
-        items: itemsJson,
-        subtotal,
-        discounts: discount,
-        tax: taxAmount,
-        other_charges: otherCharges,
-        total,
-        notes: orderSnapshot.notes || request.notes || `Generated from ${request.request_number}`,
-        approved_by: admin.id,
-        approved_at: now,
-        erp_order_id: erpOrderId || null,
-        created_by: admin.id,
-        created_at: now,
-        updated_at: now,
-        promotion: promotion ? JSON.stringify(promotion) : null,
-        discount_total: discount,
-        promotion_applied: promotion ? 1 : 0,
-        subtotal_before_discount: subtotal,
-        // Order-level pricing evidence aggregates (metadata only — these are
-        // NOT accounting amounts; total/subtotal above are untouched).
-        materialTotal: pricingTotals.materialTotal,
-        adjustmentTotal: pricingTotals.adjustmentTotal,
-        profitMarginTotal: pricingTotals.profitMarginTotal,
-        roundingTotal: pricingTotals.roundingTotal,
-        roundingDifference: pricingTotals.roundingTotal,
-        version: erpExisting ? erpExisting.version : undefined,
-      };
-      const savedOrder = await repo.upsert('sales_orders', orderRecord);
-      if (!savedOrder || !savedOrder.id) {
-        throw new Error('Failed to persist the official sales order');
-      }
+      await runQuery(
+        `INSERT INTO sales_orders
+           (id, order_number, source_request_id, source_request_number, reorder_of, reorder_of_number,
+            customer_id, orderDate, deliveryDate, status, items,
+            subtotal, discounts, tax, other_charges, total, notes,
+            approved_by, approved_at, erp_order_id, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )`,
+        [orderId, orderNumber, requestId, request.request_number, request.reorder_of || null, request.reorder_of_number || null, request.customer_id, now, deliveryDate, workflowEngine.SALES_ORDER_STATUS.CONFIRMED, itemsJson, subtotal, discount, taxAmount, otherCharges, total, orderSnapshot.notes || request.notes || `Generated from ${request.request_number}`, admin.id, now, erpOrderId || null, admin.id, now, now]
+      );
 
       await runQuery(
         `UPDATE quotation_requests SET status = ?, sales_order_id = ?, sales_order_number = ?,
@@ -2072,17 +1312,14 @@ const portalLifecycleService = {
       throw new Error('This order cannot be reordered');
     }
     const orderNumber = order.order_number || order.id;
-    let items = workflowEngine.parseOrderItems(order.items);
+    const items = workflowEngine.parseOrderItems(order.items);
     if (items.length === 0) throw new Error('This order has no line items to reorder');
-    // A reorder is a NEW request: it must not carry the previous promotion's
-    // line metadata. The engine re-evaluates current promotions at submit time.
-    items = items.map(stripPromotionLineFields);
 
     const customer = await getOne('SELECT name FROM customers WHERE id = ?', [customerId]);
     const customerName = (customer && customer.name) || 'Customer';
 
     const id = genId('req');
-    const requestNumber = await workflowEngine.nextYearScopedNumber('quotation_requests', 'request_number', workflowEngine.requestNumberPrefix('order'));
+    const requestNumber = await workflowEngine.nextYearScopedNumber('quotation_requests', 'request_number', 'ODR');
     const { subtotal } = computeTotals(items);
 
     await runQuery(
@@ -2123,7 +1360,7 @@ const portalLifecycleService = {
   // ─── Quotation reads ───────────────────────────────────────────────────────
   async getQuotations({ customerId, status } = {}) {
     let query = `
-      SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
+      SELECT q.*, c.name AS resolved_customer_name
       FROM quotations q
       LEFT JOIN customers c ON c.id = q.customer_id
       WHERE 1=1`;
@@ -2142,22 +1379,22 @@ const portalLifecycleService = {
     }
     return rows.map((r) => ({
       ...r,
-      customer_name: r.resolved_customer_name || r.customer_email || r.customer_name,
+      customer_name: r.resolved_customer_name || r.customer_name,
       items: parseJson(r.items, []),
     }));
   },
 
   async getQuotationById(id, { customerId} = {}) {
     const quotation = await getOne(
-      `SELECT q.*, c.name AS resolved_customer_name, c.email AS customer_email
+      `SELECT q.*, c.name AS resolved_customer_name
          FROM quotations q
          LEFT JOIN customers c ON c.id = q.customer_id
         WHERE q.id = ?`,
       [id]
     );
     if (!quotation) return null;
-    if (customerId && String(quotation.customer_id ?? quotation.customerId ?? '') !== String(customerId)) return null;
-    quotation.customer_name = quotation.resolved_customer_name || quotation.customer_email || quotation.customer_name;
+    if (customerId && quotation.customer_id !== customerId) return null;
+    quotation.customer_name = quotation.resolved_customer_name || quotation.customer_name;
     quotation.items = parseJson(quotation.items, []);
     await applyQuotationExpiry(quotation);
     return quotation;
@@ -2350,7 +1587,7 @@ const portalLifecycleService = {
     }
 
     const orderId = genId('so');
-    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'ORD');
+    const orderNumber = await workflowEngine.nextYearScopedNumber('sales_orders', 'order_number', 'SO');
     const itemsJson = JSON.stringify(
       quotation.items.map((item) => ({
         id: item.productId || genId('itm'),
@@ -2541,49 +1778,47 @@ const portalLifecycleService = {
 
   // ─── Analytics (derived from audit-grade tables) ───────────────────────────
   async getAnalytics() {
-    // NOTE: repo.getAll returns raw table rows (this repository layer never
-    // executes SELECT/aggregate clauses), so all counts are computed in JS.
-    const allRequests = await getAll('SELECT * FROM quotation_requests', []);
-
+    const requests = await getAll(
+      'SELECT status, COUNT(*) as count FROM quotation_requests GROUP BY status',
+      []
+    );
     const requestTotals = {};
-    const requestTypes = {};
-    for (const row of allRequests) {
-      const status = row.status;
-      requestTotals[status] = (requestTotals[status] || 0) + 1;
-      // Open (actionable) requests by type — quotation vs order — so
-      // dashboards can surface "new requests / orders from the portal".
-      if (!row.deleted_at && !['cancelled', 'rejected', 'converted'].includes(status)) {
-        requestTypes[row.request_type] = (requestTypes[row.request_type] || 0) + 1;
-      }
-    }
+    for (const row of requests) requestTotals[row.status] = row.count;
     const totalRequests = Object.values(requestTotals).reduce((a, b) => a + b, 0);
 
-    const reviewRows = allRequests.filter(r => r.reviewed_at && r.created_at);
-    const reviewMinutes = [];
-    for (const row of reviewRows) {
-      const minutes = (new Date(row.reviewed_at).getTime() - new Date(row.created_at).getTime()) / 60000;
-      if (Number.isFinite(minutes)) reviewMinutes.push(minutes);
-    }
-    const avgReviewMinutes = reviewMinutes.length
-      ? Math.round(reviewMinutes.reduce((sum, m) => sum + m, 0) / reviewMinutes.length)
+    const reviewTimes = await getAll(
+      `SELECT (julianday(reviewed_at) - julianday(created_at)) * 24 * 60 as minutes
+       FROM quotation_requests WHERE reviewed_at IS NOT NULL`,
+      []
+    );
+    const avgReviewMinutes = reviewTimes.length
+      ? Math.round(reviewTimes.reduce((sum, r) => sum + (r.minutes || 0), 0) / reviewTimes.length)
       : 0;
 
-    const quotationRows = await getAll('SELECT * FROM quotations', []);
+    const quotations = await getAll(
+      'SELECT status, COUNT(*) as count FROM quotations GROUP BY status',
+      []
+    );
     const quotationTotals = {};
-    for (const row of quotationRows) quotationTotals[row.status] = (quotationTotals[row.status] || 0) + 1;
+    for (const row of quotations) quotationTotals[row.status] = row.count;
     const totalQuotations = Object.values(quotationTotals).reduce((a, b) => a + b, 0);
 
-    const downloadRows = await getAll('SELECT * FROM portal_downloads', []);
+    const downloads = await getAll(
+      'SELECT doc_type, COUNT(*) as count FROM portal_downloads GROUP BY doc_type',
+      []
+    );
     const downloadTotals = {};
-    for (const row of downloadRows) downloadTotals[row.doc_type] = (downloadTotals[row.doc_type] || 0) + 1;
+    for (const row of downloads) downloadTotals[row.doc_type] = row.count;
     const totalDownloads = Object.values(downloadTotals).reduce((a, b) => a + b, 0);
 
-    const uniqueDownloads = new Set(downloadRows.map(r => r.doc_id).filter(Boolean)).size;
+    const uniqueDownloadDocs = await getOne(
+      'SELECT COUNT(DISTINCT doc_id) as count FROM portal_downloads',
+      []
+    );
 
     const acceptedCount = (quotationTotals.accepted || 0) + (quotationTotals.converted || 0);
     return {
       requests: requestTotals,
-      requestTypes,
       totalRequests,
       avgReviewMinutes,
       quotations: quotationTotals,
@@ -2594,7 +1829,7 @@ const portalLifecycleService = {
       conversionRate: totalQuotations ? Math.round(((quotationTotals.converted || 0) / totalQuotations) * 100) : 0,
       downloads: downloadTotals,
       totalDownloads,
-      uniqueDownloads,
+      uniqueDownloads: (uniqueDownloadDocs && uniqueDownloadDocs.count) || 0,
     };
   },
 
@@ -2660,15 +1895,6 @@ const portalLifecycleService = {
     });
 
     if (isCustomer) {
-      // If the request was waiting for a customer response, move it back to
-      // submitted so the admin inbox picks it up as requiring attention.
-      if (docType === 'request' && doc.status === REQUEST_STATUS.WAITING_FOR_CUSTOMER) {
-        await runQuery(
-          `UPDATE quotation_requests SET status = ?, updated_at = ? WHERE id = ?`,
-          [REQUEST_STATUS.SUBMITTED, nowIso(), docId]
-        ).catch(() => {});
-      }
-
       await notifyAdmin({ type: NOTIFICATION_TYPES.DECISION, title: 'Customer comment added',
         body: `${actorName} commented on a ${docType}: ${text.slice(0, 140)}`,
         link: '#/sales-flow/requests', customerId: doc.customer_id, customerName: actorName,

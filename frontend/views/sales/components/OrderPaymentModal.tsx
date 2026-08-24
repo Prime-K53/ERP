@@ -104,15 +104,29 @@ export const OrderPaymentModal: React.FC<OrderPaymentModalProps> = ({ order, onC
     );
 
     return (
-        <div className="sales-modal-backdrop" style={{ fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink }}>
-            <div className="sales-modal-panel">
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.6)',
+            padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
+        }}>
+            <div style={{
+                width: 860, maxWidth: '100%', maxHeight: '92vh',
+                background: paper, borderRadius: 14,
+                boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',
+                display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative'
+            }}>
                 <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, height: 4,
                     background: `linear-gradient(90deg, ${teal[600]}, ${teal[400]} 40%, ${amber[500]} 100%)`
                 }} />
 
-                <div className="sales-detail-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '22px 28px 18px',
+                    borderBottom: `1px solid ${hairline}`, background: paper
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                         <div style={{
                             width: 40, height: 40, borderRadius: 10,
                             background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
@@ -122,7 +136,10 @@ export const OrderPaymentModal: React.FC<OrderPaymentModalProps> = ({ order, onC
                             <DollarSign size={19} color="#fff" />
                         </div>
                         <div>
-                            <h1 className="sales-detail-title">
+                            <h1 style={{
+                                fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
+                                fontSize: 22, margin: 0, color: teal[800], letterSpacing: 0.2
+                            }}>
                                 Record Payment
                             </h1>
                             <p style={{ margin: '2px 0 0', fontSize: 11.5, color: inkSoft, letterSpacing: 0.02 }}>
@@ -143,9 +160,9 @@ export const OrderPaymentModal: React.FC<OrderPaymentModalProps> = ({ order, onC
                     </button>
                 </div>
 
-                <div style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column' }}>
-                    {/* Order Summary - hidden on mobile, shown as compact bar */}
-                    <div className="hidden sm:block" style={{
+                <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+                    {/* Left Panel - Order Summary */}
+                    <div style={{
                         width: 260, flexShrink: 0,
                         padding: 20,
                         borderRight: `1px solid ${hairline}`,
@@ -188,20 +205,6 @@ export const OrderPaymentModal: React.FC<OrderPaymentModalProps> = ({ order, onC
                         )}
                     </div>
 
-                    {/* Mobile compact order summary */}
-                    <div className="sm:hidden" style={{ padding: '12px 16px', background: teal[50], borderBottom: `1px solid ${hairline}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Package size={16} color={teal[600]} />
-                                <span style={{ fontSize: 13, fontWeight: 700, color: ink }}>#{order.orderNumber || order.id}</span>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                                <span style={{ fontSize: 11, color: inkSoft }}>Due: </span>
-                                <span style={{ fontSize: 15, fontWeight: 700, color: danger, fontFamily: "'JetBrains Mono', monospace" }}>{fmt(remainingBalance)}</span>
-                            </div>
-                        </div>
-                    </div>
-
                     {/* Right Panel - Payment Form */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                         {isFullyPaid ? (
@@ -215,7 +218,7 @@ export const OrderPaymentModal: React.FC<OrderPaymentModalProps> = ({ order, onC
                                 </div>
                             </div>
                         ) : (
-                            <form onSubmit={handleSubmit} style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
+                            <form onSubmit={handleSubmit} style={{ padding: '24px 28px 8px', overflowY: 'auto', flex: 1 }}>
                                 <div style={{ marginBottom: 20 }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: teal[800], marginBottom: 6, letterSpacing: 0.01 }}>
                                         Payment Amount

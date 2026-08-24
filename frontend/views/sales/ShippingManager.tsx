@@ -570,19 +570,19 @@ const ShippingManager: React.FC = () => {
           background: paper, overflow: 'hidden'
         }}>
             
-            <header style={{
-              padding: '12px 16px',
-              borderBottom: `1px solid ${hairline}`,
+            <header style={{ 
+              padding: '24px 40px', 
+              borderBottom: `1px solid ${hairline}`, 
               background: paper,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               flexShrink: 0, gap: 16, flexWrap: 'wrap'
-            }} className="md:!px-10 md:!py-6">
+            }}>
                 <div>
                     <h1 style={{
                       fontFamily: "'DM Serif Display', 'Georgia', serif",
-                      fontSize: 20, color: teal[800], margin: 0,
+                      fontSize: 22, color: teal[800], margin: 0,
                       display: 'flex', alignItems: 'center', gap: 12, letterSpacing: 0.2
-                    }} className="md:!text-[22px]">
+                    }}>
                         <div style={{
                           width: 40, height: 40, borderRadius: 10,
                           background: `linear-gradient(155deg, ${teal[500]}, ${teal[700]})`,
@@ -651,15 +651,15 @@ const ShippingManager: React.FC = () => {
                 </div>
             </header>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }} className="md:!p-10">
+            <div style={{ flex: 1, overflowY: 'auto', padding: '40px' }}>
                 {activeTab === 'Pipeline' && (
                     <div style={{ background: paper, borderRadius: 14, border: `1px solid ${hairline}`, boxShadow: '0 1px 3px rgba(0,0,0,.04)', overflow: 'hidden' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ background: teal[50], borderBottom: `1px solid ${hairline}` }}>
                                     <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }}>Customer</th>
-                                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }} className="hidden md:table-cell">Shipping Address</th>
-                                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }} className="hidden sm:table-cell">Delivery ID</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }}>Shipping Address</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }}>Delivery ID</th>
                                     <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }}>Items</th>
                                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: teal[700], textTransform: 'uppercase', letterSpacing: 0.08 }}>Actions</th>
                                 </tr>
@@ -682,10 +682,10 @@ const ShippingManager: React.FC = () => {
                                                 </span>
                                             </div>
                                         </td>
-                                        <td style={{ padding: '14px 16px', fontSize: 13, color: ink, verticalAlign: 'middle', maxWidth: 260 }} className="hidden md:table-cell">
+                                        <td style={{ padding: '14px 16px', fontSize: 13, color: ink, verticalAlign: 'middle', maxWidth: 260 }}>
                                             {dn.shippingAddress}
                                         </td>
-                                        <td style={{ padding: '14px 16px', fontSize: 13, color: inkSoft, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", verticalAlign: 'middle' }} className="hidden sm:table-cell">
+                                        <td style={{ padding: '14px 16px', fontSize: 13, color: inkSoft, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", verticalAlign: 'middle' }}>
                                             {dn.id}
                                         </td>
                                         <td style={{ padding: '14px 16px', fontSize: 13, color: ink, fontWeight: 600, verticalAlign: 'middle' }}>
@@ -754,19 +754,18 @@ const ShippingManager: React.FC = () => {
                               border: `1px solid ${hairline}`,
                               boxShadow: '0 1px 3px rgba(0,0,0,.04)',
                               overflow: 'hidden', display: 'flex', flexDirection: 'row',
-                              flexWrap: 'wrap',
                               transition: 'all .2s ease'
                             }}
                             onMouseEnter={e => e.currentTarget.style.borderColor = teal[200]}
                             onMouseLeave={e => e.currentTarget.style.borderColor = hairline}
                             >
                                 <div style={{
-                                  padding: 16, borderBottom: `1px solid ${hairline}`,
+                                  padding: 24, borderRight: `1px solid ${hairline}`,
                                   background: teal[50],
                                   display: 'flex', flexDirection: 'column',
                                   alignItems: 'center', justifyContent: 'center',
                                   textAlign: 'center', flexShrink: 0, width: 224
-                                }} className="md:!border-r md:!border-b-0 md:!p-6">
+                                }}>
                                     <div style={{
                                       width: 56, height: 56, borderRadius: 14,
                                       background: `linear-gradient(155deg, ${teal[400]}, ${teal[600]})`,

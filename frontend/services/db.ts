@@ -7,7 +7,6 @@ import {
 import type { Referral, ReferralReward } from '../types/referral';
 import type { ReferralTimelineEntry, ReferralAuditEntry, ReferralCampaign, ReferralAnalytics, ReversalRequest, ReferralEvent } from '../types/referral-extended';
 import type { EngagementTimelineEntry, EngagementAuditEntry, PointEntry, PointBalance, CashbackEntry, MembershipTier, CustomerTier, GiftCard, GiftCardTransaction, AffiliateAccount, AffiliateCommission, Promotion, CustomerReward, EngagementAnalytics } from '../types/engagement';
-import type { PortalAd } from '../types/ads';
 import type { ProductAttribute } from '../types/attributes';
 import { calculateCustomerPaymentSnapshot } from './receiptCalculationService';
 
@@ -158,12 +157,11 @@ interface NexusDB extends DBSchema {
     engagementPromotions: { key: string; value: Promotion; };
     engagementCustomerRewards: { key: string; value: CustomerReward; };
     engagementAnalytics: { key: string; value: EngagementAnalytics; };
-    portalAds: { key: string; value: PortalAd; };
 
 }
 
 const DB_NAME = 'PrimeERP_Final_v3_Clean';
-const DB_VERSION = 52;
+const DB_VERSION = 51;
 
 let dbPromise: Promise<IDBPDatabase<NexusDB>> | null = null;
 
@@ -509,7 +507,6 @@ const CLOUD_TABLE_MAP: Record<string, string> = {
   engagementPromotions: 'engagement_promotions',
   engagementCustomerRewards: 'engagement_customer_rewards',
   engagementAnalytics: 'engagement_analytics',
-  portalAds: 'portal_ads',
 
 };
 
@@ -592,7 +589,6 @@ const STORE_NAMES: (keyof NexusDB)[] = [
     'engagementPromotions',
     'engagementCustomerRewards',
     'engagementAnalytics',
-    'portalAds',
 
 ];
 
@@ -1063,13 +1059,6 @@ export const dbService = {
         const raw = { ...((item as Record<string, unknown>) || {}) };
         const isCloudSource = options.cloudSource === true || raw._cloudSource === true;
 
-        console.log(`[SYNC-FORENSIC] STAGE-1 db.put() called`, {
-            storeName,
-            id: raw.id,
-            isCloudSource,
-            hasName: !!(raw.name || raw.customerName || raw.productName),
-        });
-
         if (isCloudSource) {
             const preservedUpdatedAt = raw.serverUpdatedAt ?? raw.updated_at ?? raw._updatedAt;
             if (typeof preservedUpdatedAt === 'string' && preservedUpdatedAt.trim()) {
@@ -1098,33 +1087,18 @@ export const dbService = {
         if (!isLocalOnly && itemId && !isCloudSource) {
             try {
                 const table = getCloudTable(String(storeName));
-                console.log(`[SYNC-FORENSIC] STAGE-2 enqueue() triggered`, {
-                    storeName,
-                    cloudTable: table,
-                    recordId: itemId,
-                    operation: 'upsert',
-                    isLocalOnly,
-                });
                 durableSyncQueue.enqueue({
                     table,
                     recordId: itemId,
                     operation: 'upsert',
                     payload: raw,
                 }).catch((enqueueErr) => {
-                    console.error(`[SYNC-FORENSIC] STAGE-2 ENQUEUE FAILED`, {
-                        storeName, recordId: itemId, error: enqueueErr?.message || enqueueErr,
-                    });
+                    console.warn(`[Sync] Enqueue failed for ${storeName}/${itemId}:`, enqueueErr);
                 });
                 backgroundSyncService.trigger();
             } catch (syncErr) {
-                console.error(`[SYNC-FORENSIC] STAGE-2 TRIGGER FAILED`, {
-                    storeName, recordId: itemId, error: syncErr?.message || syncErr,
-                });
+                console.warn(`[Sync] Background sync trigger failed for ${storeName}/${itemId}:`, syncErr);
             }
-        } else {
-            console.log(`[SYNC-FORENSIC] STAGE-2 SKIPPED sync enqueue`, {
-                storeName, recordId: itemId, isLocalOnly, isCloudSource,
-            });
         }
 
         this.triggerSync();

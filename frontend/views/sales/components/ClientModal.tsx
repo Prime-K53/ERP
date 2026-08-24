@@ -199,13 +199,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSav
   const totalSteps = tabs.length;
 
   return (
-    <div className="client-modal-overlay" style={{
+    <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'rgba(15, 23, 42, 0.6)',
       padding: '40px 20px', fontFamily: "'Inter','DM Sans',sans-serif", fontSize: 13.5, color: ink,
     }}>
-      <div className="client-modal-content" style={{
+      <div style={{
         width: 920, maxWidth: '100%', maxHeight: '92vh',
         background: paper, borderRadius: 14,
         boxShadow: '0 30px 70px -20px rgba(0,0,0,.55), 0 8px 24px -8px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04)',

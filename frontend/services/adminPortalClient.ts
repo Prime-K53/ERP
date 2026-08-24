@@ -1,5 +1,4 @@
 import { API_BASE_URL } from '../config/api.js';
-import type { PortalAdImageMeta } from '../types/ads';
 
 interface AdminUserInfo {
   id: string;
@@ -30,7 +29,7 @@ function getAccessToken(): string | null {
 }
 
 async function adminRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
   // Send the Supabase JWT so the backend verifyAdminAuth middleware can decode it.
   const token = getAccessToken();
@@ -44,9 +43,6 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
     headers['x-user-role'] = user.role || 'Admin';
     if (user.email) headers['x-user-email'] = user.email;
     if (user.isSuperAdmin) headers['x-user-is-super-admin'] = 'true';
-  }
-  if (!(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
   }
   const res = await fetch(`${API_BASE_URL}/portal/admin${path}`, { ...options, headers });
   if (!res.ok) {
@@ -74,21 +70,7 @@ export const adminPortalApi = {
   delete<T>(path: string): Promise<T> {
     return adminRequest<T>(path, { method: 'DELETE' });
   },
-  /** POST raw (FormData) — used for binary file uploads. */
-  postForm<T>(path: string, formData: FormData): Promise<T> {
-    return adminRequest<T>(path, { method: 'POST', body: formData });
-  },
 };
-
-/**
- * Uploads a banner image for a portal ad; returns the stable public URL plus
- * the metadata of the prepared asset (server prepares an exact 4:1 WebP).
- */
-export async function uploadAdImage(file: File): Promise<{ url: string; path: string; meta: PortalAdImageMeta }> {
-  const form = new FormData();
-  form.append('file', file);
-  return adminPortalApi.postForm<{ url: string; path: string; meta: PortalAdImageMeta }>('/ads/upload', form);
-}
 
 export interface AdminNotification {
   id: string;
@@ -133,7 +115,6 @@ export interface AdminQuotationRequest {
   request_number: string;
   customer_id: string;
   customer_name: string;
-  customer_email?: string;
   request_type: string;
   items: AdminRequestItem[];
   subtotal: number;
@@ -232,7 +213,6 @@ export interface AdminSalesOrder {
   reorder_of_number: string | null;
   customer_name: string | null;
   created_at: string;
-  items?: { name?: string; productName?: string; quantity?: number; totalQuantity?: number; unitPrice?: number; price?: number; lineTotal?: number }[];
 }
 
 export interface AdminQuotation {
@@ -396,13 +376,6 @@ export const adminLifecycle = {
   requests: {
     list(status?: string): Promise<AdminQuotationRequest[]> {
       return adminPortalApi.get<AdminQuotationRequest[]>(`/requests${status ? `?status=${status}` : ''}`);
-    },
-    inbox(): Promise<AdminQuotationRequest[]> {
-      return adminPortalApi.get<AdminQuotationRequest[]>('/requests/inbox');
-    },
-    /** Marks request-pipeline admin notifications read (clears the hub badge). */
-    markInboxRead(): Promise<{ success: boolean; marked: number }> {
-      return adminPortalApi.post<{ success: boolean; marked: number }>('/requests/inbox/read-all', {});
     },
     get(id: string): Promise<AdminQuotationRequest> {
       return adminPortalApi.get<AdminQuotationRequest>(`/requests/${id}`);

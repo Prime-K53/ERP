@@ -325,32 +325,32 @@ export interface CompanyConfig {
   engagementSettings?: import('./types/engagement').EngagementSettings;
 }
 
-export {
-  SALES_ORDER_STATUSES,
-  SALES_ORDER_PAYMENT_STATUSES,
-  SALES_ORDER_INVOICE_STATUSES,
-  LEGACY_STATUS_MAP,
-  LEGACY_PAYMENT_STATUS_MAP,
-  TERMINAL_SALES_ORDER_STATUSES,
-  isCanonicalStatus,
-  canonicalizeStatus,
-  legacyPaymentStatus,
-  derivePaymentStatus,
-  deriveInvoiceStatus,
-  isTerminalStatus,
-  isCancelableStatus,
-  displayStatus,
-  isProvisionalNumber,
-} from './types/salesOrder';
-export type {
-  SalesOrderItem,
-  SalesOrder,
-  SalesOrderPayment,
-  SalesOrderConversionDetails,
-  SalesOrderStatus,
-  SalesOrderPaymentStatus,
-  SalesOrderInvoiceStatus,
-} from './types/salesOrder';
+export interface SalesOrderItem {
+  id: string;
+  productId: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  discount?: number;
+  lineTotal?: number;
+}
+
+export interface SalesOrder {
+  id: string;
+  quotationId?: string | null;
+  customerId?: string | null;
+  salesPersonId?: string | null;
+  territoryId?: string | null;
+  orderDate: string;
+  deliveryDate?: string | null;
+  status: 'Draft' | 'Confirmed' | 'Processing' | 'Cancelled' | 'Fulfilled';
+  items: SalesOrderItem[];
+  subtotal: number;
+  discounts: number;
+  tax: number;
+  total: number;
+  notes?: string;
+}
 
 // Examination Batch Notification Types
 export type NotificationType = 'BATCH_CREATED' | 'BATCH_CALCULATED' | 'BATCH_APPROVED' | 'BATCH_INVOICED' | 'DEADLINE_REMINDER';
@@ -2366,39 +2366,4 @@ export interface TaxRate {
   applicableItemTypes?: string[];
   active: boolean;
   accountId?: string;
-}
-
-export type DeliveryStatus =
-  | 'order_placed'
-  | 'warehouse_dispatched'
-  | 'out_for_delivery'
-  | 'in_transit'
-  | 'dispatched'
-  | 'delivered'
-  | 'fulfilled'
-  | 'processing'
-  | string;
-
-export interface DeliveryNotification {
-  id: string;
-  orderId: string;
-  trackingNumber: string;
-  status: DeliveryStatus;
-  estimatedArrival?: string | null;
-  driverName?: string | null;
-  driverPhone?: string | null;
-  vehicleNumber?: string | null;
-  carrier?: string | null;
-  shippingAddress?: string | null;
-  currentLocation?: string | null;
-  proofOfDelivery?: string | null;
-  customerName?: string;
-}
-
-export interface QuoteRequestItem {
-  id: string;
-  name: string;
-  quantity: number;
-  targetPrice?: number;
-  notes?: string;
 }

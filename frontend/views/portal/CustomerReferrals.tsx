@@ -7,8 +7,7 @@ import { useToast } from './components/Toast';
 import EmptyState from './components/EmptyState';
 import PortalLoadingSkeleton from './components/PortalLoadingSkeleton';
 import StatusBadge from './components/StatusBadge';
-import { F, MONO, NAVY, TEAL_GRADIENT, EMERALD } from './designTokens';
-
+import { F } from './portalStyles';
 
 type Tab = 'referrals' | 'rewards';
 type ReferralStatus = 'all' | 'active' | 'converted' | 'expired' | 'cancelled';
@@ -21,16 +20,6 @@ const statusLabel: Record<string, string> = {
   pending: 'Pending',
   approved: 'Approved',
   paid: 'Paid',
-};
-
-const referralBadgeConfig: Record<string, { label: string; bg: string; text: string }> = {
-  pending: { label: 'PENDING', bg: '#F1F5F9', text: '#64748B' },
-  signed_up: { label: 'SIGNED UP', bg: '#EFF6FF', text: '#2563EB' },
-  completed: { label: 'COMPLETED', bg: '#ECFDF5', text: '#059669' },
-  active: { label: 'ACTIVE', bg: '#EFF6FF', text: '#2563EB' },
-  converted: { label: 'CONVERTED', bg: '#ECFDF5', text: '#059669' },
-  expired: { label: 'EXPIRED', bg: '#F1F5F9', text: '#64748B' },
-  cancelled: { label: 'CANCELLED', bg: '#FEF2F2', text: '#DC2626' },
 };
 
 const CustomerReferrals: React.FC = () => {
@@ -53,7 +42,6 @@ const CustomerReferrals: React.FC = () => {
   const [referResults, setReferResults] = useState<PortalCustomerSearchResult[]>([]);
   const [referSelected, setReferSelected] = useState<PortalCustomerSearchResult | null>(null);
   const [referNotes, setReferNotes] = useState('');
-  const [referCompany, setReferCompany] = useState('');
   const [referSubmitting, setReferSubmitting] = useState(false);
   const [detailReferral, setDetailReferral] = useState<PortalReferral | null>(null);
   const [timeline, setTimeline] = useState<PortalReferralTimelineEntry[]>([]);
@@ -67,15 +55,15 @@ const CustomerReferrals: React.FC = () => {
   const loadSettings = async () => {
     try {
       const s = await portalLifecycle.referrals.settings();
-      setSettings(s || null);
-    } catch { setSettings(null); }
+      setSettings(s);
+    } catch { /* ignore */ }
   };
 
   const loadFunnel = async () => {
     try {
       const f = await portalLifecycle.referrals.stats();
-      setFunnel(f || null);
-    } catch { setFunnel(null); }
+      setFunnel(f);
+    } catch { /* ignore */ }
   };
 
   const loadReferrals = async () => {
@@ -87,11 +75,10 @@ const CustomerReferrals: React.FC = () => {
         search: referralSearch || undefined,
         sort: 'date_desc',
       });
-      setReferrals(data.referrals.length > 0 ? data.referrals : []);
-      setReferralTotalPages(data.totalPages || 1);
+      setReferrals(data.referrals);
+      setReferralTotalPages(data.totalPages);
     } catch (err: any) {
       setError(err.message || 'Failed to load referrals');
-      setReferrals([]);
     }
   };
 
@@ -102,11 +89,10 @@ const CustomerReferrals: React.FC = () => {
         pageSize,
         status: rewardStatus || undefined,
       });
-      setRewards(data.rewards.length > 0 ? data.rewards : []);
-      setRewardTotalPages(data.totalPages || 1);
+      setRewards(data.rewards);
+      setRewardTotalPages(data.totalPages);
     } catch (err: any) {
       setError(err.message || 'Failed to load rewards');
-      setRewards([]);
     }
   };
 
@@ -139,17 +125,15 @@ const CustomerReferrals: React.FC = () => {
     if (!referSelected) return;
     setReferSubmitting(true);
     try {
-      const companyNote = referCompany ? `\nCompany: ${referCompany}` : '';
       await portalLifecycle.referrals.create({
         referredCustomerId: referSelected.id,
-        notes: referNotes ? `${referNotes}${companyNote}` : (companyNote || undefined),
+        notes: referNotes || undefined,
       });
       setShowReferModal(false);
       setReferSearch('');
       setReferResults([]);
       setReferSelected(null);
       setReferNotes('');
-      setReferCompany('');
       loadReferrals();
       loadFunnel();
     } catch (err: any) {
@@ -204,28 +188,77 @@ const CustomerReferrals: React.FC = () => {
     cancelled: { bg: 'bg-rose-100', text: 'text-rose-700' },
   };
 
-  const totalEarned = useMemo(() => funnel?.totalEarned || 0, [funnel]);
-  const pendingReferralsCount = useMemo(() => {
-    if (!referrals.length) return 0;
-    return referrals.filter(r => ['pending', 'active', 'signed_up'].includes(r.status.toLowerCase())).length;
-  }, [referrals]);
-
-  const primaryContainer = {
-    background: '#EFF6FF',
-    border: '1px solid #BFDBFE',
-    borderRadius: 12,
-  } as React.CSSProperties;
-
-  const tertiaryContainer = {
-    background: '#ECFDF5',
-    border: '1px solid #A7F3D0',
-    borderRadius: 12,
-  } as React.CSSProperties;
-
   if (loading) return <div className="p-6"><PortalLoadingSkeleton type="card" count={4} /></div>;
 
   return (
     <div>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '22px 28px 18px', borderBottom: `1px solid #E9EDF3`, background: '#fff'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: `linear-gradient(155deg, #0D5047, #0D5047)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 10px -3px rgba(15,84,76,.6)', flexShrink: 0
+          }}>
+            <Users size={19} color="#fff" />
+          </div>
+          <div>
+            <h1 style={{
+              fontFamily: "'DM Serif Display', 'Georgia', serif", fontWeight: 400,
+              fontSize: 22, margin: 0, color: '#0D5047', letterSpacing: 0.2
+            }}>
+              Referrals
+            </h1>
+            <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#8A94A6', letterSpacing: 0.02 }}>
+              Track your referrals and rewards
+            </p>
+          </div>
+        </div>
+        {settings?.enabled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={handleCopyReferralLink}
+              style={{
+                fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,
+                padding: '9px 18px', borderRadius: 9, cursor: 'pointer',
+                background: 'transparent',
+                color: '#8A94A6', display: 'inline-flex', alignItems: 'center', gap: 7,
+                border: `1.4px solid #E9EDF3`, transition: 'all .15s ease'
+              }}
+              title="Copy your referral link"
+            >
+               <Copy size={16} /> Copy Link
+            </button>
+            <button
+              onClick={handleShareWhatsApp}
+              style={{
+                fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,
+                padding: '9px 18px', borderRadius: 9, cursor: 'pointer',
+                background: '#25D366',
+                color: '#fff', display: 'inline-flex', alignItems: 'center', gap: 7,
+                border: '1.4px solid transparent', transition: 'all .15s ease'
+              }}
+              title="Share via WhatsApp"
+            >
+              <Share2 size={16} /> Share
+            </button>
+            <button onClick={() => setShowReferModal(true)} style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600,
+              padding: '9px 18px', borderRadius: 9, cursor: 'pointer', border: '1.4px solid transparent',
+              background: `linear-gradient(155deg, #0D5047, #0D5047)`,
+              color: '#fff', display: 'inline-flex', alignItems: 'center', gap: 7,
+              boxShadow: '0 6px 16px -6px rgba(15,84,76,.55)', transition: 'all .15s ease'
+            }}>
+              <UserPlus size={16} /> Refer Someone
+            </button>
+          </div>
+        )}
+      </div>
+
       {error && (
         <div style={{ padding: '0 28px', marginTop: 16 }}>
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 12, padding: '12px 16px', fontSize: 13 }}>
@@ -234,168 +267,229 @@ const CustomerReferrals: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ padding: '0 28px 16px' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 6px', letterSpacing: '-0.01em', lineHeight: 1.3 }}>Customer Referral Partner Program</h1>
-        <p style={{ fontSize: 13, fontWeight: 500, color: '#64748B', margin: 0, lineHeight: 1.5 }}>Earn up to $150 in account statement credit for every referred company that completes an order.</p>
+      {/* Funnel */}
+      {funnel && (
+        <div style={{ padding: '20px 28px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <TrendingUp size={16} style={{ color: '#0D5047' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#0D5047', textTransform: 'uppercase', letterSpacing: 0.08 }}>
+              Referral Funnel
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {funnelStages.map((stage, idx) => (
+              <div key={stage.label} style={{ position: 'relative' }}>
+                <div style={{
+                  padding: '14px 16px', borderRadius: 12, background: '#fff',
+                  border: '1.4px solid #e4ddd1', borderLeft: `4px solid ${stage.color}`,
+                  boxShadow: '0 1px 3px rgba(0,0,0,.04)'
+                }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.08, margin: '0 0 6px' }}>{stage.label}</p>
+                  <p style={{ fontSize: 22, fontWeight: 700, color: '#1A202C', margin: 0, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>
+                    {stage.value}
+                  </p>
+                </div>
+                {idx < funnelStages.length - 1 && (
+                  <div style={{ position: 'absolute', top: '50%', right: -10, transform: 'translateY(-50%)', zIndex: 2 }}>
+                    <ArrowRight size={16} style={{ color: '#E9EDF3' }} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {funnel.pendingRewardAmount > 0 && (
+            <p style={{ fontSize: 11, color: '#8A94A6', marginTop: 10 }}>
+              <Gift size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+              <span style={{ fontWeight: 600 }}>{funnel.pendingRewardAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span> in pending rewards •
+              <span style={{ fontWeight: 600, marginLeft: 4 }}>{funnel.totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span> total earned
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, padding: '16px 28px 0' }}>
+        {([
+          { key: 'referrals', label: 'My Referrals', icon: Users },
+          { key: 'rewards', label: 'My Rewards', icon: Gift },
+        ] as const).map((t) => {
+          const isActive = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600,
+              padding: '8px 16px', borderRadius: 9, border: isActive ? '1.4px solid transparent' : `1.4px solid #E9EDF3`,
+              background: isActive ? `linear-gradient(155deg, #0D5047, #0D5047)` : '#fff',
+              color: isActive ? '#fff' : '#8A94A6', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 7, transition: 'all .15s ease',
+              boxShadow: isActive ? '0 4px 12px -4px rgba(15,84,76,.4)' : 'none',
+            }}>
+              <t.icon size={14} /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Metrics */}
-      {settings?.enabled && (
-        <div style={{ padding: '0 28px 16px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <div style={{ background: '#ECFDF5', borderRadius: 10, padding: '14px 16px', border: '1px solid #A7F3D0', transition: 'all 200ms cubic-bezier(.4,0,.2,1)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(15,23,42,0.14)'; e.currentTarget.style.borderColor = 'rgba(5,150,105,0.28)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#A7F3D0'; }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Earned Credit</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#065F46', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>${totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-            </div>
-            <div style={{ background: '#EFF6FF', borderRadius: 10, padding: '14px 16px', border: '1px solid #BFDBFE', transition: 'all 200ms cubic-bezier(.4,0,.2,1)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 24px -8px rgba(15,23,42,0.14)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,0.28)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#BFDBFE'; }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pending Referrals</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#1E40AF', fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>{pendingReferralsCount}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Share Link */}
-      {settings?.enabled && (
-        <div style={{ padding: '0 28px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>Your Unique Share Link</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff', borderRadius: 10, border: '1px solid #E9EDF3', transition: 'all 200ms cubic-bezier(.4,0,.2,1)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#0D5047'; e.currentTarget.style.boxShadow = '0 4px 12px -4px rgba(13,80,71,0.25)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E9EDF3'; e.currentTarget.style.boxShadow = 'none'; }}>
+      {/* Filters */}
+      {tab === 'referrals' && (
+        <div style={{ display: 'flex', gap: 8, padding: '12px 28px 0', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 240px' }}>
+            <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6' }} />
             <input
               type="text"
-              readOnly
-              value={`${window.location.origin}/#/portal/referrals?ref=${user?.id || ''}`}
+              placeholder="Search referred customers..."
+              value={referralSearch}
+              onChange={(e) => setReferralSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setReferralPage(1); loadReferrals(); } }}
               style={{
-                flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
-                padding: '6px 10px', border: '1px solid #E9EDF3', borderRadius: 8,
-                background: '#f8fafc', color: '#4A5568', outline: 'none',
+                width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '9px 12px 9px 32px',
+                border: `1.4px solid #E9EDF3`, borderRadius: 9, background: '#fff', color: '#1A202C', outline: 'none'
               }}
             />
-             <button
-               onClick={handleCopyReferralLink}
-               style={{
-                 width: 36, height: 36, borderRadius: 8, border: '1px solid #E9EDF3',
-                 background: '#fff', color: '#4A5568', fontSize: 12, fontWeight: 600,
-                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                 flexShrink: 0, transition: 'all .15s ease',
-               }}
-               onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#0D5047'; e.currentTarget.style.color = '#0D5047'; }}
-               onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E9EDF3'; e.currentTarget.style.color = '#4A5568'; }}
-               aria-label="Copy link"
-             >
-              <Copy size={16} />
-            </button>
           </div>
+          <select
+            value={referralStatus}
+            onChange={(e) => { setReferralStatus(e.target.value as ReferralStatus); setReferralPage(1); }}
+            style={{
+              fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '9px 32px 9px 12px',
+              border: `1.4px solid #E9EDF3`, borderRadius: 9, background: '#fff', color: '#1A202C',
+              appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235c6567'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', cursor: 'pointer'
+            }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="converted">Converted</option>
+            <option value="expired">Expired</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </div>
       )}
 
-      {/* Referred Partners History */}
-      {settings?.enabled && tab === 'referrals' && (
-        <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>Referred Partners History</div>
+      {/* Content */}
+      <div style={{ padding: '16px 28px 28px' }}>
+        {!settings?.enabled && (
+          <EmptyState
+            icon={<Users size={28} />}
+            title="Referrals not enabled"
+            description="The referral program is currently disabled. Contact support for more information."
+          />
+        )}
 
-          {referrals.length === 0 ? (
-            <EmptyState icon={<Users size={28} />} title="No referrals yet" description="You haven't referred any customers yet." />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {referrals.map((r, idx) => {
-                const badge = referralBadgeConfig[r.status.toLowerCase()] || referralBadgeConfig.pending;
-                const initials = (r.referredCustomerName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                const credit = r.pendingInvoiceAmount > 0 ? `+${r.pendingInvoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-';
-                const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        {settings?.enabled && tab === 'referrals' && referrals.length === 0 && (
+          <EmptyState
+            icon={<Users size={28} />}
+            title="No referrals yet"
+            description="You haven't referred any customers yet. Click 'Refer Someone' to get started."
+            action={{ label: 'Refer Someone', onClick: () => setShowReferModal(true) }}
+          />
+        )}
 
-                return (
-                  <div key={r.id} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                    padding: '14px 12px', borderBottom: idx < referrals.length - 1 ? '1px solid #F1F5F9' : 'none',
-                    borderLeft: '3px solid transparent', borderRadius: 8, background: '#fff',
-                    transition: 'all 200ms cubic-bezier(.4,0,.2,1)', cursor: 'pointer',
-                  }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderLeftColor = '#0D5047'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderLeftColor = 'transparent'; }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
-                      <div style={{
-                        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                        background: '#F1F5F9', color: '#475569',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 12, fontWeight: 700,
-                      }}>
-                        {initials}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1A202C', lineHeight: 1.3 }}>{r.referredCustomerName}</div>
-                        <div style={{ fontSize: 12, color: '#64748B', marginTop: 1, lineHeight: 1.4 }}>
-                          {r.referredCustomerEmail || '-'}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>Invited: {dateStr}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: badge.text, background: badge.bg,
-                        padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap',
-                      }}>
-                        {badge.label}
-                      </span>
-                      <span style={{ textAlign: 'right', fontFamily: F, fontSize: 13, fontWeight: 700, color: '#1A202C', fontVariantNumeric: 'tabular-nums', minWidth: 70 }}>
-                        {credit}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Rewards Tab */}
-      {settings?.enabled && tab === 'rewards' && (
-        <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>My Rewards</div>
-          {rewards.length === 0 ? (
-            <EmptyState icon={<Gift size={28} />} title="No rewards yet" description="When your referrals convert, your rewards will appear here." />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {rewards.map((r) => (
-                <div key={r.id} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                  padding: '14px 18px', background: '#fff', borderRadius: 10,
-                  border: '1px solid #E9EDF3', borderLeft: '3px solid transparent',
-                  transition: 'all 200ms cubic-bezier(.4,0,.2,1)', cursor: 'pointer',
-                }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderLeftColor = '#0D5047'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderLeftColor = 'transparent'; }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ fontWeight: 600, color: '#1A202C', margin: 0, fontSize: 13 }}>{r.referredCustomerName}</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
-                    <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: '#0D5047' }}>
-                      +{r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#94A3B8', whiteSpace: 'nowrap' }}>{new Date(r.createdAt).toLocaleDateString()}</span>
-                  </div>
+        {settings?.enabled && tab === 'referrals' && referrals.length > 0 && (
+          <div className="space-y-2">
+            {referrals.map((r) => (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '14px 18px', background: '#fff', borderRadius: 12,
+                border: '1.4px solid #e4ddd1', boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                flexWrap: 'wrap', cursor: 'pointer', transition: 'all .15s ease'
+              }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#a6d9d3'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e4ddd1'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'; }}
+                onClick={() => openDetail(r)}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ fontWeight: 600, color: '#1A202C', margin: 0, fontSize: 13 }}>{r.referredCustomerName}</p>
+                  {r.referredCustomerEmail && <p style={{ fontSize: 11, color: '#8A94A6', margin: '2px 0 0' }}>{r.referredCustomerEmail}</p>}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                  <StatusBadge status={r.status} size="sm" />
+                  <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: r.pendingInvoiceAmount > 0 ? '#1A202C' : '#8A94A6' }}>
+                    {r.pendingInvoiceAmount > 0 ? r.pendingInvoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#8A94A6', whiteSpace: 'nowrap' }}>{new Date(r.createdAt).toLocaleDateString()}</span>
+                  <button onClick={(e) => { e.stopPropagation(); openDetail(r); }} style={{
+                    fontSize: 11, fontWeight: 700, color: '#0D5047', background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '4px 8px', borderRadius: 6, transition: 'all .15s'
+                  }} onMouseEnter={e => { e.currentTarget.style.background = '#ECFDF5'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
+                    View Timeline
+                  </button>
+                </div>
+              </div>
+            ))}
+            {referralTotalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, fontSize: 12, color: '#8A94A6' }}>
+                <span>Page {referralPage} of {referralTotalPages}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setReferralPage(p => Math.max(1, p - 1))} disabled={referralPage <= 1} style={{
+                    padding: '6px 12px', borderRadius: 8, border: `1.4px solid #E9EDF3`, background: '#fff', cursor: referralPage <= 1 ? 'not-allowed' : 'pointer', opacity: referralPage <= 1 ? 0.5 : 1, fontSize: 12, color: '#1A202C'
+                  }}>Previous</button>
+                  <button onClick={() => setReferralPage(p => Math.min(referralTotalPages, p + 1))} disabled={referralPage >= referralTotalPages} style={{
+                    padding: '6px 12px', borderRadius: 8, border: `1.4px solid #E9EDF3`, background: '#fff', cursor: referralPage >= referralTotalPages ? 'not-allowed' : 'pointer', opacity: referralPage >= referralTotalPages ? 0.5 : 1, fontSize: 12, color: '#1A202C'
+                  }}>Next</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {settings?.enabled && tab === 'rewards' && rewards.length === 0 && (
+          <EmptyState
+            icon={<Gift size={28} />}
+            title="No rewards yet"
+            description="When your referrals convert, your rewards will appear here."
+          />
+        )}
+
+        {settings?.enabled && tab === 'rewards' && rewards.length > 0 && (
+          <div className="space-y-2">
+            {rewards.map((r) => (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '14px 18px', background: '#fff', borderRadius: 12,
+                border: '1.4px solid #e4ddd1', boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ fontWeight: 600, color: '#1A202C', margin: 0, fontSize: 13 }}>{r.referredCustomerName}</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0, flexWrap: 'wrap' }}>
+                  <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#8A94A6' }}>
+                    {r.invoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                  <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: '#0D5047' }}>
+                    +{r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap text-xs px-2.5 py-1 ${rewardStatusColor[r.status]?.bg || 'bg-slate-100'} ${rewardStatusColor[r.status]?.text || 'text-slate-600'}`}>
+                    <span className={`rounded-full ${rewardStatusColor[r.status]?.bg ? 'bg-current opacity-40' : 'bg-slate-400'} w-2 h-2`} />
+                    {statusLabel[r.status] || r.status}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#8A94A6', whiteSpace: 'nowrap' }}>{new Date(r.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+            {rewardTotalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, fontSize: 12, color: '#8A94A6' }}>
+                <span>Page {rewardPage} of {rewardTotalPages}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setRewardPage(p => Math.max(1, p - 1))} disabled={rewardPage <= 1} style={{
+                    padding: '6px 12px', borderRadius: 8, border: `1.4px solid #E9EDF3`, background: '#fff', cursor: rewardPage <= 1 ? 'not-allowed' : 'pointer', opacity: rewardPage <= 1 ? 0.5 : 1, fontSize: 12, color: '#1A202C'
+                  }}>Previous</button>
+                  <button onClick={() => setRewardPage(p => Math.min(rewardTotalPages, p + 1))} disabled={rewardPage >= rewardTotalPages} style={{
+                    padding: '6px 12px', borderRadius: 8, border: `1.4px solid #E9EDF3`, background: '#fff', cursor: rewardPage >= rewardTotalPages ? 'not-allowed' : 'pointer', opacity: rewardPage >= rewardTotalPages ? 0.5 : 1, fontSize: 12, color: '#1A202C'
+                  }}>Next</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Refer Someone Modal */}
       {showReferModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.4)', backdropFilter: 'blur(4px)' }}>
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)', border: `1px solid #E9EDF3` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: `1px solid #E9EDF3` }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A202C', margin: 0 }}>Refer a Business</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A202C', margin: 0 }}>Refer Someone</h2>
               <button onClick={() => setShowReferModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8, color: '#8A94A6' }}><X size={18} /></button>
             </div>
             <div style={{ padding: '18px 22px' }}>
@@ -403,7 +497,7 @@ const CustomerReferrals: React.FC = () => {
                 <>
                   <p style={{ fontSize: 13, color: '#8A94A6', margin: '0 0 12px' }}>Search for an existing customer to refer.</p>
                   <div style={{ position: 'relative' }}>
-                    <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6' }} />
+                    <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#8A94A6' }} />
                     <input
                       type="text"
                       placeholder="Search by name, email, or phone..."
@@ -411,23 +505,23 @@ const CustomerReferrals: React.FC = () => {
                       onChange={(e) => setReferSearch(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleReferSearch(); }}
                       style={{
-                        width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '10px 14px 10px 40px',
+                        width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '10px 12px 10px 32px',
                         border: `1.4px solid #E9EDF3`, borderRadius: 9, background: '#f8fafc', color: '#1A202C', outline: 'none'
                       }}
                     />
                   </div>
-                   <button onClick={handleReferSearch} style={{
-                     marginTop: 10, width: '100%', padding: '9px', borderRadius: 9, border: `1.4px solid #0D5047`,
-                     background: '#fff', color: '#0D5047', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease'
-                   }} onMouseEnter={(e) => { e.currentTarget.style.background = '#0D5047'; e.currentTarget.style.color = '#fff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#0D5047'; }}>Search</button>
+                  <button onClick={handleReferSearch} style={{
+                    marginTop: 10, width: '100%', padding: '9px', borderRadius: 9, border: `1.4px solid #0D5047`,
+                    background: '#fff', color: '#0D5047', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                  }}>Search</button>
                   {referResults.length > 0 && (
                     <div style={{ marginTop: 10, border: `1px solid #E9EDF3`, borderRadius: 9, overflow: 'hidden' }}>
                       {referResults.map((c) => (
                         <button key={c.id} onClick={() => setReferSelected(c)} style={{
-                          width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: `1px solid #E9EDF3`, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1A202C', transition: 'background .15s ease'
+                          width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderBottom: `1px solid #E9EDF3`, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1A202C'
                         }} onMouseEnter={e => { e.currentTarget.style.background = '#ECFDF5'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
                           <div style={{ width: 32, height: 32, borderRadius: 8, background: '#ECFDF5', color: '#0D5047', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
-                             {(c.name || '').charAt(0).toUpperCase()}
+                            {c.name.charAt(0).toUpperCase()}
                           </div>
                           <div>
                             <p style={{ fontWeight: 600, margin: 0, fontSize: 13 }}>{c.name}</p>
@@ -442,37 +536,12 @@ const CustomerReferrals: React.FC = () => {
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: '#ECFDF5', color: '#0D5047', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                      {(referSelected.name || '').charAt(0).toUpperCase()}
+                      {referSelected.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <p style={{ fontWeight: 700, margin: 0, fontSize: 14, color: '#1A202C' }}>{referSelected.name}</p>
                       <p style={{ fontSize: 12, color: '#8A94A6', margin: '1px 0 0' }}>{referSelected.email || referSelected.phone || '-'}</p>
                     </div>
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.04, margin: '0 0 6px', display: 'block' }}>Company Name</label>
-                    <input
-                      type="text"
-                      placeholder="Enter company name"
-                      value={referCompany}
-                      onChange={(e) => setReferCompany(e.target.value)}
-                      style={{
-                        width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '10px 12px',
-                        border: `1.4px solid #E9EDF3`, borderRadius: 9, background: '#f8fafc', color: '#1A202C', outline: 'none'
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.04, margin: '0 0 6px', display: 'block' }}>Business Email</label>
-                    <input
-                      type="text"
-                      value={referSelected.email || ''}
-                      readOnly
-                      style={{
-                        width: '100%', fontFamily: "'Inter', sans-serif", fontSize: 13, padding: '10px 12px',
-                        border: `1.4px solid #E9EDF3`, borderRadius: 9, background: '#f8fafc', color: '#4A5568', outline: 'none'
-                      }}
-                    />
                   </div>
                   <textarea
                     placeholder="Notes (optional)"
@@ -485,20 +554,16 @@ const CustomerReferrals: React.FC = () => {
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                     <button onClick={() => setReferSelected(null)} style={{
-                       flex: 1, padding: '9px', borderRadius: 9, border: `1.4px solid #E9EDF3`,
-                       background: '#fff', color: '#8A94A6', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s ease'
-                     }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#0D5047'; e.currentTarget.style.color = '#0D5047'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E9EDF3'; e.currentTarget.style.color = '#8A94A6'; }}>Back</button>
-                     <button onClick={handleReferSubmit} disabled={referSubmitting} style={{
-                       flex: 1, padding: '9px', borderRadius: 9, border: '1.4px solid transparent',
-                       background: `linear-gradient(155deg, #0D5047, #0D5047)`, color: '#fff',
-                       fontSize: 13, fontWeight: 600, cursor: referSubmitting ? 'not-allowed' : 'pointer', opacity: referSubmitting ? 0.7 : 1,
-                       transition: 'transform .15s ease',
-                     }}
-                       onMouseEnter={(e) => { if (!referSubmitting) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                       onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                     >
-                      {referSubmitting ? 'Saving...' : 'Submit Referral'}
+                    <button onClick={() => setReferSelected(null)} style={{
+                      flex: 1, padding: '9px', borderRadius: 9, border: `1.4px solid #E9EDF3`,
+                      background: '#fff', color: '#8A94A6', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                    }}>Back</button>
+                    <button onClick={handleReferSubmit} disabled={referSubmitting} style={{
+                      flex: 1, padding: '9px', borderRadius: 9, border: '1.4px solid transparent',
+                      background: `linear-gradient(155deg, #0D5047, #0D5047)`, color: '#fff',
+                      fontSize: 13, fontWeight: 600, cursor: referSubmitting ? 'not-allowed' : 'pointer', opacity: referSubmitting ? 0.7 : 1
+                    }}>
+                      {referSubmitting ? 'Saving...' : 'Refer Customer'}
                     </button>
                   </div>
                 </>
@@ -522,27 +587,27 @@ const CustomerReferrals: React.FC = () => {
             <div style={{ padding: '18px 22px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
                 <div>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Status</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Status</p>
                   <StatusBadge status={detailReferral.status} />
                 </div>
                 <div>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Pending Amount</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Pending Amount</p>
                   <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 700, color: detailReferral.pendingInvoiceAmount > 0 ? '#1A202C' : '#8A94A6', margin: 0 }}>
                     {detailReferral.pendingInvoiceAmount > 0 ? detailReferral.pendingInvoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Created</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Created</p>
                   <p style={{ fontSize: 13, color: '#1A202C', margin: 0 }}>{new Date(detailReferral.createdAt).toLocaleDateString()}</p>
                 </div>
                 <div>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Converted</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 4px' }}>Converted</p>
                   <p style={{ fontSize: 13, color: '#1A202C', margin: 0 }}>{detailReferral.convertedAt ? new Date(detailReferral.convertedAt).toLocaleDateString() : '-'}</p>
                 </div>
               </div>
 
               <div style={{ borderTop: `1px solid #E9EDF3`, paddingTop: 14 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 10px' }}>Timeline</p>
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: 0.06, margin: '0 0 10px' }}>Timeline</p>
                 {timelineLoading ? (
                   <PortalLoadingSkeleton type="card" count={3} />
                 ) : timeline.length === 0 ? (

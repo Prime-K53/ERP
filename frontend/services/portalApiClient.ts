@@ -1,10 +1,8 @@
 import { API_BASE_URL } from '../config/api.js';
-import { portalLog, readPortalCache, writePortalCache } from './portalCache';
 
 const PORTAL_SESSION_KEY = 'portal_session';
-const DEFAULT_TIMEOUT_MS = 15000;
 
-interface PortalSessionData {
+export interface PortalSessionData {
   access_token: string;
   refresh_token: string;
   expires_in: string;
@@ -43,31 +41,15 @@ export function getPortalAccessToken(): string | null {
   return getPortalSession()?.access_token || null;
 }
 
-/**
- * Mutex for token refresh. When multiple concurrent requests hit 401,
- * only one refresh call is made. All others await the same result.
- * Without this, each concurrent call reads the same (now-revoked)
- * refresh token from sessionStorage, causing a cascade of failures.
- */
-let pendingRefresh: Promise<string | null> | null = null;
-
-async function doRefresh(): Promise<string | null> {
+async function refreshAccessToken(): Promise<string | null> {
   const session = getPortalSession();
   if (!session?.refresh_token) return null;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    let res: Response;
-    try {
-      res = await fetch(`${API_BASE_URL}/portal/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: session.refresh_token }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await fetch(`${API_BASE_URL}/portal/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    });
     if (!res.ok) return null;
     const data = await res.json();
     savePortalSession({
@@ -82,83 +64,11 @@ async function doRefresh(): Promise<string | null> {
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  if (pendingRefresh) return pendingRefresh;
-  pendingRefresh = doRefresh().finally(() => { pendingRefresh = null; });
-  return pendingRefresh;
-}
-
-/**
- * Public entry point for proactive token refresh (e.g. scheduled timer in
- * CustomerAuthContext). Uses the same mutex as the 401-triggered refresh so
- * concurrent calls don't race and revoke each other's session.
- */
-export async function refreshPortalSession(): Promise<boolean> {
-  const session = getPortalSession();
-  if (!session?.refresh_token) return false;
-  const newToken = await refreshAccessToken();
-  if (!newToken) return false;
-  const updated = getPortalSession();
-  return updated?.access_token === newToken;
-}
-
-const isGetRequest = (method: string | undefined) => !method || method.toUpperCase() === 'GET';
-
-const timeoutError = (timeoutMs: number) =>
-  new Error(`Request timed out after ${timeoutMs}ms. Check your connection and try again.`);
-
-/**
- * Fetch with a hard timeout. A hung server/network can never keep a portal
- * module in its loading/skeleton state indefinitely.
- * A caller-supplied `signal` is honored alongside the internal timeout.
- */
-const fetchWithTimeout = async (
-  url: string,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> => {
-  const controller = new AbortController();
-  const externalSignal = init.signal;
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort();
-    } else {
-      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
-    }
-  }
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
-      throw timeoutError(timeoutMs);
-    }
-    throw new Error('Network request failed. Check your connection and try again.');
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-/**
- * Local-first fallback: when a GET cannot reach the server (offline, timeout,
- * server error) and a cached snapshot exists, serve the snapshot instead of
- * failing. The UI therefore always has data to render.
- */
-const cachedGetFallback = <T>(endpoint: string): T | null => {
-  const cached = readPortalCache<T>(endpoint);
-  if (cached !== null) {
-    portalLog('API', `Serving cached response for ${endpoint}`);
-  }
-  return cached;
-};
-
 async function request<T>(
   endpoint: string,
-  options: RequestInit & { timeoutMs?: number } = {}
+  options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}/portal${endpoint}`;
-  const method = options.method || 'GET';
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -169,45 +79,23 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(url, { ...options, headers }, timeoutMs);
-  } catch (err: any) {
-    if (isGetRequest(method)) {
-      const cached = cachedGetFallback<T>(endpoint);
-      if (cached !== null) return cached;
-    }
-    throw err;
-  }
+  let response = await fetch(url, {
+    ...options,
+    headers,
+  });
 
   if (response.status === 401 && !options.headers?.['X-Refresh-Attempt']) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
       headers['X-Refresh-Attempt'] = 'true';
-      try {
-        response = await fetchWithTimeout(url, { ...options, headers }, timeoutMs);
-      } catch (err: any) {
-        if (isGetRequest(method)) {
-          const cached = cachedGetFallback<T>(endpoint);
-          if (cached !== null) return cached;
-        }
-        throw err;
-      }
+      response = await fetch(url, { ...options, headers });
     } else {
       clearPortalSession();
-      // Notify the auth layer so the UI drops back to the login page instead
-      // of keeping a dead session rendered (and skipping login).
-      window.dispatchEvent(new Event('portal-session-expired'));
     }
   }
 
   if (!response.ok) {
-    // Offline-first: a server error (>=500) falls back to the last snapshot.
-    if (response.status >= 500 && isGetRequest(method)) {
-      const cached = cachedGetFallback<T>(endpoint);
-      if (cached !== null) return cached;
-    }
     const body = await response.json().catch(() => ({}));
     const error: any = new Error(body.message || body.error || `Request failed with status ${response.status}`);
     error.status = response.status;
@@ -215,27 +103,7 @@ async function request<T>(
     throw error;
   }
 
-  const data: T = await response.json();
-  if (isGetRequest(method)) {
-    // Persist the snapshot so the next visit renders immediately (local-first).
-    writePortalCache(endpoint, data);
-  }
-  return data;
-}
-
-/**
- * Build a canonical query string used by both the API client and the modules
- * so local-first cache keys exactly match request URLs.
- */
-export function buildQueryString(
-  params?: Record<string, string | number | undefined | null>
-): string {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params || {})) {
-    if (value === undefined || value === null || value === '') continue;
-    qs.set(key, String(value));
-  }
-  return qs.toString();
+  return response.json();
 }
 
 let cachedTicket: string | null = null;
@@ -270,11 +138,68 @@ export const portalApi = {
   },
 };
 
+export interface TicketAttachment {
+  id: string;
+  ticket_id: string;
+  message_id: string | null;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string;
+  created_at: string;
+  download_url?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ticket Attachments
+// ---------------------------------------------------------------------------
+
+export async function uploadTicketAttachment(
+  ticketId: string,
+  file: File,
+  messageId?: string | null
+): Promise<TicketAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (messageId) {
+    formData.append('message_id', messageId);
+  }
+
+  const token = getPortalAccessToken();
+  const url = `${API_BASE_URL}/portal/support/tickets/${ticketId}/attachments`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const error: any = new Error(body.message || body.error || `Upload failed with status ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function getTicketAttachments(ticketId: string): Promise<TicketAttachment[]> {
+  return portalApi.get<TicketAttachment[]>(`/support/tickets/${ticketId}/attachments`);
+}
+
+export async function deleteTicketAttachment(ticketId: string, attachmentId: string): Promise<{ success: boolean }> {
+  return portalApi.delete<{ success: boolean }>(`/support/tickets/${ticketId}/attachments/${attachmentId}`);
+}
+
 // ---------------------------------------------------------------------------
 // Document lifecycle (requests, quotations, downloads, timeline, realtime)
 // ---------------------------------------------------------------------------
 
-interface RequestLineItem {
+export interface RequestLineItem {
   productId?: string | null;
   name: string;
   quantity: number;
@@ -282,41 +207,24 @@ interface RequestLineItem {
   lineTotal: number;
 }
 
-export interface PortalCatalogVariant {
-  id: string;
-  productId: string;
-  name: string;
-  sku?: string;
-  attributes?: Record<string, any>;
-  sellingPrice: number;
-  costPrice: number;
-  stock: number;
-  active: boolean;
-}
-
 export interface PortalCatalogItem {
   id: string;
   name: string;
   sku?: string;
   unit?: string;
-  description?: string;
-  /** ERP item type: Product | Stationery | Raw Material | Service | Material */
-  type?: string;
   price?: number;
-  unitPrice?: number;
   quantity?: number;
   category?: string;
   status?: string;
-  variants?: PortalCatalogVariant[];
 }
 
-interface PortalAttachment {
+export interface PortalAttachment {
   name: string;
   url: string;
   type: string;
 }
 
-type PortalRequestStatus =
+export type PortalRequestStatus =
   | 'draft'
   | 'submitted'
   | 'assigned'
@@ -327,18 +235,6 @@ type PortalRequestStatus =
   | 'rejected'
   | 'cancelled';
 
-interface RequestPromotionInfo {
-  id: string;
-  code: string | null;
-  name: string;
-  discountType: string;
-  discountValue: number;
-  discountAmount: number;
-  discountPercent: number;
-  channel: string;
-  appliedAt?: string | null;
-}
-
 export interface QuotationRequestRecord {
   id: string;
   request_number: string;
@@ -347,10 +243,6 @@ export interface QuotationRequestRecord {
   request_type: string;
   items: RequestLineItem[];
   subtotal: number;
-  discount_total?: number;
-  total?: number;
-  promotion?: RequestPromotionInfo | null;
-  promotion_applied?: boolean;
   notes: string | null;
   status: PortalRequestStatus;
   review_note: string | null;
@@ -369,9 +261,9 @@ export interface QuotationRequestRecord {
   updated_at: string;
 }
 
-type SalesOrderStatus = 'Draft' | 'Confirmed' | 'Processing' | 'Pending' | 'Delivered' | 'Fulfilled' | 'Shipped' | 'Cancelled';
+export type SalesOrderStatus = 'Draft' | 'Confirmed' | 'Processing' | 'Pending' | 'Delivered' | 'Fulfilled' | 'Shipped' | 'Cancelled';
 
-interface SalesOrderRecord {
+export interface SalesOrderRecord {
   id: string;
   order_number: string | null;
   orderDate: string;
@@ -380,10 +272,6 @@ interface SalesOrderRecord {
   totalAmount: number;
   status: SalesOrderStatus;
   items: RequestLineItem[];
-  subtotal?: number;
-  discount_total?: number;
-  promotion?: RequestPromotionInfo | null;
-  promotion_applied?: boolean;
   notes: string | null;
   quotation_id: string | null;
   source_request_id: string | null;
@@ -397,18 +285,12 @@ interface SalesOrderRecord {
 export interface PortalShipmentRecord {
   id: string;
   order_number: string | null;
-  /** Linked delivery note reference when the row is delivery-note sourced. */
-  order_id?: string | null;
-  orderId?: string | null;
-  /** Which ERP document surfaced this delivery ('sales_orders' | 'delivery_notes'). */
-  _source?: string;
   orderDate: string;
   customerName: string;
   status: string;
   tracking_number: string | null;
   carrier: string | null;
   driver_name: string | null;
-  driver_phone: string | null;
   vehicle_no: string | null;
   estimated_delivery: string | null;
   actual_arrival: string | null;
@@ -416,21 +298,6 @@ export interface PortalShipmentRecord {
   proof_of_delivery: string | null;
   shipping_address: string | null;
   items: RequestLineItem[];
-}
-
-/**
- * Customer delivery status banner (feeds the sliding dashboard carousel,
- * mirroring ads). `stage` follows the delivery lifecycle:
- * inbound (out of warehouse) → active (out for delivery) → delivered (POD).
- */
-export interface PortalDeliveryBanner {
-  id: string;
-  stage: 'inbound' | 'active' | 'delivered' | string;
-  status: string;
-  orderNumber: string | null;
-  invoiceNumber: string | null;
-  trackingNumber: string | null;
-  updatedAt: string | null;
 }
 
 export interface DocumentChainEntry {
@@ -442,7 +309,7 @@ export interface DocumentChainEntry {
   createdAt: string;
 }
 
-interface DocumentChainResult {
+export interface DocumentChainResult {
   chain: DocumentChainEntry[];
   originOrder: DocumentChainEntry | null;
   request: any | null;
@@ -541,7 +408,7 @@ export interface TimelineEvent {
   created_at: string;
 }
 
-interface DownloadGateResult {
+export interface DownloadGateResult {
   allowed: boolean;
   docType: string;
   docId: string;
@@ -549,7 +416,7 @@ interface DownloadGateResult {
   downloadId: string;
 }
 
-interface CreateRequestPayload {
+export interface CreateRequestPayload {
   requestType?: string;
   items: { name: string; productId?: string | null; quantity: number; unitPrice: number }[];
   notes?: string;
@@ -557,75 +424,9 @@ interface CreateRequestPayload {
   attachments?: PortalAttachment[];
   reorderOf?: string | null;
   reorderOfNumber?: string | null;
-  promotionCode?: string | null;
 }
 
-export interface PortalPromotionInfo {
-  id: string;
-  name: string;
-  description?: string | null;
-  code?: string | null;
-  discountType: string;
-  discountValue: number;
-  channel: 'ERP' | 'PORTAL' | 'BOTH';
-  isAutoApply: boolean;
-  applicableTo: string;
-  productIds?: string[];
-  categoryIds?: string[];
-  minimumOrderAmount?: number;
-  endsAt?: string | null;
-}
-
-export interface PortalAdInfo {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-  badge?: string | null;
-  ctaLabel?: string | null;
-  ctaTarget?: string | null;
-  imageUrl?: string | null;
-  gradient?: string | null;
-  emoji?: string | null;
-  endsAt?: string | null;
-}
-
-interface PortalOrderPreviewLine {
-  productId: string | null;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  originalUnitPrice: number;
-  discountPercent: number;
-  discountAmount: number;
-  netUnitPrice: number;
-  lineTotal: number;
-  promotionId: string | null;
-  promotionCode: string | null;
-}
-
-export interface PortalOrderPreview {
-  applied: boolean;
-  promotion: {
-    id: string;
-    code: string | null;
-    name: string;
-    discountType: string;
-    discountValue: number;
-    discountAmount: number;
-    discountPercent: number;
-    channel: string;
-  } | null;
-  lines: PortalOrderPreviewLine[];
-  subtotal: number;
-  discountTotal: number;
-  subtotalBeforeDiscount: number;
-  subtotalAfterDiscount: number;
-  taxableSubtotal: number;
-  grandTotal: number;
-  metadata: Record<string, any>;
-}
-
-interface ReorderResult {
+export interface ReorderResult {
   id: string;
   requestNumber: string;
   status: string;
@@ -633,7 +434,7 @@ interface ReorderResult {
   reorderOfNumber: string;
 }
 
-interface QuotationDecisionPayload {
+export interface QuotationDecisionPayload {
   acceptedBy?: string;
   reason?: string;
   comments?: string;
@@ -716,9 +517,8 @@ export interface PortalCustomerSearchResult {
 
 export const portalLifecycle = {
   requests: {
-    list(params?: { page?: number; pageSize?: number; search?: string; status?: string }): Promise<any> {
-      const q = buildQueryString({ page: params?.page, pageSize: params?.pageSize, search: params?.search, status: params?.status });
-      return portalApi.get(q ? `/requests?${q}` : '/requests');
+    list(): Promise<QuotationRequestRecord[]> {
+      return portalApi.get<QuotationRequestRecord[]>('/requests');
     },
     get(id: string): Promise<QuotationRequestRecord> {
       return portalApi.get<QuotationRequestRecord>(`/requests/${id}`);
@@ -732,9 +532,8 @@ export const portalLifecycle = {
   },
 
   quotations: {
-    list(params?: { page?: number; pageSize?: number; search?: string; status?: string }): Promise<any> {
-      const q = buildQueryString({ page: params?.page, pageSize: params?.pageSize, search: params?.search, status: params?.status });
-      return portalApi.get(q ? `/quotations?${q}` : '/quotations');
+    list(): Promise<QuotationRecord[]> {
+      return portalApi.get<QuotationRecord[]>('/quotations');
     },
     get(id: string): Promise<QuotationRecord> {
       return portalApi.get<QuotationRecord>(`/quotations/${id}`);
@@ -768,33 +567,14 @@ export const portalLifecycle = {
   },
 
   orders: {
-    list(params?: { page?: number; pageSize?: number; search?: string; status?: string }): Promise<any> {
-      const q = buildQueryString({ page: params?.page, pageSize: params?.pageSize, search: params?.search, status: params?.status });
-      return portalApi.get(q ? `/orders?${q}` : '/orders');
+    list(): Promise<SalesOrderRecord[]> {
+      return portalApi.get<SalesOrderRecord[]>('/orders');
     },
     get(id: string): Promise<SalesOrderRecord> {
       return portalApi.get<SalesOrderRecord>(`/orders/${id}`);
     },
     reorder(id: string): Promise<ReorderResult> {
       return portalApi.post<ReorderResult>(`/orders/${id}/reorder`);
-    },
-    /** Server-authoritative order preview (authoritative promotion calculation). */
-    preview(payload: { items: { productId?: string | null; name: string; quantity: number; unitPrice?: number }[]; promotionCode?: string | null }): Promise<PortalOrderPreview> {
-      return portalApi.post<PortalOrderPreview>('/orders/preview', payload);
-    },
-  },
-
-  promotions: {
-    /** Active PORTAL promotions for display (badges / banners). Display only. */
-    list(): Promise<PortalPromotionInfo[]> {
-      return portalApi.get<PortalPromotionInfo[]>('/promotions');
-    },
-  },
-
-  ads: {
-    /** Active PORTAL banner ads for display (banner carousel). Display only. */
-    list(): Promise<PortalAdInfo[]> {
-      return portalApi.get<PortalAdInfo[]>('/ads');
     },
   },
 
@@ -804,17 +584,6 @@ export const portalLifecycle = {
     },
     get(id: string): Promise<PortalShipmentRecord> {
       return portalApi.get<PortalShipmentRecord>(`/shipments/${id}`);
-    },
-  },
-
-  deliveries: {
-    /** Sliding delivery status banners (out of warehouse / out for delivery / delivered). */
-    banners(): Promise<PortalDeliveryBanner[]> {
-      return portalApi.get<PortalDeliveryBanner[]>('/deliveries/banner');
-    },
-    /** The customer-scoped delivery note record behind a delivery id (for Download Delivery Note). */
-    note(id: string): Promise<any> {
-      return portalApi.get<any>(`/deliveries/${encodeURIComponent(id)}/note`);
     },
   },
 
@@ -918,7 +687,12 @@ export const portalLifecycle = {
 
   invoices: {
     list(params?: { page?: number; pageSize?: number; search?: string; status?: string }): Promise<any> {
-      const q = buildQueryString({ page: params?.page, pageSize: params?.pageSize, search: params?.search, status: params?.status });
+      const qs = new URLSearchParams();
+      if (params?.page) qs.set('page', String(params.page));
+      if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+      if (params?.search) qs.set('search', params.search);
+      if (params?.status) qs.set('status', params.status);
+      const q = qs.toString();
       return portalApi.get(q ? `/invoices?${q}` : '/invoices');
     },
     get(id: string): Promise<any> {
@@ -928,28 +702,35 @@ export const portalLifecycle = {
 
   payments: {
     list(params?: { page?: number; pageSize?: number; search?: string }): Promise<any> {
-      const q = buildQueryString({ page: params?.page, pageSize: params?.pageSize, search: params?.search });
+      const qs = new URLSearchParams();
+      if (params?.page) qs.set('page', String(params.page));
+      if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+      if (params?.search) qs.set('search', params.search);
+      const q = qs.toString();
       return portalApi.get(q ? `/payments?${q}` : '/payments');
     },
     get(id: string): Promise<any> {
       return portalApi.get(`/payments/${id}`);
     },
-    /**
-     * Submit a PAYMENT REQUEST (workflow only — no money moves, no invoice
-     * mutation). ERP staff verify the bank payment and post a real
-     * customer_payment through the accounting pipeline; the ledger changes
-     * only then. Direct portal payment recording is disabled server-side.
-     */
-    requestPayment(invoiceId: string, requestedAmount?: number, note?: string): Promise<any> {
-      return portalApi.post('/payment-requests', {
-        invoiceId,
-        requestedAmount,
-        note,
-      });
-    },
     /** Create a Stripe PaymentIntent (or mock client secret) for an invoice */
     createIntent(invoiceId: string, amount: number, currency?: string): Promise<{ clientSecret: string; mode: string }> {
       return portalApi.post('/payments/intent', { invoiceId, amount, currency });
+    },
+    /** Record a completed payment against an invoice */
+    recordPayment(invoiceId: string, amount: number, options?: {
+      currency?: string;
+      paymentMethod?: string;
+      reference?: string;
+      transactionId?: string;
+    }): Promise<{ success: boolean; paymentId: string; status: string }> {
+      return portalApi.post('/payments', {
+        invoiceId,
+        amount,
+        currency: options?.currency || 'USD',
+        paymentMethod: options?.paymentMethod || 'Card',
+        reference: options?.reference,
+        transactionId: options?.transactionId,
+      });
     },
   },
 

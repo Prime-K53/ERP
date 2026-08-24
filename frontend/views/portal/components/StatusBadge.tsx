@@ -6,52 +6,51 @@ interface Props {
   showIcon?: boolean;
 }
 
-const statusConfig: Record<string, { label: string; bg: string; text: string; dot: string; pulse?: boolean }> = {
-  active: { label: 'Active', bg: '#ECFDF5', text: '#059669', dot: '#059669', pulse: true },
-  paid: { label: 'Paid', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  confirmed: { label: 'Confirmed', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  complete: { label: 'Complete', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  fulfilled: { label: 'Fulfilled', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  delivered: { label: 'Delivered', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  unpaid: { label: 'Unpaid', bg: '#FEF2F2', text: '#DC2626', dot: '#DC2626' },
-  pending: { label: 'Pending', bg: '#FFFBEB', text: '#D97706', dot: '#D97706', pulse: true },
-  draft: { label: 'Draft', bg: '#F8FAFC', text: '#64748B', dot: '#94A3B8' },
-  overdue: { label: 'Overdue', bg: '#FEF2F2', text: '#DC2626', dot: '#DC2626', pulse: true },
-  cancelled: { label: 'Cancelled', bg: '#FEF2F2', text: '#DC2626', dot: '#DC2626' },
-  voided: { label: 'Voided', bg: '#FEF2F2', text: '#DC2626', dot: '#DC2626' },
-  processing: { label: 'Processing', bg: '#EFF6FF', text: '#2563EB', dot: '#2563EB', pulse: true },
-  inprogress: { label: 'In Progress', bg: '#EFF6FF', text: '#2563EB', dot: '#2563EB', pulse: true },
-  in_progress: { label: 'In Progress', bg: '#EFF6FF', text: '#2563EB', dot: '#2563EB', pulse: true },
-  submitted: { label: 'Submitted', bg: '#EFF6FF', text: '#2563EB', dot: '#2563EB' },
-  under_review: { label: 'Under Review', bg: '#FFFBEB', text: '#D97706', dot: '#D97706', pulse: true },
-  quotation_ready: { label: 'Quotation Ready', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  ready: { label: 'Ready', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  accepted: { label: 'Accepted', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  converted: { label: 'Converted', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  revision_requested: { label: 'Revision Requested', bg: '#F5F3FF', text: '#7C3AED', dot: '#7C3AED', pulse: true },
-  rejected: { label: 'Rejected', bg: '#FEF2F2', text: '#DC2626', dot: '#DC2626' },
-  expired: { label: 'Expired', bg: '#F1F5F9', text: '#64748B', dot: '#94A3B8' },
-  waiting_for_customer: { label: 'Waiting for Customer', bg: '#F5F3FF', text: '#7C3AED', dot: '#7C3AED', pulse: true },
-  approved: { label: 'Approved', bg: '#ECFDF5', text: '#059669', dot: '#059669' },
-  shipped: { label: 'Shipped', bg: '#EFF6FF', text: '#2563EB', dot: '#2563EB', pulse: true },
-  partially_paid: { label: 'Partially Paid', bg: '#FFFBEB', text: '#D97706', dot: '#D97706' },
+const statusConfig: Record<string, { label: string; bg: string; text: string; dot: string; icon?: React.ReactNode; pulse?: boolean }> = {
+  active: { label: 'Active', bg: '#ecfdf5', text: '#059669', dot: '#059669', pulse: true },
+  paid: { label: 'Paid', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  confirmed: { label: 'Confirmed', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  complete: { label: 'Complete', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  fulfilled: { label: 'Fulfilled', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  delivered: { label: 'Delivered', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  unpaid: { label: 'Unpaid', bg: '#fef2f2', text: '#b5493f', dot: '#b5493f' },
+  pending: { label: 'Pending', bg: '#fffbeb', text: '#b45309', dot: '#d99a3f', pulse: true },
+  draft: { label: 'Draft', bg: '#f8fafc', text: '#475569', dot: '#94a3b8' },
+  overdue: { label: 'Overdue', bg: '#fef2f2', text: '#b5493f', dot: '#b5493f', pulse: true },
+  cancelled: { label: 'Cancelled', bg: '#fef2f2', text: '#b5493f', dot: '#b5493f' },
+  voided: { label: 'Voided', bg: '#fef2f2', text: '#b5493f', dot: '#b5493f' },
+  processing: { label: 'Processing', bg: '#eff6ff', text: '#2563eb', dot: '#2563eb', pulse: true },
+  inprogress: { label: 'In Progress', bg: '#eff6ff', text: '#2563eb', dot: '#2563eb', pulse: true },
+  in_progress: { label: 'In Progress', bg: '#eff6ff', text: '#2563eb', dot: '#2563eb', pulse: true },
+  submitted: { label: 'Submitted', bg: '#eff6ff', text: '#2563eb', dot: '#2563eb' },
+  under_review: { label: 'Under Review', bg: '#fffbeb', text: '#b45309', dot: '#d99a3f', pulse: true },
+  quotation_ready: { label: 'Quotation Ready', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  ready: { label: 'Ready', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  accepted: { label: 'Accepted', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  converted: { label: 'Converted', bg: '#eef7f6', text: '#1f8577', dot: '#1f8577' },
+  revision_requested: { label: 'Revision Requested', bg: '#f5f3ff', text: '#7c3aed', dot: '#7c3aed', pulse: true },
+  rejected: { label: 'Rejected', bg: '#fef2f2', text: '#b5493f', dot: '#b5493f' },
+  expired: { label: 'Expired', bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' },
+  waiting_for_customer: { label: 'Waiting for Customer', bg: '#f5f3ff', text: '#7c3aed', dot: '#7c3aed', pulse: true },
+  approved: { label: 'Approved', bg: '#ecfdf5', text: '#059669', dot: '#059669' },
+  shipped: { label: 'Shipped', bg: '#eff6ff', text: '#2563eb', dot: '#2563eb', pulse: true },
 };
 
 const StatusBadge: React.FC<Props> = ({ status, size = 'md', showIcon = true }) => {
   const key = status?.toLowerCase().replace(/\s+/g, '') || '';
-  const config = statusConfig[key] || { label: status, bg: '#F8FAFC', text: '#475569', dot: '#94A3B8' };
+  const config = statusConfig[key] || { label: status, bg: '#f8fafc', text: '#475569', dot: '#94a3b8' };
   const isSmall = size === 'sm';
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap transition-all duration-150"
+      className="inline-flex items-center gap-1.5 font-bold rounded-full whitespace-nowrap shadow-2xs transition-all duration-150"
       style={{
         background: config.bg,
         color: config.text,
         fontSize: isSmall ? 10 : 11,
-        padding: isSmall ? '2px 8px' : '3px 10px',
+        padding: isSmall ? '2px 8px' : '3.5px 11px',
         lineHeight: 1.4,
-        border: `1px solid ${config.text}20`,
+        border: `1px solid ${config.text}30`,
       }}
     >
       <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">

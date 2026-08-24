@@ -92,13 +92,14 @@ const lazyWithRetry = (name: string, componentImport: () => Promise<any>) =>
 const CustomerDashboard = lazyWithRetry('./views/portal/CustomerDashboard', () => import('./views/portal/CustomerDashboard'));
 const CustomerOrders = lazyWithRetry('./views/portal/CustomerOrders', () => import('./views/portal/CustomerOrders'));
 const CustomerOrderDetail = lazyWithRetry('./views/portal/CustomerOrderDetail', () => import('./views/portal/CustomerOrderDetail'));
+const CustomerShipments = lazyWithRetry('./views/portal/CustomerShipments', () => import('./views/portal/CustomerShipments'));
+const CustomerShipmentDetail = lazyWithRetry('./views/portal/CustomerShipmentDetail', () => import('./views/portal/CustomerShipmentDetail'));
 const CustomerQuotations = lazyWithRetry('./views/portal/CustomerQuotations', () => import('./views/portal/CustomerQuotations'));
 const CustomerInvoices = lazyWithRetry('./views/portal/CustomerInvoices', () => import('./views/portal/CustomerInvoices'));
 const CustomerInvoiceDetail = lazyWithRetry('./views/portal/CustomerInvoiceDetail', () => import('./views/portal/CustomerInvoiceDetail'));
 const CustomerPayments = lazyWithRetry('./views/portal/CustomerPayments', () => import('./views/portal/CustomerPayments'));
 const CustomerPaymentDetail = lazyWithRetry('./views/portal/CustomerPaymentDetail', () => import('./views/portal/CustomerPaymentDetail'));
-const CustomerDeliveries = lazyWithRetry('./views/portal/CustomerDeliveries', () => import('./views/portal/CustomerDeliveries'));
-const CustomerAccountStatements = lazyWithRetry('./views/portal/CustomerAccountStatements', () => import('./views/portal/CustomerAccountStatements'));
+const CustomerStatements = lazyWithRetry('./views/portal/CustomerStatements', () => import('./views/portal/CustomerStatements'));
 const CustomerWallet = lazyWithRetry('./views/portal/CustomerWallet', () => import('./views/portal/CustomerWallet'));
 const CustomerLoyalty = lazyWithRetry('./views/portal/CustomerLoyalty', () => import('./views/portal/CustomerLoyalty'));
 const CustomerDocuments = lazyWithRetry('./views/portal/CustomerDocuments', () => import('./views/portal/CustomerDocuments'));
@@ -176,7 +177,6 @@ const InternalToolsHub = lazyWithRetry('./views/InternalToolsHub', () => import(
 const Payments = lazyWithRetry('./views/sales/Payments', () => import('./views/sales/Payments'));
 const Orders = lazyWithRetry('./views/sales/Orders', () => import('./views/sales/Orders'));
 const QuotationRequests = lazyWithRetry('./views/sales/QuotationRequests', () => import('./views/sales/QuotationRequests'));
-const QuotationRequestsHub = lazyWithRetry('./views/sales/QuotationRequestsHub', () => import('./views/sales/QuotationRequestsHub'));
 const JobTickets = lazyWithRetry('./views/sales/JobTickets', () => import('./views/sales/JobTickets'));
 const Clients = lazyWithRetry('./views/sales/Clients', () => import('./views/sales/Clients'));
 const ShippingManager = lazyWithRetry('./views/sales/ShippingManager', () => import('./views/sales/ShippingManager'));
@@ -208,7 +208,6 @@ const MarketAdjustments = lazyWithRetry('./views/tools/MarketAdjustments', () =>
 const SmartPricing = lazyWithRetry('./views/tools/SmartPricing', () => import('./views/tools/SmartPricing'));
 const SmartOperationsHub = lazyWithRetry('./views/SmartOperationsHub', () => import('./views/SmartOperationsHub'));
 const MarketingMessages = lazyWithRetry('./views/tools/MarketingMessages', () => import('./views/tools/MarketingMessages'));
-const AdsManager = lazyWithRetry('./views/tools/AdsManager', () => import('./views/tools/AdsManager'));
 const AnalyticsHub = lazyWithRetry('./views/ai/AnalyticsHub', () => import('./views/ai/AnalyticsHub'));
 const GangRunOptimizer = lazyWithRetry('./views/ai/GangRunOptimizer', () => import('./views/ai/GangRunOptimizer'));
 const CashFlowForecaster = lazyWithRetry('./views/ai/CashFlowForecaster', () => import('./views/ai/CashFlowForecaster'));
@@ -830,7 +829,7 @@ const AppLayout: React.FC = () => {
                   <Route path="/sales-flow" element={<SalesFlowHub />} />
                   <Route path="/sales-flow/pos" element={<ProtectedRoute permission="sales.pos"><POS /></ProtectedRoute>} />
                   <Route path="/sales-flow/quotations" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
-                  <Route path="/sales-flow/requests" element={<ProtectedRoute permission="sales.view"><QuotationRequestsHub /></ProtectedRoute>} />
+                  <Route path="/sales-flow/requests" element={<ProtectedRoute permission="sales.view"><QuotationRequests /></ProtectedRoute>} />
                   <Route path="/sales-flow/orders" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
                   <Route path="/sales-flow/invoices" element={<ProtectedRoute permission="sales.view"><Orders /></ProtectedRoute>} />
                   <Route path="/sales-flow/subscriptions" element={<ProtectedRoute permission="sales.view"><SubscriptionsView /></ProtectedRoute>} />
@@ -842,7 +841,6 @@ const AppLayout: React.FC = () => {
                   <Route path="/sales-flow/customers" element={<Navigate to="/sales-flow/clients" replace />} />
                   <Route path="/sales-flow/clients" element={<ProtectedRoute permission="sales.view"><Clients /></ProtectedRoute>} />
                   <Route path="/sales-flow/payments" element={<ProtectedRoute permission="sales.view"><Payments /></ProtectedRoute>} />
-                  <Route path="/sales-flow/payment-requests" element={<ProtectedRoute permission="sales.view"><Navigate to="/sales-flow/requests" replace state={{ tab: 'payments' }} /></ProtectedRoute>} />
                 </Route>
 
                 {/* Procurement */}
@@ -883,9 +881,7 @@ const AppLayout: React.FC = () => {
                   <Route path="/smart-operations/adjustments" element={<MarketAdjustments />} />
                   <Route path="/smart-operations/pricing" element={<SmartPricing />} />
                   <Route path="/smart-operations/messages" element={<MarketingMessages />} />
-                  <Route path="/smart-operations/ads" element={<ProtectedRoute permission="admin.settings"><AdsManager /></ProtectedRoute>} />
                   <Route path="/smart-operations/referrals" element={<ProtectedRoute permission="referrals.view"><Referrals /></ProtectedRoute>} />
-                  <Route path="/smart-operations/promotions" element={<ProtectedRoute permission="admin.settings"><PromotionsAdmin /></ProtectedRoute>} />
                 </Route>
 
                 {/* AI Analytics (redirects to AI Workspace) */}
@@ -929,7 +925,7 @@ const AppLayout: React.FC = () => {
                 <Route path="/admin/sync-health" element={<ErrorBoundary name="Admin"><ProtectedRoute permission="admin.settings"><SyncHealth /></ProtectedRoute></ErrorBoundary>} />
                 <Route path="/admin/acceptance" element={<ErrorBoundary name="Admin"><ProtectedRoute permission="admin.settings"><AcceptanceDashboard /></ProtectedRoute></ErrorBoundary>} />
                 <Route path="/admin/membership-tiers" element={<ErrorBoundary name="Admin"><ProtectedRoute permission="admin.settings"><MembershipTiersAdmin /></ProtectedRoute></ErrorBoundary>} />
-                <Route path="/admin/promotions" element={<Navigate to="/smart-operations/promotions" replace />} />
+                <Route path="/admin/promotions" element={<ErrorBoundary name="Admin"><ProtectedRoute permission="admin.settings"><PromotionsAdmin /></ProtectedRoute></ErrorBoundary>} />
                 <Route path="/admin/gift-cards" element={<ErrorBoundary name="Admin"><ProtectedRoute permission="admin.settings"><GiftCardsAdmin /></ProtectedRoute></ErrorBoundary>} />
                 <Route path="/profile" element={<ErrorBoundary name="Profile"><Profile /></ErrorBoundary>} />
                 <Route path="/settings" element={<ErrorBoundary name="Settings"><ProtectedRoute permission="admin.settings"><Settings /></ProtectedRoute></ErrorBoundary>} />
@@ -1078,32 +1074,29 @@ const PortalRoutes = (
     <Route path="/portal/reset-password" element={<ToastProvider><CustomerResetPassword /></ToastProvider>} />
     <Route path="/portal" element={<CustomerLayout />}>
       <Route index element={<Navigate to="/portal/dashboard" replace />} />
-      <Route path="dashboard" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerDashboard /></Suspense>} />
-      <Route path="requests" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerRequests /></Suspense>} />
-      <Route path="requests/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerRequestDetail /></Suspense>} />
-      <Route path="orders" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerOrders /></Suspense>} />
-      <Route path="orders/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerOrderDetail /></Suspense>} />
-      <Route path="shipments" element={<Navigate to="/portal/deliveries" replace />} />
-      <Route path="deliveries" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerDeliveries /></Suspense>} />
-      <Route path="shipments/:id" element={<Navigate to="/portal/deliveries" replace />} />
-      <Route path="quotations" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerQuotations /></Suspense>} />
-      <Route path="quotations/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerQuotationDetail /></Suspense>} />
-      <Route path="new-request" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerCreateRequest /></Suspense>} />
-
-      <Route path="invoices" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerInvoices /></Suspense>} />
-      <Route path="invoices/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerInvoiceDetail /></Suspense>} />
-      <Route path="payments" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerPayments /></Suspense>} />
-      <Route path="payments/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerPaymentDetail /></Suspense>} />
-      <Route path="payment-options" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerPaymentOptions /></Suspense>} />
-      <Route path="statements" element={<Navigate to="/portal/account-statements" replace />} />
-      <Route path="account-statements" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerAccountStatements /></Suspense>} />
-      <Route path="wallet" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerWallet /></Suspense>} />
-      <Route path="loyalty" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerLoyalty /></Suspense>} />
-      <Route path="documents" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerDocuments /></Suspense>} />
-      <Route path="notifications" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerNotifications /></Suspense>} />
-      <Route path="referrals" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerReferrals /></Suspense>} />
-      <Route path="profile" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerProfile /></Suspense>} />
-      <Route path="support" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-700 rounded-full animate-spin" /></div>}><CustomerSupport /></Suspense>} />
+      <Route path="dashboard" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerDashboard /></Suspense>} />
+      <Route path="requests" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerRequests /></Suspense>} />
+      <Route path="requests/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerRequestDetail /></Suspense>} />
+      <Route path="orders" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerOrders /></Suspense>} />
+      <Route path="orders/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerOrderDetail /></Suspense>} />
+      <Route path="shipments" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerShipments /></Suspense>} />
+      <Route path="shipments/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerShipmentDetail /></Suspense>} />
+      <Route path="quotations" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerQuotations /></Suspense>} />
+      <Route path="quotations/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerQuotationDetail /></Suspense>} />
+      <Route path="new-request" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerCreateRequest /></Suspense>} />
+      <Route path="invoices" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerInvoices /></Suspense>} />
+      <Route path="invoices/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerInvoiceDetail /></Suspense>} />
+      <Route path="payments" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerPayments /></Suspense>} />
+      <Route path="payments/:id" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerPaymentDetail /></Suspense>} />
+      <Route path="payment-options" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerPaymentOptions /></Suspense>} />
+      <Route path="statements" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerStatements /></Suspense>} />
+      <Route path="wallet" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerWallet /></Suspense>} />
+      <Route path="loyalty" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerLoyalty /></Suspense>} />
+      <Route path="documents" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerDocuments /></Suspense>} />
+      <Route path="notifications" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerNotifications /></Suspense>} />
+      <Route path="referrals" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerReferrals /></Suspense>} />
+      <Route path="profile" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerProfile /></Suspense>} />
+      <Route path="support" element={<Suspense fallback={<div className="p-8 flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" /></div>}><CustomerSupport /></Suspense>} />
     </Route>
   </React.Fragment>
 );
@@ -1119,84 +1112,34 @@ function getLandingPath(): string {
   return '/login';
 }
 
-// Portal-aware identity: the customer portal lives under /portal (hash or
-// clean path) or the portal.primeerp.com host. It gets its own branding
-// (PrimePORTAL) everywhere the ERP would otherwise show "Prime ERP System".
-function isPortalContext(): boolean {
-  const hash = String(window.location.hash || '').toLowerCase();
-  if (hash.startsWith('#/portal')) return true;
-  const path = String(window.location.pathname || '').toLowerCase();
-  if (path.startsWith('/portal')) return true;
-  const host = String(window.location.hostname || '').toLowerCase();
-  return host === 'portal.primeerp.com' || host.endsWith('.portal.primeerp.com');
-}
-
 const RootNavigator: React.FC = () => {
   const { user, isInitialized, requiresSetup } = useAuth();
-  const isPortal = isPortalContext();
-
-  // Keep the browser tab labelled correctly for each surface (the static
-  // <title> in index.html is also corrected pre-mount).
-  useEffect(() => {
-    document.title = isPortal ? 'PrimePORTAL' : 'Prime ERP System';
-  }, [isPortal]);
 
   if (!isInitialized) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center overflow-hidden" style={{ background: isPortal ? '#F3F7F6' : '#F5F7F9' }}>
+      <div className="h-screen w-screen flex items-center justify-center bg-[#F5F7F9] overflow-hidden">
         {/* Decorative Background Accents */}
-        <div className={`fixed top-0 right-0 w-[500px] h-[500px] rounded-full blur-[120px] animate-pulse ${isPortal ? 'bg-teal-500/5' : 'bg-blue-500/5'}`} />
-        <div className={`fixed bottom-0 left-0 w-[500px] h-[500px] rounded-full blur-[120px] animate-pulse delay-700 ${isPortal ? 'bg-indigo-500/5' : 'bg-indigo-500/5'}`} />
-
+        <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] animate-pulse" />
+        <div className="fixed bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] animate-pulse delay-700" />
+        
         <div className="flex flex-col items-center gap-8 relative z-10">
           {/* Premium Logo */}
-          <div
-            className="w-24 h-24 rounded-full flex items-center justify-center ring-1 ring-white/20 transition-all duration-500 hover:scale-105"
-            style={{
-              background: isPortal
-                ? 'linear-gradient(135deg, #146b60 0%, #0f544c 100%)'
-                : 'linear-gradient(to bottom right, #3b82f6, #4f46e5)',
-              boxShadow: isPortal
-                ? '0 8px 32px rgba(15, 84, 76, 0.30)'
-                : '0 8px 32px rgba(59, 130, 246, 0.3)',
-            }}
-          >
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-[0_8px_32px_rgba(59,130,246,0.3)] ring-1 ring-white/20 transition-all duration-500 hover:scale-105 hover:shadow-[0_12px_40px_rgba(59,130,246,0.45)]">
             <span className="text-white text-5xl font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]">P</span>
           </div>
 
           <div className="text-center space-y-2">
-            {isPortal ? (
-              <>
-                <h1 className="text-4xl font-black tracking-tight animate-fade-in text-[#0F2C59]">
-                  Prime<span style={{ color: '#d99a3f' }}>PORTAL</span>
-                </h1>
-                <p className="text-[#146b60] font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">
-                  Customer Portal
-                </p>
-              </>
-            ) : (
-              <>
-                <h1 className="text-4xl font-black tracking-tight animate-fade-in">
-                  <span className="text-blue-600">Prime</span> <span className="text-green-600">ERP</span> <span className="text-blue-600">System</span>
-                </h1>
-                <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">
-                  Powered by AI
-                </p>
-              </>
-            )}
+            <h1 className="text-4xl font-black tracking-tight animate-fade-in">
+              <span className="text-blue-600">Prime</span> <span className="text-green-600">ERP</span> <span className="text-blue-600">System</span>
+            </h1>
+            <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">
+              Powered by AI
+            </p>
           </div>
 
           {/* Premium Loading Bar */}
           <div className="w-80 h-[3px] bg-slate-100/80 rounded-full overflow-hidden shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]">
-            <div
-              className="h-full rounded-full animate-progress-indeterminate"
-              style={{
-                background: isPortal
-                  ? 'linear-gradient(to right, #146b60, #3fa294, #d99a3f)'
-                  : 'linear-gradient(to right, #3b82f6, #4f46e5, #9333ea)',
-                boxShadow: isPortal ? '0 0 16px rgba(63, 162, 148, 0.30)' : '0 0 16px rgba(99, 102, 241, 0.25)',
-              }}
-            ></div>
+            <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 animate-progress-indeterminate shadow-[0_0_16px_rgba(99,102,241,0.25)]"></div>
           </div>
         </div>
       </div>

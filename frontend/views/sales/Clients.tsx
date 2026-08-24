@@ -21,8 +21,6 @@ import { exportToCSV } from '../../utils/helpers';
 import { currencyService } from '../../services/currencyService';
 import { CustomerSearch } from '../../components/CustomerSearch';
 import { ConfirmDialog, ConfirmDialogType } from '../../components/ConfirmDialog';
-import { getFloatingMenuStyle } from '../../utils/actionMenu';
-import { buildLedgerFromRecords } from '../../services/customerLedger';
 
 const teal = {
   50: '#eef7f6', 100: '#d3ece9', 200: '#a6d9d3', 300: '#72c0b7',
@@ -42,10 +40,8 @@ const pageWrapper: React.CSSProperties = {
   fontSize: 13.5,
   color: ink,
   minHeight: '100vh',
-  padding: '12px 12px 32px'
+  padding: '16px 24px 32px'
 };
-// Mobile-first: sm: 16px 24px, md: 16px 24px
-const pageWrapperResponsive = `${pageWrapper}`; // Base mobile, use Tailwind classes on container
 
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
@@ -149,7 +145,6 @@ export const Clients: React.FC = () => {
   const [selectedMetric, setSelectedMetric] = useState<'All' | 'Overdue' | 'Open' | 'Paid'>('All');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; title: string; message: string; confirmText?: string; type?: ConfirmDialogType; onConfirm?: () => void }>({ open: false, title: '', message: '' });
 
@@ -186,28 +181,6 @@ export const Clients: React.FC = () => {
 
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
 
-  /**
-   * Running balance per customer = stored Opening Balance (customer.balance)
-   * + transactional deltas (invoices debit / payments credit), computed by the
-   * canonical ledger service (services/customerLedger.ts) so the list column
-   * matches statements and the customer workspace.
-   */
-  const runningBalanceByCustomer = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const c of customers) {
-      const custInvoices = (invoices || []).filter((inv: any) => inv.customerId === c.id || inv.customerName === c.name);
-      const custPayments = (customerPayments || []).filter((p: any) => p.customerId === c.id || p.customerName === c.name);
-      const { closingBalance } = buildLedgerFromRecords({
-        customerId: c.id,
-        invoices: custInvoices as any[],
-        payments: custPayments as any[],
-        openingBalance: Number(c.balance || 0),
-      });
-      map.set(c.id, closingBalance);
-    }
-    return map;
-  }, [customers, invoices, customerPayments]);
-
   const filteredCustomers = useMemo(() => {
     // Exclude locally soft-deleted clients. Deletes are local-first: the row is
     // kept (flagged with deletedAt) until the tombstone propagates to the cloud
@@ -225,7 +198,7 @@ export const Clients: React.FC = () => {
       const matchesPipelineStage = pipelineStageFilter === 'All Stages' || (c as Customer & Record<string, unknown>).pipelineStage === pipelineStageFilter;
 
       let matchesBalance = true;
-      const balance = runningBalanceByCustomer.get(c.id) ?? Number(c.balance || 0);
+      const balance = c.balance || 0;
       if (balanceRange === 'Over $1,000') matchesBalance = balance > 1000;
       else if (balanceRange === 'Over $5,000') matchesBalance = balance > 5000;
       else if (balanceRange === 'Over $10,000') matchesBalance = balance > 10000;
@@ -257,7 +230,7 @@ export const Clients: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesMetric && matchesSegment && matchesBalance && matchesPipelineStage;
     });
-  }, [customers, searchQuery, filterStatus, selectedMetric, invoices, customerPayments, balanceRange, customerSegment, pipelineStageFilter, runningBalanceByCustomer]);
+  }, [customers, searchQuery, filterStatus, selectedMetric, invoices, customerPayments, balanceRange, customerSegment, pipelineStageFilter]);
 
   const { currentItems, currentPage, maxPage, totalItems, next, prev, first, last, setItemsPerPage, itemsPerPage } = usePagination(filteredCustomers, 25);
 
@@ -265,7 +238,7 @@ export const Clients: React.FC = () => {
     const today = new Date();
     const thirtyDaysAgo = subDays(today, 30);
 
-    const totalBalance = customers.reduce((sum, c) => sum + (runningBalanceByCustomer.get(c.id) ?? Number(c.balance || 0)), 0);
+    const totalBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
 
     const overdueBalance = invoices
       .filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled' && isAfter(today, parseISO(inv.dueDate)))
@@ -288,7 +261,7 @@ export const Clients: React.FC = () => {
       paidLast30Days,
       activeCount
     };
-  }, [customers, invoices, customerPayments, runningBalanceByCustomer]);
+  }, [customers, invoices, customerPayments]);
 
   const handleEdit = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -361,9 +334,6 @@ export const Clients: React.FC = () => {
 
   const handleRowMenuClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    // Anchor the dropdown to the trigger button via fixed positioning so it is
-    // never clipped/overlapped by the scrollable table wrapper.
-    setMenuAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
     setActiveMenuId(prev => (prev === id ? null : id));
   };
 
@@ -454,7 +424,7 @@ export const Clients: React.FC = () => {
       </div>
 
       {/* Money Bar */}
-      <div className="customers-money-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 18 }}>
         <div onClick={() => setSelectedMetric(selectedMetric === 'Overdue' ? 'All' : 'Overdue')}
           style={{
             cursor: 'pointer', padding: '14px 16px', borderRadius: 14,
@@ -532,7 +502,7 @@ export const Clients: React.FC = () => {
       {/* Main Content Card */}
       <div style={{ background: paper, borderRadius: 14, border: `1.4px solid ${hairline}`, overflow: 'visible', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 30px -14px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.04)' }}>
         {/* Filters & Search */}
-        <div className="customers-filter-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid ${hairline}`, background: paper, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid ${hairline}`, background: paper, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: 14, minWidth: 0, flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 480 }}>
               <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: inkSoft }} />
@@ -636,7 +606,7 @@ export const Clients: React.FC = () => {
         </div>
 
         {/* Table */}
-        <div className="clients-table-wrap sales-list-scroll" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 340px)' }}>
+        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 340px)' }}>
           <style>{`
             .clients-table { border-collapse: separate; border-spacing: 0; }
             .clients-table tbody tr { transition: background .12s ease; }
@@ -670,19 +640,18 @@ export const Clients: React.FC = () => {
                   const isChecked = selectedIds.includes(customer.id);
                   const pal = avatarPaletteFor(customer.name || customer.id);
                   const lastTx = getLastTransaction(customer.id);
-                  const openBalance = runningBalanceByCustomer.get(customer.id) ?? Number(customer.balance || 0);
-                  const owing = openBalance > 0.5;
+                  const owing = (customer.balance || 0) > 0.5;
                   return (
                     <React.Fragment key={customer.id}>
                       <tr className={isChecked ? 'selected-row' : ''} onClick={(e) => { e.stopPropagation(); setSelectedCardCustomer(customer); }}
                         style={{ cursor: 'pointer', background: isChecked ? teal[50] : 'transparent' }}>
-                        <td data-label="" style={{ padding: '13px 14px', textAlign: 'center', borderBottom: `1px solid ${hairline}` }} onClick={(e) => e.stopPropagation()}>
+                        <td style={{ padding: '13px 14px', textAlign: 'center', borderBottom: `1px solid ${hairline}` }} onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox"
                             style={{ width: 15, height: 15, borderRadius: 6, accentColor: teal[600], cursor: 'pointer', border: `1px solid ${teal[200]}` }}
                             checked={isChecked}
                             onChange={() => toggleSelect(customer.id)} />
                         </td>
-                        <td data-label="Customer" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}` }}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}` }}>
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
                             <button onClick={(e) => { e.stopPropagation(); setExpandedClientId(expandedClientId === customer.id ? null : customer.id); }}
                               style={{ padding: 4, marginTop: 4, color: inkSoft, background: 'transparent', border: 'none', cursor: 'pointer', display: 'inline-flex', transition: 'color .15s' }}>
@@ -715,7 +684,7 @@ export const Clients: React.FC = () => {
                               </div>
                           </div>
                         </td>
-                        <td data-label="Contact" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}` }}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}` }}>
                           {customer.phone || customer.portalEmail || customer.email ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
                               {customer.phone && (
@@ -733,7 +702,7 @@ export const Clients: React.FC = () => {
                             <span style={{ color: inkSoft, fontSize: 12 }}>—</span>
                           )}
                         </td>
-                        <td data-label="Last Transaction" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>
                           {lastTx ? (
                             <>
                               <div style={{ color: ink, fontWeight: 600, whiteSpace: 'nowrap' }} title={format(parseISO(lastTx.date), 'MMM dd, yyyy hh:mm a')}>
@@ -747,16 +716,16 @@ export const Clients: React.FC = () => {
                             <span style={{ color: inkSoft, fontSize: 12 }}>—&nbsp;No transactions</span>
                           )}
                         </td>
-                        <td data-label="Wallet" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'right', color: '#111827', fontWeight: 600, fontFamily: "'Inter', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'right', color: '#111827', fontWeight: 600, fontFamily: "'Inter', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                           {fmtMoney(customer.walletBalance)}
                         </td>
-                        <td data-label="Balance" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: owing ? danger : '#15803d' }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: owing ? danger : '#22c55e', flexShrink: 0 }} />
-                            {owing ? fmtMoney(openBalance) : 'Paid'}
+                            {owing ? fmtMoney(customer.balance) : 'Paid'}
                           </span>
                         </td>
-                        <td data-label="Actions" style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <td style={{ padding: '13px 14px', borderBottom: `1px solid ${hairline}`, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ position: 'relative', display: 'inline-block' }}>
                             <button onClick={(e) => handleRowMenuClick(e, customer.id)}
                               style={{ padding: '7px 9px', borderRadius: 9, border: `1.4px solid ${hairline}`, background: paper, color: inkSoft, cursor: 'pointer', display: 'inline-flex', transition: 'all .15s ease', boxShadow: '0 1px 2px rgba(0,0,0,.05)' }}
@@ -764,7 +733,7 @@ export const Clients: React.FC = () => {
                               <MoreVertical size={15} />
                             </button>
                             {activeMenuId === customer.id && (
-                              <div onClick={(e) => e.stopPropagation()} style={{ ...getFloatingMenuStyle(menuAnchor, { minWidth: 224, estimatedHeight: 300 }), borderRadius: 12, boxShadow: '0 16px 36px -12px rgba(0,0,0,.28)', padding: '8px 10px', background: paper, border: `1.4px solid ${hairline}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', width: 224, borderRadius: 12, boxShadow: '0 16px 36px -12px rgba(0,0,0,.28)', padding: '8px 10px', zIndex: 40, background: paper, border: `1.4px solid ${hairline}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 <button onClick={() => { setActiveMenuId(null); setSelectedWorkspaceCustomer(customer); }} style={menuItemStyle}><Eye size={14} style={{ color: inkSoft }} /> View Profile</button>
                                 <button onClick={() => { setActiveMenuId(null); handleEdit(customer); }} style={menuItemStyle}><Edit size={14} style={{ color: inkSoft }} /> Edit Customer</button>
                                 <button onClick={() => { setActiveMenuId(null); navigate('/sales-flow/invoices', { state: { action: 'create', customer: customer.name } }); }} style={menuItemStyle}><Send size={14} style={{ color: teal[600] }} /> Add Transaction</button>
@@ -796,7 +765,7 @@ export const Clients: React.FC = () => {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {customer.subAccounts.map((sub: any) => (
+                                  {customer.subAccounts.map((sub) => (
                                     <tr key={sub.id} style={{ borderBottom: `1px solid ${hairline}` }}>
                                       <td style={{ padding: '10px 16px', fontWeight: 600, color: ink }}>{sub.name}</td>
                                       <td style={{ padding: '10px 16px', textAlign: 'right', color: '#111827', fontWeight: 600, fontFamily: "'Inter', sans-serif", fontVariantNumeric: 'tabular-nums' }}>

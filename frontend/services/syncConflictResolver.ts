@@ -46,12 +46,10 @@ export function mergeRecords(localRecord: any, remoteRecord: any): any {
  * This prevents silent data loss when two devices edit different fields of the same record.
  */
 export function fieldLevelMerge(localRecord: any, remoteRecord: any): any {
-  const localServerTime = new Date(
-    localRecord.serverUpdatedAt || localRecord.updated_at || 0
+  // Prefer server authoritative timestamps
+  const localTime = new Date(
+    localRecord.serverUpdatedAt || localRecord.updated_at || localRecord._updatedAt || 0
   ).getTime();
-  const localEditTime = new Date(localRecord._updatedAt || 0).getTime();
-  const localTime = Math.max(localServerTime, localEditTime);
-
   const remoteTime = new Date(
     remoteRecord.updated_at || remoteRecord._updatedAt || 0
   ).getTime();
@@ -144,16 +142,6 @@ export function resolvePushConflict(
   merged._version = serverVersion;
   merged.version = serverVersion;
   merged.serverUpdatedAt = serverMeta?.updatedAt || merged.serverUpdatedAt;
-
-  // Tombstone resurrection: when the server holds a tombstone (deleted: true)
-  // but the local payload is an upsert (not a delete), strip the tombstone
-  // flags so the record can be resurrected in the cloud. Without this, the
-  // field-level merge inherits deleted:true from the server tombstone and the
-  // create intent is silently converted to a delete.
-  if (localPayload.deleted !== true) {
-    delete merged.deleted;
-    delete merged.deletedAt;
-  }
 
   const serverKeys = new Set(Object.keys(remote));
   const conflictedFields: string[] = [];

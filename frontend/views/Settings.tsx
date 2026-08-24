@@ -12,7 +12,7 @@ import {
     Globe, Clock, Key, Lock, Gauge, Binary, Plus, X, Percent,
     Cpu, Layers, Smartphone, Layout, Users, ShoppingBag, ShoppingCart, Palette, Monitor,
     Factory, Box, Cloud, Bell, Mail, MessageSquare, ShieldAlert, Webhook, Sun, Moon, Laptop, Info, Undo2,
-    TrendingUp, Package, PlusCircle, Trash, Printer, Usb, Sparkles, Scissors, Award, CreditCard,
+    TrendingUp, Package, PlusCircle, Trash, Printer, Usb, Sparkles, Scissors, Award, Tag, CreditCard,
     CalendarDays, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -889,6 +889,7 @@ const Settings: React.FC = () => {
             items: [
                 { id: 'Engagement', icon: Award, label: 'Engagement', desc: 'Loyalty, cashback, membership, gift cards, affiliate, promotions, rewards' },
                 { id: 'MembershipTiers', icon: Award, label: 'Membership Tiers', desc: 'Manage loyalty tiers and benefits' },
+                { id: 'Promotions', icon: Tag, label: 'Promotions', desc: 'Manage discounts and promotional campaigns' },
                 { id: 'GiftCards', icon: CreditCard, label: 'Gift Cards', desc: 'Issue and manage gift cards' },
             ]
         },
@@ -984,6 +985,7 @@ const Settings: React.FC = () => {
                       key={tab.id}
                       onClick={() => {
                         if (tab.id === 'MembershipTiers') return navigate('/admin/membership-tiers');
+                        if (tab.id === 'Promotions') return navigate('/admin/promotions');
                         if (tab.id === 'GiftCards') return navigate('/admin/gift-cards');
                         setActiveTab(tab.id);
                       }}
@@ -1078,6 +1080,7 @@ const Settings: React.FC = () => {
                                         key={item.id}
                                         onClick={() => {
                                           if (item.id === 'MembershipTiers') return navigate('/admin/membership-tiers')
+                                          if (item.id === 'Promotions') return navigate('/admin/promotions')
                                           if (item.id === 'GiftCards') return navigate('/admin/gift-cards')
                                           setActiveTab(item.id)
                                         }}

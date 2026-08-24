@@ -33,19 +33,6 @@ interface OrderDetail {
   orderDate: string;
   customerName: string;
   totalAmount: number;
-  subtotal?: number;
-  discountTotal?: number;
-  promotion?: {
-    id: string;
-    code: string | null;
-    name: string;
-    discountType: string;
-    discountValue: number;
-    discountAmount: number;
-    discountPercent: number;
-    channel: string;
-    appliedAt?: string | null;
-  } | null;
   status: string;
   items: OrderItem[];
   notes?: string;
@@ -79,18 +66,18 @@ function stageIndex(status: string): number {
 }
 
 const s = {
-  root: { fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: '#1E293B', padding: 24, maxWidth: 800, margin: '0 auto' } as React.CSSProperties,
+  root: { fontFamily: F, fontSize: 13, lineHeight: 1.4, color: '#2D3748', padding: 24, maxWidth: 800, margin: '0 auto' } as React.CSSProperties,
   card: { background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 10, border: '1px solid #E9EDF3' } as React.CSSProperties,
   cardNoPad: { background: '#fff', borderRadius: 12, marginBottom: 10, border: '1px solid #E9EDF3', overflow: 'hidden' as const } as React.CSSProperties,
   cardHeader: { padding: '10px 14px', borderBottom: '1px solid #E9EDF3' } as React.CSSProperties,
   sectionTitle: { fontSize: 14, fontWeight: 600, color: '#1A202C', margin: 0 } as React.CSSProperties,
-  label: { fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase' as const, letterSpacing: '0.03em' } as React.CSSProperties,
+  label: { fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase' as const, letterSpacing: '0.03em' } as React.CSSProperties,
   body: { fontSize: 13, fontWeight: 500, color: '#4A5568' } as React.CSSProperties,
-  muted: { fontSize: 12, color: '#64748B' } as React.CSSProperties,
+  muted: { fontSize: 10.5, color: '#8A94A6' } as React.CSSProperties,
   value: { fontSize: 13, fontWeight: 600, color: '#1A202C' } as React.CSSProperties,
   row: { padding: '8px 14px', borderTop: '1px solid #F3F4F6', display: 'flex', alignItems: 'center' } as React.CSSProperties,
-  th: { padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569', borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
-  thRight: { padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#475569', textAlign: 'right' as const, borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
+  th: { padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase' as const, letterSpacing: '0.03em', borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
+  thRight: { padding: '8px 14px', fontSize: 10.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase' as const, letterSpacing: '0.03em', textAlign: 'right' as const, borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
   td: { padding: '8px 14px', fontSize: 13, fontWeight: 500, color: '#4A5568', borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
   tdRight: { padding: '8px 14px', fontSize: 13, fontWeight: 500, color: '#4A5568', textAlign: 'right' as const, borderTop: '1px solid #F3F4F6' } as React.CSSProperties,
   tdBold: { padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#1A202C', textAlign: 'right' as const, borderTop: '1px solid #F3F4F6', fontFamily: "'JetBrains Mono', monospace" } as React.CSSProperties,
@@ -121,9 +108,6 @@ const CustomerOrderDetail: React.FC = () => {
         orderDate: o.orderDate || o.order_date || o.created_at || '',
         customerName: o.customerName || o.customer_name || '',
         totalAmount: Number(o.total ?? o.subtotal ?? 0),
-        subtotal: Number(o.subtotal ?? 0),
-        discountTotal: Number(o.discount_total ?? o.discountTotal ?? 0),
-        promotion: o.promotion || null,
         status: o.status || 'Draft',
         items: (o.items || []).map((item: any) => {
           const quantity = Number(item.quantity ?? 1);
@@ -311,7 +295,7 @@ const CustomerOrderDetail: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
             <StatusBadge status={order.status} />
             {(order as any).tracking_number && (
-              <PortalButton variant="primary" onClick={() => navigate(`/portal/deliveries`)} icon={Truck}>Track Shipment</PortalButton>
+              <PortalButton variant="primary" onClick={() => navigate(`/portal/shipments/${order.id}`)} icon={Truck}>Track Shipment</PortalButton>
             )}
             {order.status !== 'Draft' && order.status !== 'Cancelled' && (
               <PortalButton variant="secondary" onClick={() => navigate('/portal/invoices')} icon={FileText}>View Invoice</PortalButton>
@@ -380,60 +364,11 @@ const CustomerOrderDetail: React.FC = () => {
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '10px 14px', borderTop: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: '#8A94A6', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Subtotal</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#1A202C', fontFamily: "'JetBrains Mono', monospace" }}>{formatK(order.subtotal && order.subtotal > 0 ? order.subtotal : order.totalAmount)}</span>
-        </div>
-        {order.promotion && Number(order.discountTotal || 0) > 0 && (
-          <div style={{ padding: '8px 14px', borderTop: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFBEB' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#B45309' }}>
-              {order.promotion.code || order.promotion.name} discount
-            </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#B45309', fontFamily: "'JetBrains Mono', monospace" }}>
-              −{formatK(order.discountTotal)}
-            </span>
-          </div>
-        )}
         <div style={s.totalBar}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#1A202C' }}>Total</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#059669', fontFamily: "'JetBrains Mono', monospace" }}>{formatK(order.totalAmount)}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#1A202C', fontFamily: "'JetBrains Mono', monospace" }}>{formatK(order.totalAmount)}</span>
         </div>
       </div>
-
-      {order.promotion && Number(order.discountTotal || 0) > 0 && (
-        <div style={{
-          background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
-          border: '1px solid #FDBA74', borderRadius: 12, padding: '14px 18px', marginBottom: 12,
-          boxShadow: '0 2px 8px -4px rgba(249,115,22,.2)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <div style={{
-                width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                background: 'linear-gradient(135deg, #F97316, #EA580C)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 10px -4px rgba(249,115,22,.5)'
-              }}>
-                <span style={{ fontSize: 18 }}>🎁</span>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#C2410C', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-                  Portal Exclusive Offer{order.promotion.channel === 'BOTH' ? ' • Special Offer' : ''}
-                </p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#7C2D12', margin: '3px 0 0', lineHeight: 1.35 }}>
-                  {order.promotion.name}{order.promotion.code ? ` • ${order.promotion.code}` : ''}
-                </p>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: 20, fontWeight: 800, color: '#C2410C', margin: 0, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>
-                −{formatK(order.discountTotal)}
-              </p>
-              <p style={{ fontSize: 10.5, fontWeight: 600, color: '#9A3412', margin: '2px 0 0' }}>Discount applied</p>
-            </div>
-          </div>
-        </div>
-      )}
       {order.notes && (
         <div style={{ ...s.card, marginTop: 12 }}>
           <p style={{ ...s.label, marginBottom: 4 }}>Notes</p>

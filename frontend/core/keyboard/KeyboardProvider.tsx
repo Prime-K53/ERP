@@ -81,7 +81,7 @@ export function KeyboardProvider({ children }: Props) {
   }, [getNextField]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const shortcuts = Array.from(shortcutsRef.current.values()) as ShortcutDef[];
+    const shortcuts = Array.from(shortcutsRef.current.values());
     shortcuts.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
     for (const shortcut of shortcuts) {
