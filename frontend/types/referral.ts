@@ -1,11 +1,18 @@
 export interface Referral {
   id: string
+  /** Legacy: the referred customer's ID (set for customer-to-customer referrals). */
   customerId: string
   referredById?: string
   referredByName?: string
   referralCode: string
-  status: 'active' | 'converted' | 'expired' | 'cancelled'
+  status: 'pending' | 'registered' | 'active' | 'converted' | 'expired' | 'cancelled'
   date: string
+  // Prospective-person fields
+  referredName?: string
+  referredEmail?: string
+  referredPhone?: string
+  registeredCustomerId?: string
+  registeredAt?: string
   convertedAt?: string
   convertedInvoiceId?: string
   pendingInvoiceId?: string

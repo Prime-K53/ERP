@@ -1160,9 +1160,12 @@ const portalService = {
     return {
       referrals: rows.map(r => ({
         id: r.id,
-        referredCustomerId: r.customer_id,
-        referredCustomerName: r.customer_id,
-        referredCustomerEmail: null,
+        referredCustomerId: r.customer_id || r.registered_customer_id || null,
+        referredCustomerName: r.referred_name || r.customer_id || null,
+        referredCustomerEmail: r.referred_email || null,
+        referredCustomerPhone: r.referred_phone || null,
+        registeredCustomerId: r.registered_customer_id || null,
+        registeredAt: r.registered_at || null,
         status: r.status,
         pendingInvoiceId: r.pending_invoice_id,
         pendingInvoiceAmount: r.pending_invoice_amount || 0,
@@ -1182,9 +1185,12 @@ const portalService = {
     if (String(referral.referred_by_id || '') !== String(customerId)) return null;
     return {
       id: referral.id,
-      referredCustomerId: referral.customer_id,
-      referredCustomerName: referral.referred_customer_name || referral.customer_id,
-      referredCustomerEmail: referral.referred_customer_email || null,
+      referredCustomerId: referral.customer_id || referral.registered_customer_id || null,
+      referredCustomerName: referral.referred_name || referral.customer_id || null,
+      referredCustomerEmail: referral.referred_email || null,
+      referredCustomerPhone: referral.referred_phone || null,
+      registeredCustomerId: referral.registered_customer_id || null,
+      registeredAt: referral.registered_at || null,
       status: referral.status,
       pendingInvoiceId: referral.pending_invoice_id,
       pendingInvoiceAmount: referral.pending_invoice_amount || 0,
@@ -1252,67 +1258,26 @@ const portalService = {
     };
   },
 
-  async createReferral(portalUserId, customerId, { referredCustomerId, notes }) {
-    if (!referredCustomerId) {
-      throw new Error('Referred customer is required');
+  async createReferral(portalUserId, customerId, { referredName, referredEmail, referredPhone, notes }) {
+    if (!referredName || !String(referredName).trim()) {
+      throw new Error('Referred person name is required');
     }
-    if (referredCustomerId === customerId) {
-      throw new Error('You cannot refer yourself');
-    }
-
-    const customer = await getOneById('customers', referredCustomerId);
-    if (!customer) {
-      throw new Error('Customer not found');
+    if (!referredEmail && !referredPhone) {
+      throw new Error('At least one of email or phone is required');
     }
 
-    const existingRows = await getAllFrom('customer_referrals', {
-      'data->>customer_id': `eq.${referredCustomerId}`,
-      'data->>referred_by_id': `eq.${customerId}`,
+    return referralService.register({
+      referred_name: String(referredName).trim(),
+      referred_email: referredEmail ? String(referredEmail).trim() : null,
+      referred_phone: referredPhone ? String(referredPhone).trim() : null,
+      referred_by_id: customerId,
+      referred_by_name: null,
+      notes: notes || null,
     });
-    const existing = (Array.isArray(existingRows) ? existingRows : []).find(
-      (r) => !r.deleted_at && ['active', 'converted'].includes(String(r.status || ''))
-    );
-    if (existing) {
-      throw new Error('This customer has already been referred by you');
-    }
-
-    return referralService.register(
-      {
-        customer_id: referredCustomerId,
-        referred_by_id: customerId,
-        referred_by_name: customer.name,
-        notes: notes || null,
-      });
   },
 
-  async searchCustomersForReferral(query, excludeCustomerId) {
-    if (!query || query.trim().length < 2) return [];
-    const q = String(query).trim().toLowerCase();
-    // Pre-filter at the database: only customers whose name OR email contains
-    // the query are loaded (never the whole customer directory). The JS filter
-    // below remains the authoritative matcher; this is a performance bound.
-    const esc = (s) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const ilike = `*${esc(q)}*`;
-    let results = [];
-    try {
-      results = await getAllFrom('customers', {
-        or: `(data->>name.ilike."${ilike}",data->>email.ilike."${ilike}")`,
-        'data->>id': `neq.${excludeCustomerId}`,
-      });
-    } catch (err) {
-      console.warn('[PortalService] Referral customer ilike pre-filter failed, falling back:', err.message);
-      results = await getAllFrom('customers', {
-        'data->>id': `neq.${excludeCustomerId}`,
-      });
-    }
-    return (Array.isArray(results) ? results : [])
-      .filter((c) =>
-        String(c.name || '').toLowerCase().includes(q) ||
-        String(c.email || '').toLowerCase().includes(q)
-      )
-      .slice(0, 20)
-      .map((c) => ({ id: c.id, name: c.name, email: c.email }));
-  },
+  // searchCustomersForReferral removed — prospective-person referrals do not
+  // search the ERP customer directory. The endpoint is no longer exposed.
 
   async getReferralFunnelStats(customerId) {
     const allReferrals = await getAllFrom('customer_referrals', { 'data->>referred_by_id': `eq.${customerId}` });

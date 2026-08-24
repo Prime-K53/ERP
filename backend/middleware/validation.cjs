@@ -577,9 +577,15 @@ const transferSchemas = {
 // Referral validation schemas
 const referralSchemas = {
   createReferral: z.object({
-    customer_id: z.string().min(1, 'Customer ID is required'),
-    referred_by_id: z.string().min(1, 'Referrer ID is required'),
+    // Legacy ERP staff referral (customer-to-customer)
+    customer_id: z.string().optional(),
+    referred_by_id: z.string().optional(),
     referred_by_name: z.string().optional().nullable(),
+    // Prospective-person referral (Portal)
+    referred_name: z.string().optional().nullable(),
+    referred_email: z.string().optional().nullable(),
+    referred_phone: z.string().optional().nullable(),
+    // Common
     notes: z.string().optional().nullable(),
     pending_invoice_id: z.string().optional().nullable(),
     pending_invoice_amount: z.number().min(0).optional().nullable()

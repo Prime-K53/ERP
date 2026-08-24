@@ -111,6 +111,25 @@ const registerPortalUser = async ({ id, customer_id, email, password, full_name,
   if (repo.isConfigured()) {
     syncCustomerPortalData(customer_id, { portalEmail: normalizedEmail, portalPasswordHash: password_hash, portalStatus: status }).catch(() => {});
   }
+
+  // ── Referral linkage for immediately-active users ──────────────────
+  if (status === 'active') {
+    try {
+      const ReferralService = require('./referralService.cjs');
+      const referralSvc = new ReferralService();
+      const customer = await repo.getById('customers', customer_id);
+      if (customer) {
+        await referralSvc.linkCustomerToReferral({
+          customerId: customer_id,
+          email: customer.email || normalizedEmail,
+          phone: customer.phone || phone,
+        });
+      }
+    } catch (referralErr) {
+      console.error('[PortalAuth] Referral linkage failed (non-critical):', referralErr.message);
+    }
+  }
+
   return { id: portalUserId, customer_id, email, full_name, phone, status };
 };
 
@@ -328,6 +347,27 @@ const activatePortalUser = async ({ customer_id, code, password }) => {
   await markPasswordResetUsed(reset.id);
   await setPortalUserStatus(user.id, 'active');
   await revokeAllSessions(user.id);
+
+  // ── Referral linkage: link any pending prospective referral ────────
+  // When a new customer activates their portal account, check if there is
+  // a pending referral whose email/phone matches this customer. If so,
+  // link the referral to this customer.
+  try {
+    const ReferralService = require('./referralService.cjs');
+    const referralSvc = new ReferralService();
+    const customer = await repo.getById('customers', customer_id);
+    if (customer) {
+      await referralSvc.linkCustomerToReferral({
+        customerId: customer_id,
+        email: customer.email || user.email,
+        phone: customer.phone || user.phone,
+      });
+    }
+  } catch (referralErr) {
+    // Referral linkage failure must not break customer activation.
+    console.error('[PortalAuth] Referral linkage failed (non-critical):', referralErr.message);
+  }
+
   return getPortalUserById(user.id);
 };
 

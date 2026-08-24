@@ -16,8 +16,8 @@ class ReferralService {
     const trimmed = String(sql || '').trim();
     return new Promise((resolve, reject) => {
       try {
-        if (/INSERT\s+INTO/i.test(trimmed)) {
-          const insertMatch = trimmed.match(/INSERT\s+INTO\s+(\w+)/i);
+        if (/INSERT\s+(?:OR\s+\w+\s+)?INTO/i.test(trimmed)) {
+          const insertMatch = trimmed.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i);
           const id = String(params[0] || `gen_${Date.now()}`);
           const record = { id };
           const colMatch = trimmed.match(/\(([^)]+)\)\s*VALUES\s*\((.+)\)\s*$/is);
@@ -41,9 +41,14 @@ class ReferralService {
               }
             }
           }
-          repo.upsert(insertMatch[1], record).then(() => resolve({ lastID: id, changes: 1 })).catch(reject);
+          if (insertMatch) {
+            repo.upsert(insertMatch[1], record).then(() => resolve({ lastID: id, changes: 1 })).catch(reject);
+          } else {
+            resolve({ changes: 0 });
+          }
         } else if (/UPDATE/i.test(trimmed)) {
           const updateMatch = trimmed.match(/UPDATE\s+(\w+)\s+SET/i);
+          if (!updateMatch) { resolve({ changes: 0 }); return; }
           const id = String(params[params.length - 1]);
           repo.getById(updateMatch[1], id).then(row => {
             if (!row) return resolve({ changes: 0 });
@@ -246,7 +251,132 @@ class ReferralService {
     return this.getById(id);
   }
 
+  /**
+   * Create a new referral.
+   *
+   * Supports two creation modes:
+   *   1. Prospective-person (Portal): referred_name/referred_email/referred_phone
+   *      without customer_id.  Status starts as 'pending'.
+   *   2. Legacy customer-to-customer (ERP): customer_id + referred_by_id.
+   *      Status starts as 'active'.
+   *
+   * Protections enforced server-side:
+   *   - Self-referral (email/phone matches referrer)
+   *   - Existing-customer rejection (email/phone belongs to ERP customer)
+   *   - Duplicate pending referral (same email/phone with active referral)
+   */
   async register(data) {
+    const isProspective = !data.customer_id && (data.referred_email || data.referred_phone);
+
+    if (isProspective) {
+      // ── Prospective-person referral ──────────────────────────────
+      const email = data.referred_email ? String(data.referred_email).toLowerCase().trim() : null;
+      const phone = data.referred_phone ? String(data.referred_phone).trim() : null;
+
+      if (!email && !phone) {
+        throw new Error('At least one of referred_email or referred_phone is required');
+      }
+
+      // Self-referral: check if the email/phone belongs to the referrer
+      if (data.referred_by_id) {
+        const referrer = await this._get(
+          'SELECT * FROM customers WHERE id = ?',
+          [data.referred_by_id]
+        );
+        if (referrer) {
+          const referrerEmail = String(referrer.email || '').toLowerCase().trim();
+          const referrerPhone = String(referrer.phone || '').trim();
+          if (email && referrerEmail && email === referrerEmail) {
+            throw new Error('You cannot refer yourself');
+          }
+          if (phone && referrerPhone && this._normalizePhone(phone) === this._normalizePhone(referrerPhone)) {
+            throw new Error('You cannot refer yourself');
+          }
+        }
+      }
+
+      // Existing-customer rejection
+      if (email) {
+        const existingByEmail = await this._get(
+          'SELECT id FROM customers WHERE LOWER(email) = ?',
+          [email]
+        );
+        if (existingByEmail) {
+          throw new Error('This person is already a customer and cannot be referred');
+        }
+      }
+      if (phone) {
+        const normalizedPhone = this._normalizePhone(phone);
+        const existingByPhone = await this._get(
+          'SELECT id FROM customers WHERE REPLACE(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), \'(\', \'\') = ?',
+          [normalizedPhone]
+        );
+        if (existingByPhone) {
+          throw new Error('This person is already a customer and cannot be referred');
+        }
+      }
+
+      // Duplicate pending referral protection
+      if (email) {
+        const duplicateByEmail = await this._get(
+          "SELECT id FROM customer_referrals WHERE LOWER(referred_email) = ? AND status IN ('pending', 'registered')",
+          [email]
+        );
+        if (duplicateByEmail) {
+          throw new Error('A referral for this person already exists');
+        }
+      }
+      if (phone) {
+        const duplicateByPhone = await this._get(
+          "SELECT id FROM customer_referrals WHERE referred_phone IS NOT NULL AND referred_phone != '' AND status IN ('pending', 'registered')",
+          []
+        );
+        // More precise: normalize and compare
+        if (duplicateByPhone) {
+          const allPending = await this._all(
+            "SELECT id, referred_phone FROM customer_referrals WHERE referred_phone IS NOT NULL AND referred_phone != '' AND status IN ('pending', 'registered')",
+            []
+          );
+          const normalizedTarget = this._normalizePhone(phone);
+          const isDuplicate = allPending.some(r => this._normalizePhone(r.referred_phone) === normalizedTarget);
+          if (isDuplicate) {
+            throw new Error('A referral for this person already exists');
+          }
+        }
+      }
+
+      return this._transaction(async () => {
+        const id = randomUUID();
+        const referralCode = data.referral_code || await this.generateReferralCode();
+
+        await this._run(
+          `INSERT INTO customer_referrals (id, customer_id, referred_by_id, referred_by_name, referral_code, status, referred_name, referred_email, referred_phone, notes, created_at, updated_at)
+           VALUES (?, NULL, ?, ?, ?, 'pending', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [id, data.referred_by_id, data.referred_by_name || null,
+           referralCode, data.referred_name || null,
+           email, phone, data.notes || null]
+        );
+
+        await this.addTimelineEntry({
+          referralId: id,
+          eventType: 'created',
+          title: 'Referral Created',
+          description: `Referral created for ${data.referred_name || email || phone}`,
+          actorId: data.referred_by_id,
+          actorName: data.referred_by_name });
+
+        await this.addAuditLog({
+          entityType: 'referral',
+          entityId: id,
+          action: 'created',
+          actorId: data.referred_by_id || 'system',
+          actorName: data.referred_by_name || 'System' });
+
+        return this._get('SELECT * FROM customer_referrals WHERE id = ?', [id]);
+      });
+    }
+
+    // ── Legacy customer-to-customer referral (ERP staff) ──────────────
     if (data.customer_id === data.referred_by_id) {
       throw new Error('Self-referral is not allowed');
     }
@@ -1043,6 +1173,86 @@ class ReferralService {
     
     const result = await this._run(sql, params);
     return { deleted: result.changes };
+  }
+
+  // ── Prospective Referral Linking ─────────────────────────────
+
+  /**
+   * Link a newly created/activated customer to a pending prospective referral.
+   * Called after customer registration/activation when a matching email or phone
+   * is found on a pending referral.
+   *
+   * @param {Object} opts
+   * @param {string} opts.customerId - The new customer's ID
+   * @param {string} opts.email - The customer's email (normalized)
+   * @param {string} opts.phone - The customer's phone
+   * @returns {Promise<{linked: boolean, referralId?: string}>}
+   */
+  async linkCustomerToReferral({ customerId, email, phone }) {
+    if (!customerId) return { linked: false };
+
+    const normalizedEmail = email ? String(email).toLowerCase().trim() : null;
+    const normalizedPhone = phone ? String(phone).trim() : null;
+
+    // Find a pending referral matching this email or phone
+    let referral = null;
+    if (normalizedEmail) {
+      referral = await this._get(
+        "SELECT * FROM customer_referrals WHERE LOWER(referred_email) = ? AND status = 'pending' LIMIT 1",
+        [normalizedEmail]
+      );
+    }
+    if (!referral && normalizedPhone) {
+      const allPending = await this._all(
+        "SELECT * FROM customer_referrals WHERE referred_phone IS NOT NULL AND referred_phone != '' AND status = 'pending'",
+        []
+      );
+      const normalizedTarget = this._normalizePhone(normalizedPhone);
+      referral = allPending.find(r => this._normalizePhone(r.referred_phone) === normalizedTarget) || null;
+    }
+
+    if (!referral) return { linked: false };
+
+    // Idempotent: already linked
+    if (referral.registered_customer_id) return { linked: true, referralId: referral.id };
+
+    return this._transaction(async () => {
+      await this._run(
+        `UPDATE customer_referrals SET
+           customer_id = ?,
+           registered_customer_id = ?,
+           registered_at = CURRENT_TIMESTAMP,
+           status = 'registered',
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [customerId, customerId, referral.id]
+      );
+
+      await this.addTimelineEntry({
+        referralId: referral.id,
+        eventType: 'registered',
+        title: 'Referred Person Registered',
+        description: `Referred person registered as customer ${customerId}`,
+        actorId: customerId });
+
+      await this.addAuditLog({
+        entityType: 'referral',
+        entityId: referral.id,
+        action: 'registered',
+        actorId: customerId,
+        fieldName: 'registered_customer_id',
+        oldValue: null,
+        newValue: customerId });
+
+      return { linked: true, referralId: referral.id };
+    });
+  }
+
+  /**
+   * Normalize a phone number for comparison: strip spaces, dashes, parens.
+   */
+  _normalizePhone(phone) {
+    return String(phone || '').replace(/[\s\-\(\)\+]/g, '').trim();
   }
 
   // ── Internal Helpers ───────────────────────────────────────────

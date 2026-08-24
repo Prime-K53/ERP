@@ -97,17 +97,38 @@ function normalizeRecordForRenderer(raw) {
  * Render the OFFICIAL pdf for a record already proven to belong to the
  * requesting customer.
  *
+ * When source === 'portal', the output is post-processed with:
+ *   - PORTAL COPY watermark on every page
+ *   - PDF editing restrictions (print allowed, modification restricted)
+ *   - Portal-origin metadata
+ *
+ * When source === 'erp' (default), the raw PrimeDocument output is returned
+ * unchanged — identical to what the ERP staff/shop UI generates.
+ *
+ * @param {Object} opts
+ * @param {string} opts.type - Document type (INVOICE, QUOTATION, etc.)
+ * @param {Object} opts.rawData - Authoritative ERP record
+ * @param {Array}  opts.customers - Customer records for enrichment
+ * @param {string} [opts.source='erp'] - 'portal' or 'erp'; determines watermark/security
  * @returns {Promise<{buffer: Buffer, contentType: string}>}
  */
-async function renderOfficialPdf({ type, rawData, customers = [] }) {
+async function renderOfficialPdf({ type, rawData, customers = [], source = 'erp' }) {
   const render = await loadRenderer();
   const companyConfig = await getCompanyConfig();
-  const buffer = await render({
+  let buffer = await render({
     type,
     rawData: normalizeRecordForRenderer(rawData),
     companyConfig,
     customers,
   });
+
+  // Portal-only post-processing: watermark + permissions + metadata.
+  // ERP staff/shop documents bypass this entirely.
+  if (source === 'portal') {
+    const { securePortalPdf } = require('./portalPdfSecurity.cjs');
+    buffer = await securePortalPdf(buffer);
+  }
+
   return { buffer, contentType: 'application/pdf' };
 }
 

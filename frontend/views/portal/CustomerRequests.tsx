@@ -12,7 +12,7 @@ import EmptyState from './components/EmptyState';
 import PortalLoadingSkeleton from './components/PortalLoadingSkeleton';
 import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PAGE_SIZE, FRIENDLY_STATUS_MAP, REQUEST_STATUS_META } from './constants';
-import { F, MONO } from './portalStyles';
+import { F, MONO } from './designTokens';
 
 type RequestTab = 'all' | 'pending' | 'converted' | 'cancelled';
 

@@ -67,7 +67,8 @@ const { generatePortalToken } = require('../middleware/portalAuth.cjs');
 const portalRoutes = require('../routes/portal.cjs');
 
 const REFERRAL_BODY = {
-  referredCustomerId: 'CUST_REF',
+  referredName: 'Test Referral Person',
+  referredEmail: 'test-referral@example.com',
   notes: 'Test idempotent referral',
 };
 
@@ -98,15 +99,15 @@ describe('POST /api/portal/referrals idempotency', () => {
     let seq = 0;
     const pairs = new Set();
     portalService.createReferral.mockImplementation(async (portalUserId, customerId, input) => {
-      if (!input.referredCustomerId) {
-        throw new Error('Referred customer is required');
+      if (!input.referredName || !String(input.referredName).trim()) {
+        throw new Error('Referred person name is required');
       }
-      if (input.referredCustomerId === customerId) {
-        throw new Error('You cannot refer yourself');
+      if (!input.referredEmail && !input.referredPhone) {
+        throw new Error('At least one of email or phone is required');
       }
-      const pairKey = `${customerId}|${input.referredCustomerId}`;
+      const pairKey = `${customerId}|${input.referredEmail || input.referredPhone}`;
       if (pairs.has(pairKey)) {
-        throw new Error('This customer has already been referred by you');
+        throw new Error('A referral for this person already exists');
       }
       pairs.add(pairKey);
       seq += 1;
@@ -125,7 +126,7 @@ describe('POST /api/portal/referrals idempotency', () => {
     expect(portalService.createReferral).toHaveBeenCalledTimes(1);
     expect(portalService.createReferral).toHaveBeenCalledWith(
       'pusr_A', 'CUST_A',
-      { referredCustomerId: 'CUST_REF', notes: 'Test idempotent referral' }
+      { referredName: 'Test Referral Person', referredEmail: 'test-referral@example.com', notes: 'Test idempotent referral' }
     );
     expect(repo.getAll).not.toHaveBeenCalled();
     expect(repo.upsert).not.toHaveBeenCalled();
@@ -164,7 +165,7 @@ describe('POST /api/portal/referrals idempotency', () => {
     expect(replay.body).toEqual(first.body);
   });
 
-  it('Test C — same customer + different key runs business duplicate-prevention (not idempotency replay)', async () => {
+  it('Test C — same person + different key runs business duplicate-prevention (not idempotency replay)', async () => {
     const first = await request(app)
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userA}`)
@@ -179,7 +180,7 @@ describe('POST /api/portal/referrals idempotency', () => {
       .send(REFERRAL_BODY);
 
     expect(second.status).toBe(400);
-    expect(second.body.error).toBe('This customer has already been referred by you');
+    expect(second.body.error).toBe('A referral for this person already exists');
     expect(second.body).not.toEqual(first.body);
     expect(portalService.createReferral).toHaveBeenCalledTimes(2);
   });
@@ -189,7 +190,7 @@ describe('POST /api/portal/referrals idempotency', () => {
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userA}`)
       .set('Idempotency-Key', 'ref-shared-key-001')
-      .send({ ...REFERRAL_BODY, referredCustomerId: 'CUST_REF' });
+      .send({ ...REFERRAL_BODY, referredEmail: 'person-a@example.com' });
     expect(aRes.status).toBe(201);
     expect(aRes.body.referralCode).toBe('REF-2026-000001');
 
@@ -197,7 +198,7 @@ describe('POST /api/portal/referrals idempotency', () => {
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userB}`)
       .set('Idempotency-Key', 'ref-shared-key-001')
-      .send({ ...REFERRAL_BODY, referredCustomerId: 'CUST_REF2' });
+      .send({ ...REFERRAL_BODY, referredEmail: 'person-b@example.com' });
 
     expect(bRes.status).toBe(201);
     expect(bRes.body.referralCode).toBe('REF-2026-000002');
@@ -205,14 +206,14 @@ describe('POST /api/portal/referrals idempotency', () => {
     expect(portalService.createReferral).toHaveBeenCalledTimes(2);
     expect(portalService.createReferral).toHaveBeenLastCalledWith(
       'pusr_B', 'CUST_B',
-      { referredCustomerId: 'CUST_REF2', notes: 'Test idempotent referral' }
+      { referredName: 'Test Referral Person', referredEmail: 'person-b@example.com', notes: 'Test idempotent referral' }
     );
 
     const aReplay = await request(app)
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userA}`)
       .set('Idempotency-Key', 'ref-shared-key-001')
-      .send({ ...REFERRAL_BODY, referredCustomerId: 'CUST_REF' });
+      .send({ ...REFERRAL_BODY, referredEmail: 'person-a@example.com' });
 
     expect(aReplay.status).toBe(201);
     expect(aReplay.body).toEqual(aRes.body);
@@ -256,22 +257,19 @@ describe('POST /api/portal/referrals idempotency', () => {
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userA}`)
       .set('Idempotency-Key', 'ref-validate-001')
-      .send({ notes: 'no customer id' });
+      .send({ notes: 'no name' });
     expect(missing.status).toBe(400);
-    expect(missing.body.error).toBe('Referred customer is required');
+    expect(missing.body.error).toBe('Referred person name is required');
     expect(portalService.createReferral).not.toHaveBeenCalled();
 
-    const self = await request(app)
+    const noContact = await request(app)
       .post('/api/portal/referrals')
       .set('Authorization', `Bearer ${userA}`)
       .set('Idempotency-Key', 'ref-validate-002')
-      .send({ ...REFERRAL_BODY, referredCustomerId: 'CUST_A' });
-    expect(self.status).toBe(400);
-    expect(self.body.error).toBe('You cannot refer yourself');
-    expect(portalService.createReferral).toHaveBeenCalledWith(
-      'pusr_A', 'CUST_A',
-      { referredCustomerId: 'CUST_A', notes: 'Test idempotent referral' }
-    );
+      .send({ referredName: 'No Contact Person' });
+    expect(noContact.status).toBe(400);
+    expect(noContact.body.error).toBe('At least one of email or phone is required');
+    expect(portalService.createReferral).not.toHaveBeenCalled();
 
     const legitimate = await request(app)
       .post('/api/portal/referrals')
@@ -279,7 +277,6 @@ describe('POST /api/portal/referrals idempotency', () => {
       .set('Idempotency-Key', 'ref-validate-003')
       .send(REFERRAL_BODY);
     expect(legitimate.status).toBe(201);
-    expect(legitimate.body.referredByCustomerId).toBe('CUST_A');
   });
 
   it('JWT auth is still enforced on the initial request and on replays', async () => {

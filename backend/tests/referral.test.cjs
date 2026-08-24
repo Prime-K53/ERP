@@ -114,11 +114,13 @@ async function runTests() {
   try {
     // ── Setup: create referral tables if not exist ──
     await run(`CREATE TABLE IF NOT EXISTS customer_referrals (
-      id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, referred_by_id TEXT,
+      id TEXT PRIMARY KEY, customer_id TEXT, referred_by_id TEXT,
       referred_by_name TEXT, referral_code TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','converted','expired','cancelled')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('pending','registered','active','converted','expired','cancelled')),
       pending_invoice_id TEXT, pending_invoice_amount REAL DEFAULT 0,
       converted_invoice_id TEXT, converted_at DATETIME, notes TEXT,
+      referred_name TEXT, referred_email TEXT, referred_phone TEXT,
+      invitation_sent_at DATETIME, registered_customer_id TEXT, registered_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, deleted_at DATETIME
     )`);
@@ -600,6 +602,153 @@ async function runTests() {
 
       const fetched = await service.getSettings();
       assertEqual(fetched.enabled, false, 'settings persist after getSettings');
+    }
+
+    // ── 28. register() – prospective referral with email succeeds ──
+    {
+      const ref = await service.register({
+        referred_name: 'Test Prospective',
+        referred_email: 'prospective@example.com',
+        referred_by_id: TEST_REFERRER_ID,
+        notes: 'Test prospective referral'
+      });
+
+      assertTruthy(ref, 'prospective register() returns a referral');
+      assertEqual(ref.status, 'pending', 'prospective referral status is pending');
+      assertTruthy(ref.customer_id === null || ref.customer_id === undefined, 'prospective referral has no customer_id');
+      assertEqual(ref.referred_email, 'prospective@example.com', 'prospective referral has referred_email');
+      assertEqual(ref.referred_name, 'Test Prospective', 'prospective referral has referred_name');
+      assertEqual(ref.referred_by_id, TEST_REFERRER_ID, 'prospective referral has referred_by_id');
+
+      cleanup({ referrals: [ref.id] });
+      const t = await service.getTimeline(ref.id);
+      cleanup({ timeline: t.map(e => e.id) });
+    }
+
+    // ── 29. register() – prospective referral with phone succeeds ──
+    {
+      const ref = await service.register({
+        referred_name: 'Phone Person',
+        referred_phone: '+265123456789',
+        referred_by_id: TEST_REFERRER_ID,
+      });
+
+      assertTruthy(ref, 'phone referral returns a referral');
+      assertEqual(ref.status, 'pending', 'phone referral status is pending');
+      assertEqual(ref.referred_phone, '+265123456789', 'phone referral has referred_phone');
+
+      cleanup({ referrals: [ref.id] });
+      const t = await service.getTimeline(ref.id);
+      cleanup({ timeline: t.map(e => e.id) });
+    }
+
+    // ── 30. register() – prospective referral rejects existing customer email ──
+    {
+      await run(
+        `INSERT OR IGNORE INTO customers (id, name, email) VALUES (?, ?, ?)`,
+        ['existing-cust-email', 'Existing Email Cust', 'existing@test.com']
+      );
+      cleanup({ customers: ['existing-cust-email'] });
+
+      await assertRejects(() =>
+        service.register({
+          referred_name: 'Has Existing Email',
+          referred_email: 'existing@test.com',
+          referred_by_id: TEST_REFERRER_ID,
+        }),
+        'register() rejects referral for existing customer email'
+      );
+    }
+
+    // ── 31. register() – prospective referral rejects self-referral ──
+    {
+      await run(
+        `INSERT OR IGNORE INTO customers (id, name, email) VALUES (?, ?, ?)`,
+        [TEST_REFERRER_ID, 'Self Referrer', 'referrer@test.com']
+      );
+      cleanup({ customers: [TEST_REFERRER_ID] });
+
+      await assertRejects(() =>
+        service.register({
+          referred_name: 'Self Referral Attempt',
+          referred_email: 'referrer@test.com',
+          referred_by_id: TEST_REFERRER_ID,
+        }),
+        'register() rejects self-referral by email'
+      );
+    }
+
+    // ── 32. register() – prospective referral rejects duplicate pending ──
+    {
+      const first = await service.register({
+        referred_name: 'Dupe Person',
+        referred_email: 'dupe@example.com',
+        referred_by_id: TEST_REFERRER_ID,
+      });
+
+      await assertRejects(() =>
+        service.register({
+          referred_name: 'Dupe Person 2',
+          referred_email: 'dupe@example.com',
+          referred_by_id: TEST_REFERRER_ID,
+        }),
+        'register() rejects duplicate pending referral'
+      );
+
+      cleanup({ referrals: [first.id] });
+      const t = await service.getTimeline(first.id);
+      cleanup({ timeline: t.map(e => e.id) });
+    }
+
+    // ── 33. linkCustomerToReferral() – links pending referral ──
+    {
+      const ref = await service.register({
+        referred_name: 'Link Test',
+        referred_email: 'linktest@example.com',
+        referred_by_id: TEST_REFERRER_ID,
+      });
+
+      const result = await service.linkCustomerToReferral({
+        customerId: 'new-customer-link',
+        email: 'linktest@example.com',
+      });
+
+      assertTruthy(result.linked, 'linkCustomerToReferral returns linked: true');
+      assertEqual(result.referralId, ref.id, 'linkCustomerToReferral returns referralId');
+
+      const updated = await service.getById(ref.id);
+      assertEqual(updated.registered_customer_id, 'new-customer-link', 'registered_customer_id is set');
+      assertEqual(updated.status, 'registered', 'status changed to registered');
+      assertTruthy(updated.registered_at, 'registered_at is set');
+
+      cleanup({ referrals: [ref.id] });
+      const t = await service.getTimeline(ref.id);
+      cleanup({ timeline: t.map(e => e.id) });
+    }
+
+    // ── 34. linkCustomerToReferral() – idempotent ──
+    {
+      const ref = await service.register({
+        referred_name: 'Idempotent Link',
+        referred_email: 'idempotent@example.com',
+        referred_by_id: TEST_REFERRER_ID,
+      });
+
+      const first = await service.linkCustomerToReferral({
+        customerId: 'idemp-cust',
+        email: 'idempotent@example.com',
+      });
+      const second = await service.linkCustomerToReferral({
+        customerId: 'idemp-cust',
+        email: 'idempotent@example.com',
+      });
+
+      assertTruthy(first.linked, 'first link is linked');
+      assertTruthy(second.linked, 'second link is also linked (idempotent)');
+
+      cleanup({ referrals: [ref.id] });
+      const t = await service.getTimeline(ref.id);
+      cleanup({ timeline: t.map(e => e.id) });
     }
 
     console.log(`\n=== All ${passed + failed} tests completed ===`);

@@ -108,6 +108,7 @@ async function sendOfficialDocument(req, res, { docType, fetchRecord, resolveFil
       type: renderType,
       rawData: record,
       customers: ownerCustomer ? [ownerCustomer] : [],
+      source: 'portal',
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -189,6 +190,7 @@ router.get('/payments/:id/document', async (req, res) => {
       type: 'RECEIPT',
       rawData: receiptData,
       customers: ownerCustomer ? [ownerCustomer] : [],
+      source: 'portal',
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -240,6 +242,7 @@ router.get('/deliveries/:id/document', async (req, res) => {
       type: 'DELIVERY_NOTE',
       rawData: note,
       customers: ownerCustomer ? [ownerCustomer] : [],
+      source: 'portal',
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -310,6 +313,7 @@ router.get('/customers/statement/document', async (req, res) => {
       type: 'ACCOUNT_STATEMENT',
       rawData: statementData,
       customers: ownerCustomer ? [ownerCustomer] : [],
+      source: 'portal',
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -1139,12 +1143,17 @@ router.get('/referrals/:id', async (req, res) => {
 router.post('/referrals', idempotencyMiddleware(), async (req, res) => {
   try {
     const { id, customer_id} = req.portalUser;
-    const { referredCustomerId, notes } = req.body || {};
-    if (!referredCustomerId) {
-      return res.status(400).json({ error: 'Referred customer is required' });
+    const { referredName, referredEmail, referredPhone, notes } = req.body || {};
+    if (!referredName || !String(referredName).trim()) {
+      return res.status(400).json({ error: 'Referred person name is required' });
+    }
+    if (!referredEmail && !referredPhone) {
+      return res.status(400).json({ error: 'At least one of email or phone is required' });
     }
     const data = await portalService.createReferral(id, customer_id, {
-      referredCustomerId,
+      referredName,
+      referredEmail,
+      referredPhone,
       notes,
     });
     res.status(201).json(data);
@@ -1154,20 +1163,8 @@ router.post('/referrals', idempotencyMiddleware(), async (req, res) => {
   }
 });
 
-router.get('/referrals/customers/search', async (req, res) => {
-  try {
-    const { customer_id } = req.portalUser;
-    const { q } = req.query;
-    if (!q || String(q).trim().length < 2) {
-      return res.json([]);
-    }
-    const data = await portalService.searchCustomersForReferral( String(q), customer_id);
-    res.json(data);
-  } catch (err) {
-    console.error('[Portal] Customer search error:', err);
-    res.status(500).json({ error: 'Failed to search customers' });
-  }
-});
+// Customer search endpoint removed — prospective-person referrals do not
+// expose the ERP customer directory to Portal users.
 
 // ─── Support Tickets ──────────────────────────────────────────
 router.get('/support/tickets', async (req, res) => {
