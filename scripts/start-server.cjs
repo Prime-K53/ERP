@@ -21,7 +21,7 @@ if (!fs.existsSync(backendEntry)) {
 // Verify frontend dist exists (build if not found)
 if (!fs.existsSync(frontendDistDir)) {
   console.log('[STARTUP] Frontend dist not found. Building frontend...');
-  const buildResult = spawn('npm', ['run', 'build:frontend'], {
+  const buildResult = spawn('npm', ['run', 'build'], {
     cwd: rootDir,
     stdio: 'inherit',
     shell: true,

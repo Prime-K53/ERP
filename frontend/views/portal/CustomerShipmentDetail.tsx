@@ -186,10 +186,8 @@ const CustomerShipmentDetail: React.FC = () => {
               <div key={stage.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                 {idx > 0 && (
                   <div style={{
-                    position: 'absolute', top: 12, left: 0, width: '100%', height: 2,
+                    position: 'absolute', top: 12, left: '-50%', width: '100%', height: 2,
                     background: isCompleted ? '#14b8a6' : '#E9EDF3',
-                    left: '-50%',
-                    width: '100%',
                     zIndex: 0,
                   }} />
                 )}
