@@ -64,7 +64,7 @@ const getRuntimeBackendUrl = () => {
   const configured = String((window as { BACKEND_ORIGIN?: string })?.BACKEND_ORIGIN || '').trim();
   if (configured) return configured;
   if (isFileProtocol()) return '';
-  return 'https://primebooks-erp.onrender.com';
+  return 'https://erp-7wae.onrender.com';
 };
 
 const toFileUrl = (filePath: string) => {

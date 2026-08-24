@@ -3,7 +3,7 @@ export const config = {
   dbVersion: parseInt(import.meta.env.VITE_DB_VERSION || '27'),
   offlineMode: import.meta.env.VITE_OFFLINE_MODE !== 'false',
   tonerMgPerSheet: parseInt(import.meta.env.VITE_TONER_MG || '20'),
-  apiBaseUrl: import.meta.env.VITE_API_URL || 'https://primebooks-erp.onrender.com',
+  apiBaseUrl: import.meta.env.VITE_API_URL || 'https://erp-7wae.onrender.com',
   enableMultiCurrency: import.meta.env.VITE_ENABLE_MULTI_CURRENCY === 'true',
   enableWorkflowAutomation: import.meta.env.VITE_ENABLE_WORKFLOW === 'true',
   defaultPageSize: 25,

@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://primebooks-erp.onrender.com/api/$1"
+      "destination": "https://erp-7wae.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

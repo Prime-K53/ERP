@@ -64,6 +64,22 @@ async function getAll(table, filters = {}) {
   return rows.map(fromSupabaseRow);
 }
 
+async function getAllStrict(table, filters = {}) {
+  if (!isConfigured()) return [];
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  const headers = adminHeaders();
+  try {
+    const { data } = await axios.get(url, { params: filters, headers, timeout: 10000 });
+    if (!Array.isArray(data)) return [];
+    return data.map(fromSupabaseRow);
+  } catch (err) {
+    const status = err.response && err.response.status;
+    const detail = err.response && err.response.data ? JSON.stringify(err.response.data) : '';
+    console.error(`[SupabaseRepo] ${table} getAllStrict FAILED (${status || err.message}): ${detail}`);
+    throw err;
+  }
+}
+
 async function getById(table, id) {
   const rows = await request(table, { id: `eq.${id}`, limit: 1 });
   if (!rows || rows.length === 0) return null;
@@ -1006,6 +1022,7 @@ module.exports = {
   toSupabaseRow,
   request,
   getAll,
+  getAllStrict,
   getById,
   upsert,
   softDelete,

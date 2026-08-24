@@ -190,10 +190,10 @@ The root `vercel.json` is configured for the monorepo:
 Required env vars in Vercel (Project → Settings → Environment Variables):
 
 ```env
-VITE_API_URL=https://primebooks-erp.onrender.com
+VITE_API_URL=https://erp-7wae.onrender.com
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_EXAM_BACKEND_URL=https://primebooks-erp.onrender.com
+VITE_EXAM_BACKEND_URL=https://erp-7wae.onrender.com
 ```
 
 See `frontend/.env.example` for all supported variables.

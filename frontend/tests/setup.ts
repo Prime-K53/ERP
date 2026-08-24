@@ -42,7 +42,7 @@ vi.mock('../services/logger', () => ({
 
 // Mock platform API (browser-only web app)
 const mockPlatformAPI = {
-  getBackendUrl: vi.fn(() => Promise.resolve('https://primebooks-erp.onrender.com')),
+  getBackendUrl: vi.fn(() => Promise.resolve('https://erp-7wae.onrender.com')),
   log: vi.fn(),
   readPdfFile: vi.fn(() => Promise.resolve({ success: true, data: [], size: 0 })),
   writeTempPdf: vi.fn(() => Promise.resolve({ success: true, path: '/tmp/test.pdf' })),
